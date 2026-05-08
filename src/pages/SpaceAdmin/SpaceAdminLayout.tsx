@@ -17,6 +17,7 @@ import {
   SunOutlined,
   MoonOutlined,
   DesktopOutlined,
+  ArrowLeftOutlined,
 } from '@ant-design/icons'
 import { useAuthStore } from '../../store/auth'
 import { useTheme, type Theme } from '../../hooks/useTheme'
@@ -151,6 +152,17 @@ export default function SpaceAdminLayout() {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {window.history.length > 1 && (
+            <Tooltip title="返回应用">
+              <button
+                className="admin-header-action"
+                aria-label="返回"
+                onClick={() => window.history.back()}
+              >
+                <ArrowLeftOutlined style={{ fontSize: 16 }} />
+              </button>
+            </Tooltip>
+          )}
           <div
             style={{
               width: 28,
