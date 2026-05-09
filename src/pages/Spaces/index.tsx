@@ -33,6 +33,8 @@ interface UserOptionRaw {
   uid: string
   name: string
   username?: string
+  email?: string
+  phone?: string
   status?: number
   is_destroy?: number
 }
@@ -448,7 +450,10 @@ export default function Spaces() {
               notFoundContent={userSearching ? <Spin size="small" /> : null}
               options={userOptions.map((u) => ({
                 value: u.uid,
-                label: `${u.name}${u.username ? ` (${u.username})` : ''} · ${u.uid}`,
+                label: (() => {
+                  const sub = u.username || [u.email, u.phone].filter(Boolean).join(' / ')
+                  return `${u.name}${sub ? ` (${sub})` : ''} · ${u.uid}`
+                })(),
               }))}
             />
           </Form.Item>
