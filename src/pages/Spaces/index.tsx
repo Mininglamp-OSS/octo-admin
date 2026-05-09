@@ -91,7 +91,7 @@ export default function Spaces() {
       )
       if (seq === userSearchSeq.current) {
         const list = (res.data.list || []).filter(
-          (u) => u.status === 1 && u.is_destroy !== 1,
+          (u) => u.status === 1 && u.is_destroy !== 1 && !u.uid?.endsWith('_bot'),
         )
         setUserOptions(list)
       }
