@@ -82,6 +82,9 @@ export const deleteAppBot = (id: string): Promise<void> =>
 export const rotateAppBotToken = (id: string): Promise<TokenRotateResp> =>
   unwrap(api.post<TokenRotateResp>(`/v1/admin/app_bot/${id}/token`))
 
+export const revealAppBotToken = (id: string): Promise<TokenRotateResp> =>
+  unwrap(api.post<TokenRotateResp>(`/v1/admin/app_bot/${id}/token/reveal`))
+
 export const publishAppBot = (id: string): Promise<void> =>
   api.post(`/v1/admin/app_bot/${id}/publish`).then(() => undefined)
 
@@ -107,6 +110,9 @@ export const deleteSpaceAppBot = (spaceId: string, id: string): Promise<void> =>
 
 export const rotateSpaceAppBotToken = (spaceId: string, id: string): Promise<TokenRotateResp> =>
   unwrap(api.post<TokenRotateResp>(`/v1/space/${spaceId}/app_bot/${id}/token`))
+
+export const revealSpaceAppBotToken = (spaceId: string, id: string): Promise<TokenRotateResp> =>
+  unwrap(api.post<TokenRotateResp>(`/v1/space/${spaceId}/app_bot/${id}/token/reveal`))
 
 export const publishSpaceAppBot = (spaceId: string, id: string): Promise<void> =>
   api.post(`/v1/space/${spaceId}/app_bot/${id}/publish`).then(() => undefined)

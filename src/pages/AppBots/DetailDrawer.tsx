@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
-import { Drawer, Descriptions, Tag, Button, Typography, Space, Popconfirm, Tooltip, message } from 'antd'
+import { Drawer, Descriptions, Tag, Button, Typography, Space, Popconfirm, message } from 'antd'
 import { CopyOutlined, ReloadOutlined } from '@ant-design/icons'
 import {
   getAppBot,
   getSpaceAppBot,
   rotateAppBotToken,
   rotateSpaceAppBotToken,
+  revealAppBotToken,
+  revealSpaceAppBotToken,
   type AppBot,
   type AppBotStatus,
 } from '../../api/app-bot'
@@ -58,6 +60,7 @@ export default function DetailDrawer({ botId, spaceId, open, onClose }: Props) {
   const [bot, setBot] = useState<AppBot | null>(null)
   const [loading, setLoading] = useState(false)
   const [tokenVisible, setTokenVisible] = useState(false)
+  const [revealing, setRevealing] = useState(false)
   const [rotating, setRotating] = useState(false)
   const autoHideRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -97,6 +100,22 @@ export default function DetailDrawer({ botId, spaceId, open, onClose }: Props) {
       if (autoHideRef.current) clearTimeout(autoHideRef.current)
     }
   }, [tokenVisible])
+
+  const handleRevealToken = async () => {
+    if (!botId) return
+    setRevealing(true)
+    try {
+      const resp = spaceId
+        ? await revealSpaceAppBotToken(spaceId, botId)
+        : await revealAppBotToken(botId)
+      setBot((prev) => (prev ? { ...prev, token: resp.token } : prev))
+      setTokenVisible(true)
+    } catch (err) {
+      if (err instanceof Error) message.error(err.message)
+    } finally {
+      setRevealing(false)
+    }
+  }
 
   const handleCopyToken = async () => {
     if (!bot?.token || tokenMasked) return
@@ -168,9 +187,13 @@ export default function DetailDrawer({ botId, spaceId, open, onClose }: Props) {
             </div>
             <Space style={{ marginTop: 12 }}>
               {tokenMasked ? (
-                <Tooltip title="完整 Token 仅平台管理员可见">
-                  <Button size="small" disabled>显示</Button>
-                </Tooltip>
+                <Button
+                  size="small"
+                  loading={revealing}
+                  onClick={handleRevealToken}
+                >
+                  显示
+                </Button>
               ) : (
                 <Button
                   size="small"
