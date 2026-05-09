@@ -4,6 +4,7 @@ import type { SpaceUserDetail } from '../../api/space-user'
 import SpaceMembersPanel from '../Spaces/SpaceMembersPanel'
 import SpaceInvitesPanel from '../Spaces/SpaceInvitesPanel'
 import SpaceJoinAppliesPanel from '../Spaces/SpaceJoinAppliesPanel'
+import AppBotsPage from '../AppBots'
 
 interface Ctx {
   detail: SpaceUserDetail
@@ -29,4 +30,9 @@ export function InvitesTab() {
 export function JoinAppliesTab() {
   const { spaceId, scope } = useSpaceCtx()
   return <SpaceJoinAppliesPanel spaceId={spaceId} scope={scope} />
+}
+
+export function AppBotsTab() {
+  const { spaceId } = useSpaceCtx()
+  return <AppBotsPage spaceId={spaceId} />
 }

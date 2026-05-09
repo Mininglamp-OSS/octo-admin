@@ -43,13 +43,14 @@ const themeLabel: Record<Theme, string> = {
   auto: '跟随系统',
 }
 
-const TAB_KEYS = ['members', 'invites', 'join-applies'] as const
+const TAB_KEYS = ['members', 'invites', 'join-applies', 'app-bots'] as const
 type TabKey = (typeof TAB_KEYS)[number]
 
 const TAB_LABEL: Record<TabKey, string> = {
   members: '成员',
   invites: '邀请码',
   'join-applies': '加入申请',
+  'app-bots': '应用 Bot',
 }
 
 function currentTabFromPath(pathname: string): TabKey {

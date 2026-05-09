@@ -15,6 +15,7 @@ import {
   SunOutlined,
   MoonOutlined,
   DesktopOutlined,
+  RobotOutlined,
 } from '@ant-design/icons'
 import { useAuthStore } from '../store/auth'
 import { useTheme } from '../hooks/useTheme'
@@ -27,6 +28,7 @@ const menuItems: NonNullable<MenuProps['items']> = [
   { key: '/users', icon: <UserOutlined />, label: '用户管理' },
   { key: '/groups', icon: <TeamOutlined />, label: '群组管理' },
   { key: '/spaces', icon: <AppstoreOutlined />, label: 'Space 管理' },
+  { key: '/app-bots', icon: <RobotOutlined />, label: '应用 Bot' },
   { key: '/backup', icon: <CloudUploadOutlined />, label: '备份管理' },
   { key: '/download', icon: <DownloadOutlined />, label: '下载配置' },
 ]

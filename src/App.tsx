@@ -10,9 +10,10 @@ import Spaces from './pages/Spaces'
 import Backup from './pages/Backup'
 import Download from './pages/Download'
 import Changelog from './pages/Changelog'
+import AppBots from './pages/AppBots'
 import SpaceEntry from './pages/SpaceAdmin/SpaceEntry'
 import SpaceAdminLayout from './pages/SpaceAdmin/SpaceAdminLayout'
-import { MembersTab, InvitesTab, JoinAppliesTab } from './pages/SpaceAdmin/tabs'
+import { MembersTab, InvitesTab, JoinAppliesTab, AppBotsTab } from './pages/SpaceAdmin/tabs'
 
 function SuperOnlyRoute({ children }: { children: React.ReactNode }) {
   const { isLoggedIn, scope } = useAuthStore()
@@ -71,6 +72,7 @@ function AdminRoutes() {
         <Route path="members" element={<MembersTab />} />
         <Route path="invites" element={<InvitesTab />} />
         <Route path="join-applies" element={<JoinAppliesTab />} />
+        <Route path="app-bots" element={<AppBotsTab />} />
       </Route>
       <Route
         path="/"
@@ -89,6 +91,7 @@ function AdminRoutes() {
         <Route path="spaces" element={<Spaces />} />
         <Route path="backup" element={<Backup />} />
         <Route path="download" element={<Download />} />
+        <Route path="app-bots" element={<AppBots />} />
       </Route>
     </Routes>
   )

@@ -3,6 +3,9 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
+    # Docker internal DNS resolver (required for variable-based proxy_pass)
+    resolver 127.0.0.11 valid=10s;
+
     # TLS 在 CLB 终结,后端收到的是 HTTP,关掉 Location 的协议展开,
     # 浏览器会用当前请求的协议(https)做 301 目标,避免 http→https 的多一跳
     absolute_redirect off;
@@ -45,7 +48,8 @@ server {
     # API 反代:/api/v1/... 剥掉 /api/ 前缀打到后端
     location /api/ {
         set $backend "${API_BACKEND}";
-        proxy_pass http://$backend/;
+        rewrite ^/api/(.*) /$1 break;
+        proxy_pass http://$backend;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
