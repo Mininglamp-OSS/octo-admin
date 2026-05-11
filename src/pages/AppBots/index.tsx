@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Octo Contributors
+
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Table,

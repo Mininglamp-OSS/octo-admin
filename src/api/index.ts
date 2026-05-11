@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Octo Contributors
+
 import axios, { AxiosError } from 'axios'
 import { useAuthStore } from '../store/auth'
 

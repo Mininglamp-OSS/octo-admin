@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Octo Contributors
+
 import { useState, useEffect, useRef } from 'react'
 import { Drawer, Descriptions, Tag, Button, Typography, Space, Popconfirm, message } from 'antd'
 import { CopyOutlined, ReloadOutlined } from '@ant-design/icons'
@@ -247,18 +250,18 @@ export default function DetailDrawer({ botId, spaceId, open, onClose }: Props) {
                 whiteSpace: 'pre-wrap',
               }}
             >
-              {`将 DMWork bot ${bot.display_name} 绑定到 Agent。
+              {`将 Octo bot ${bot.display_name} 绑定到 Agent。
 默认绑定到当前 Session 的 Agent，agent 标识通过 /status 查看。
 如果用户指定了其他 Agent，使用用户指定的标识替换。
 
-npx -y openclaw-channel-dmwork bind --bot-token ${tokenMasked ? '<在上方复制 Token>' : (bot.token || '<token>')} --api-url ${getApiUrl()} --account-id ${bot.id} --agent <agent标识>`}
+npx -y @aspect/octo-channel bind --bot-token ${tokenMasked ? '<在上方复制 Token>' : (bot.token || '<token>')} --api-url ${getApiUrl()} --account-id ${bot.id} --agent <agent标识>`}
             </div>
             <Space style={{ marginTop: 12 }}>
               <Button
                 size="small"
                 icon={<CopyOutlined />}
                 onClick={() => {
-                  const cmd = `将 DMWork bot ${bot.display_name} 绑定到 Agent。\n默认绑定到当前 Session 的 Agent，agent 标识通过 /status 查看。\n如果用户指定了其他 Agent，使用用户指定的标识替换。\n\nnpx -y openclaw-channel-dmwork bind --bot-token ${bot.token || '<token>'} --api-url ${getApiUrl()} --account-id ${bot.id} --agent <agent标识>`
+                  const cmd = `将 Octo bot ${bot.display_name} 绑定到 Agent。\n默认绑定到当前 Session 的 Agent，agent 标识通过 /status 查看。\n如果用户指定了其他 Agent，使用用户指定的标识替换。\n\nnpx -y @aspect/octo-channel bind --bot-token ${bot.token || '<token>'} --api-url ${getApiUrl()} --account-id ${bot.id} --agent <agent标识>`
                   copyToClipboard(cmd).then(() => message.success('连接指南已复制')).catch(() => message.error('复制失败'))
                 }}
                 disabled={tokenMasked}
@@ -267,7 +270,7 @@ npx -y openclaw-channel-dmwork bind --bot-token ${tokenMasked ? '<在上方复�
               </Button>
             </Space>
             <Typography.Paragraph type="secondary" style={{ marginTop: 8, fontSize: 12 }}>
-              💡 如需绑定到其他 Agent，修改 --agent 参数即可。断开连接请在 BotFather 中发送 /disconnect。
+              💡 如需绑定到其他 Agent，修改 --agent 参数即可。断开连接请在 Bot 管理页面操作。
             </Typography.Paragraph>
           </div>
         </>

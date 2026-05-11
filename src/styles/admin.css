@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Copyright 2026 Octo Contributors */
+
 /* Admin shell scoped styles — scheme A: restrained, high-contrast, with dark mode.
    Every rule is scoped under .admin-shell so /changelog is untouched.
    The theme switch is driven by <html data-theme="dark|light"> (see useTheme). */

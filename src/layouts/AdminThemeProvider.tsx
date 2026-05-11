@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Octo Contributors
+
 import { ConfigProvider, theme as antdTheme } from 'antd'
 import type { ReactNode } from 'react'
 import { useTheme } from '../hooks/useTheme'

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Octo Contributors
+
 import { useState } from 'react'
 import { CaretRightOutlined } from '@ant-design/icons'
 import { colors, radius, font, space } from '../../styles/tokens'

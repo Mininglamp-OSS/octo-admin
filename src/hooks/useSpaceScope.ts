@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Octo Contributors
+
 import { useMemo } from 'react'
 import { useAuthStore } from '../store/auth'
 import * as manager from '../api/space'

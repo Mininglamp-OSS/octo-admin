@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Octo Contributors
+
 import { useOutletContext, useParams } from 'react-router-dom'
 import { useSpaceScope } from '../../hooks/useSpaceScope'
 import type { SpaceUserDetail } from '../../api/space-user'

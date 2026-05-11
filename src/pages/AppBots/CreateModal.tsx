@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Octo Contributors
+
 import { useState } from 'react'
 import { Modal, Form, Input, Typography, message } from 'antd'
 import { CopyOutlined } from '@ant-design/icons'

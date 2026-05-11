@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Octo Contributors
+
 import { useEffect, useState, useMemo } from 'react'
 import { Tabs, Spin, Empty, Tag, ConfigProvider, theme as antdTheme } from 'antd'
 import {

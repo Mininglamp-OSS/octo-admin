@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Octo Contributors
+
 import { Select, Tag } from 'antd'
 import { useAuthStore } from '../../store/auth'
 import { useNavigate } from 'react-router-dom'

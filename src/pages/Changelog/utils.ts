@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Octo Contributors
+
 export type ChangeCategory = 'security' | 'removed' | 'fixed' | 'added' | 'changed' | 'other'
 
 export interface ChangeItem {

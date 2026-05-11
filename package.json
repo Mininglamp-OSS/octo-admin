@@ -1,8 +1,12 @@
 {
-  "name": "dmwork-admin",
+  "name": "octo-admin",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/octo-temp/octo-admin.git"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Octo Contributors
+
 import { useEffect, useState, useCallback } from 'react'
 
 export type Theme = 'light' | 'dark' | 'auto'

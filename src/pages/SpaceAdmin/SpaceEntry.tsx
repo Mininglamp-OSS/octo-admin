@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Octo Contributors
+
 import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Spin, Result, Button } from 'antd'

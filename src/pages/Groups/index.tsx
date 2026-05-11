@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Octo Contributors
+
 import { useEffect, useMemo, useState } from 'react'
 import { Table, Input, Button, Select, Tooltip, Typography, message, Modal, Form } from 'antd'
 import { SearchOutlined, ReloadOutlined } from '@ant-design/icons'
