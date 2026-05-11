@@ -5,7 +5,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/octo-temp/octo-admin.git"
+    "url": "https://github.com/Mininglamp-OSS/octo-admin.git"
   },
   "scripts": {
     "dev": "vite",

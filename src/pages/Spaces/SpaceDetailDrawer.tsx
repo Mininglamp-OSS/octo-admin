@@ -1,5 +1,5 @@
+// Copyright 2026 MININGLAMP Technology and the OCTO contributors
 // SPDX-License-Identifier: Apache-2.0
-// Copyright 2026 Octo Contributors
 
 import { useEffect, useState } from 'react'
 import { Drawer, Descriptions, Tabs, Skeleton, message } from 'antd'
