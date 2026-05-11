@@ -1,53 +1,19 @@
-# imocto-admin
+# octo-admin
 
-基于 React + Vite + TypeScript + Ant Design 构建的 imocto 后台管理系统。
-
-## 技术栈
-
-- React 18
-- Vite 6
-- TypeScript 5
-- Ant Design 5
-- React Router 6
-- Zustand(状态管理)
-- Axios(HTTP 客户端)
-
-## 开发
-
-```bash
-# 安装依赖
-npm install
-
-# 启动开发服务器
-npm run dev
-
-# 类型检查 + 生产构建
-npm run build
-
-# 本地预览构建产物
-npm run preview
-```
-
-## 环境变量
-
-- `.env.development` — 开发环境
-- `.env.production` — 生产环境
-- `.env.local` — 本地覆盖(不入库)
-
-## 部署
-
-项目提供 `Dockerfile` 与 `nginx.conf.template`,可直接构建镜像部署。
-
-```bash
-docker build -t imocto-admin .
-```
-
-## 目录结构
-
-```
-src/
-├── pages/        页面组件
-├── store/        Zustand 状态
-├── styles/       全局样式与设计 token
-└── ...
-```
+> ⚠️ **Minimal skeleton overlay — YUJ-430.**
+>
+> This overlay directory was created as part of the 2-day OSS-cutover sprint
+> (OCTO-MIG-4, issue YUJ-430) so that the `octo-admin` config could participate
+> in the 9-repo `octo-temp` dry-run / staging push.
+>
+> Before the final `Mininglamp-OSS` push (MIG-5), this overlay MUST be
+> expanded to include at minimum:
+>
+> - `LICENSE` (Apache-2.0, matching the other OCTO repos)
+> - `NOTICE`
+> - `CODE_OF_CONDUCT.md` (+ `.zh.md`)
+> - `CONTRIBUTING.md` (+ `.zh.md`)
+> - `SECURITY.md` (+ `.zh.md`)
+> - A real `README.md` / `README.zh.md` (this file is a placeholder)
+>
+> See `overlay/octo-lib/` for the canonical file set.
