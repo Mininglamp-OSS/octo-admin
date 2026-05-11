@@ -254,14 +254,14 @@ export default function DetailDrawer({ botId, spaceId, open, onClose }: Props) {
 默认绑定到当前 Session 的 Agent，agent 标识通过 /status 查看。
 如果用户指定了其他 Agent，使用用户指定的标识替换。
 
-npx -y @aspect/octo-channel bind --bot-token ${tokenMasked ? '<在上方复制 Token>' : (bot.token || '<token>')} --api-url ${getApiUrl()} --account-id ${bot.id} --agent <agent标识>`}
+npx -y openclaw-channel-dmwork bind --bot-token ${tokenMasked ? '<在上方复制 Token>' : (bot.token || '<token>')} --api-url ${getApiUrl()} --account-id ${bot.id} --agent <agent标识>`}
             </div>
             <Space style={{ marginTop: 12 }}>
               <Button
                 size="small"
                 icon={<CopyOutlined />}
                 onClick={() => {
-                  const cmd = `将 Octo bot ${bot.display_name} 绑定到 Agent。\n默认绑定到当前 Session 的 Agent，agent 标识通过 /status 查看。\n如果用户指定了其他 Agent，使用用户指定的标识替换。\n\nnpx -y @aspect/octo-channel bind --bot-token ${bot.token || '<token>'} --api-url ${getApiUrl()} --account-id ${bot.id} --agent <agent标识>`
+                  const cmd = `将 Octo bot ${bot.display_name} 绑定到 Agent。\n默认绑定到当前 Session 的 Agent，agent 标识通过 /status 查看。\n如果用户指定了其他 Agent，使用用户指定的标识替换。\n\nnpx -y openclaw-channel-dmwork bind --bot-token ${bot.token || '<token>'} --api-url ${getApiUrl()} --account-id ${bot.id} --agent <agent标识>`
                   copyToClipboard(cmd).then(() => message.success('连接指南已复制')).catch(() => message.error('复制失败'))
                 }}
                 disabled={tokenMasked}
