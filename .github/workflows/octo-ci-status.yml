@@ -13,7 +13,6 @@ jobs:
       repo_name: ${{ github.event.workflow_run.repository.name }}
       workflow_name: ${{ github.event.workflow_run.name }}
       conclusion: ${{ github.event.workflow_run.conclusion }}
-      run_id: ${{ github.event.workflow_run.id }}
       run_url: ${{ github.event.workflow_run.html_url }}
       project_group_id: "a48e308c2ead4d9dbcdc30fff0f01eaf"
     secrets:
