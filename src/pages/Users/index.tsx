@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Table, Input, Button, Select, message, Modal, Tooltip, Typography } from 'antd'
-import { SearchOutlined, ReloadOutlined, RobotOutlined } from '@ant-design/icons'
+import { SearchOutlined, ReloadOutlined, RobotOutlined, SettingOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import api from '../../api'
 
@@ -15,8 +15,13 @@ interface User {
   status: number
   online: number
   is_destroy: number
+  is_bot?: number
+  is_system?: number
   register_time: string
 }
+
+type TypeFilter = 'all' | 'human' | 'bot' | 'system'
+type StatusFilter = 'all' | 'online' | 'offline' | 'banned' | 'destroyed'
 
 export default function Users() {
   const [loading, setLoading] = useState(false)
@@ -25,17 +30,31 @@ export default function Users() {
   const [page, setPage] = useState(1)
   const [keyword, setKeyword] = useState('')
   const [pageSize, setPageSize] = useState(20)
-  const [typeFilter, setTypeFilter] = useState<'all' | 'human' | 'bot'>('all')
-  const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline' | 'banned' | 'destroyed'>('all')
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
 
-  const fetchData = async () => {
+  const fetchData = async (
+    nextPage = page,
+    nextPageSize = pageSize,
+    nextType = typeFilter,
+    kw = keyword,
+  ) => {
     setLoading(true)
     try {
       const params = new URLSearchParams({
-        page_index: page.toString(),
-        page_size: pageSize.toString(),
+        page_index: nextPage.toString(),
+        page_size: nextPageSize.toString(),
       })
-      if (keyword) params.append('keyword', keyword)
+      if (kw) params.append('keyword', kw)
+      // 类型筛选全部下推到后端，分页基于过滤后结果
+      if (nextType === 'human') {
+        params.append('exclude_bot', '1')
+        params.append('exclude_system', '1')
+      } else if (nextType === 'bot') {
+        params.append('is_bot', '1')
+      } else if (nextType === 'system') {
+        params.append('is_system', '1')
+      }
       const res = await api.get(`/v1/manager/user/list?${params}`)
       setData(res.data.list || [])
       setTotal(res.data.count || 0)
@@ -47,24 +66,32 @@ export default function Users() {
   }
 
   useEffect(() => {
-    fetchData()
-  }, [page, pageSize])
+    fetchData(page, pageSize, typeFilter, keyword)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pageSize, typeFilter])
 
+  // 类型筛选已下推到后端；状态筛选仍是当前页客户端过滤（后端尚未支持）
   const filteredData = useMemo(() => {
     return data.filter((u) => {
-      if (typeFilter === 'bot' && !u.uid?.endsWith('_bot')) return false
-      if (typeFilter === 'human' && u.uid?.endsWith('_bot')) return false
       if (statusFilter === 'destroyed' && u.is_destroy !== 1) return false
       if (statusFilter === 'banned' && u.status !== 0) return false
       if (statusFilter === 'online' && !(u.online === 1 && u.status === 1 && u.is_destroy !== 1)) return false
       if (statusFilter === 'offline' && !(u.online !== 1 && u.status === 1 && u.is_destroy !== 1)) return false
       return true
     })
-  }, [data, typeFilter, statusFilter])
+  }, [data, statusFilter])
 
   const handleSearch = () => {
-    setPage(1)
-    fetchData()
+    if (page !== 1) {
+      setPage(1)
+    } else {
+      fetchData(1, pageSize, typeFilter, keyword)
+    }
+  }
+
+  const handleTypeFilterChange = (v: TypeFilter) => {
+    setTypeFilter(v)
+    if (page !== 1) setPage(1)
   }
 
   const handleBan = async (uid: string, status: number) => {
@@ -73,12 +100,10 @@ export default function Users() {
       onOk: async () => {
         await api.put(`/v1/manager/user/liftban/${uid}/${status}`)
         message.success(status === 0 ? '已封禁' : '已解封')
-        fetchData()
+        fetchData(page, pageSize, typeFilter, keyword)
       },
     })
   }
-
-  const isBot = (uid: string) => uid?.endsWith('_bot')
 
   const columns: ColumnsType<User> = [
     {
@@ -89,11 +114,15 @@ export default function Users() {
       render: (name, record) => (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <span className="cell-primary">{name}</span>
-          {isBot(record.uid) && typeFilter !== 'bot' && (
+          {record.is_system === 1 ? (
+            <span className="ai-tag" aria-label="系统账号">
+              <SettingOutlined /> 系统
+            </span>
+          ) : record.is_bot === 1 ? (
             <span className="ai-tag" aria-label="Bot 账号">
               <RobotOutlined /> BOT
             </span>
-          )}
+          ) : null}
         </span>
       ),
     },
@@ -183,12 +212,13 @@ export default function Users() {
         />
         <Select
           value={typeFilter}
-          onChange={setTypeFilter}
-          style={{ width: 120 }}
+          onChange={handleTypeFilterChange}
+          style={{ width: 130 }}
           options={[
             { value: 'all', label: '全部类型' },
             { value: 'human', label: '真实用户' },
             { value: 'bot', label: 'Bot 账号' },
+            { value: 'system', label: '系统账号' },
           ]}
         />
         <Select
@@ -206,7 +236,7 @@ export default function Users() {
         <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
           搜索
         </Button>
-        <Button icon={<ReloadOutlined />} onClick={fetchData}>
+        <Button icon={<ReloadOutlined />} onClick={() => fetchData()}>
           刷新
         </Button>
       </div>

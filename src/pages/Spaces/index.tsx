@@ -86,14 +86,19 @@ export default function Spaces() {
     const seq = ++userSearchSeq.current
     setUserSearching(true)
     try {
-      const params = new URLSearchParams({ page_index: '1', page_size: '20' })
+      const params = new URLSearchParams({
+        page_index: '1',
+        page_size: '20',
+        exclude_bot: '1',
+        exclude_system: '1',
+      })
       if (kw) params.append('keyword', kw)
       const res = await api.get<{ list: UserOptionRaw[] }>(
         `/v1/manager/user/list?${params}`,
       )
       if (seq === userSearchSeq.current) {
         const list = (res.data.list || []).filter(
-          (u) => u.status === 1 && u.is_destroy !== 1 && !u.uid?.endsWith('_bot'),
+          (u) => u.status === 1 && u.is_destroy !== 1,
         )
         setUserOptions(list)
       }
