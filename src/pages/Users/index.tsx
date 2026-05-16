@@ -51,9 +51,9 @@ export default function Users() {
         params.append('exclude_bot', '1')
         params.append('exclude_system', '1')
       } else if (nextType === 'bot') {
-        params.append('is_bot', '1')
+        params.append('bot_only', '1')
       } else if (nextType === 'system') {
-        params.append('is_system', '1')
+        params.append('system_only', '1')
       }
       const res = await api.get(`/v1/manager/user/list?${params}`)
       setData(res.data.list || [])
