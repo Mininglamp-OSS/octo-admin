@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Table, Input, Button, Select, message, Modal, Tooltip, Typography } from 'antd'
 import { SearchOutlined, ReloadOutlined, RobotOutlined, SettingOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
@@ -32,6 +32,8 @@ export default function Users() {
   const [pageSize, setPageSize] = useState(20)
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  // 序号守卫：快速切换筛选/分页时，仅采用最近一次请求的响应，避免错序覆盖
+  const fetchSeq = useRef(0)
 
   const fetchData = async (
     nextPage = page,
@@ -39,6 +41,7 @@ export default function Users() {
     nextType = typeFilter,
     kw = keyword,
   ) => {
+    const seq = ++fetchSeq.current
     setLoading(true)
     try {
       const params = new URLSearchParams({
@@ -56,12 +59,17 @@ export default function Users() {
         params.append('system_only', '1')
       }
       const res = await api.get(`/v1/manager/user/list?${params}`)
+      if (seq !== fetchSeq.current) return
       setData(res.data.list || [])
       setTotal(res.data.count || 0)
     } catch (error) {
-      message.error((error as Error).message)
+      if (seq === fetchSeq.current) {
+        message.error((error as Error).message)
+      }
     } finally {
-      setLoading(false)
+      if (seq === fetchSeq.current) {
+        setLoading(false)
+      }
     }
   }
 
