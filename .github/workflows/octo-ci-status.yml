@@ -6,8 +6,7 @@ on:
     types: [completed]
     branches: [main]
 
-permissions:
-  actions: read
+permissions: {}
 
 jobs:
   notify:
