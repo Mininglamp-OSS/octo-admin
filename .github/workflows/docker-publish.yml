@@ -114,6 +114,22 @@ jobs:
             exit 1
           fi
 
+          # Reject tag refs for workflow_dispatch. metadata-action's
+          # type=semver patterns fire on refs/tags/v* even on dispatch
+          # events, so dispatching from a tag ref would simultaneously
+          # emit the auto-managed semver aliases (:MAJOR / :MAJOR.MINOR /
+          # :latest, from the tag's version) AND the raw input tag,
+          # silently overwriting an existing release. The GitHub web UI
+          # only offers branch refs in the "Run workflow" dropdown, but
+          # the REST/GraphQL API accepts any ref — close that gap here.
+          case "$REF" in
+            refs/heads/*) ;;
+            *)
+              echo "::error::workflow_dispatch must be triggered from a branch ref (got '$REF'). Publishing from a tag ref would double-emit auto-managed release aliases. Use 'git push origin v<X.Y.Z>' for tag releases."
+              exit 1
+              ;;
+          esac
+
           # Restrict manual publishes from non-default branches to the
           # 'test-' namespace so feature-branch experimentation cannot land
           # in the official release tag space. Read the default branch from
