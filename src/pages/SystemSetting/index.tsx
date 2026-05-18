@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  Alert,
   Button,
   Card,
   Col,
@@ -10,6 +11,7 @@ import {
   Select,
   Space,
   Tag,
+  Tooltip,
   message,
 } from 'antd'
 import {
@@ -180,6 +182,7 @@ export default function SystemSetting() {
   const [settings, setSettings] = useState<SystemSettingItem[]>([])
   const [hasStoredPassword, setHasStoredPassword] = useState(false)
   const [hasEffectivePassword, setHasEffectivePassword] = useState(false)
+  const [dirty, setDirty] = useState(false)
 
   const settingDescriptions = useMemo(() => {
     const map = new Map<string, string>()
@@ -218,6 +221,7 @@ export default function SystemSetting() {
         support_email_smtp: getValue(items, 'support', 'email_smtp'),
         support_email_pwd: '',
       })
+      setDirty(false)
     } catch (error) {
       message.error('获取系统配置失败: ' + (error as Error).message)
     } finally {
@@ -268,15 +272,26 @@ export default function SystemSetting() {
           刷新
         </Button>
         <div className="toolbar-spacer" />
-        <Button icon={<SendOutlined />} onClick={() => setTestModalOpen(true)}>
-          测试邮件
-        </Button>
+        <Tooltip title={dirty ? '请先保存配置后再发送测试邮件' : ''}>
+          <Button
+            icon={<SendOutlined />}
+            onClick={() => setTestModalOpen(true)}
+            disabled={dirty}
+          >
+            测试邮件
+          </Button>
+        </Tooltip>
         <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={saving}>
           保存配置
         </Button>
       </div>
 
-      <Form form={form} layout="vertical" initialValues={initialValues}>
+      <Form
+        form={form}
+        layout="vertical"
+        initialValues={initialValues}
+        onValuesChange={() => setDirty(true)}
+      >
         <Row gutter={[16, 16]}>
           <Col xs={24} lg={12}>
             <Card title="注册配置" loading={loading} extra={<UserAddOutlined style={{ color: 'var(--a-text-tertiary)' }} />}>
@@ -359,11 +374,20 @@ export default function SystemSetting() {
         title="发送测试邮件"
         open={testModalOpen}
         onOk={handleTestEmail}
-        onCancel={() => setTestModalOpen(false)}
+        onCancel={() => {
+          setTestModalOpen(false)
+          testForm.resetFields()
+        }}
         okText="发送"
         cancelText="取消"
         confirmLoading={testing}
       >
+        <Alert
+          type="info"
+          showIcon
+          message="测试邮件将使用当前已保存的配置发送。如刚刚修改了配置，请先点击「保存配置」。"
+          style={{ marginBottom: 16 }}
+        />
         <Form form={testForm} layout="vertical">
           <Form.Item
             name="to"
