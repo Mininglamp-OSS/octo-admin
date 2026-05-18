@@ -16,6 +16,7 @@ import {
   MoonOutlined,
   DesktopOutlined,
   RobotOutlined,
+  SettingOutlined,
 } from '@ant-design/icons'
 import { useAuthStore } from '../store/auth'
 import { useFeatureStore } from '../store/feature'
@@ -40,6 +41,7 @@ const appBotMenuItem: MenuItem = {
 }
 
 const tailMenuItems: MenuItem[] = [
+  { key: '/system-setting', icon: <SettingOutlined />, label: '系统配置' },
   { key: '/backup', icon: <CloudUploadOutlined />, label: '备份管理' },
   { key: '/download', icon: <DownloadOutlined />, label: '下载配置' },
 ]

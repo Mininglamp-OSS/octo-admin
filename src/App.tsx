@@ -10,6 +10,7 @@ import Groups from './pages/Groups'
 import Spaces from './pages/Spaces'
 import Backup from './pages/Backup'
 import Download from './pages/Download'
+import SystemSetting from './pages/SystemSetting'
 import Changelog from './pages/Changelog'
 import AppBots from './pages/AppBots'
 import SpaceEntry from './pages/SpaceAdmin/SpaceEntry'
@@ -111,6 +112,7 @@ function AdminRoutes() {
         <Route path="users" element={<Users />} />
         <Route path="groups" element={<Groups />} />
         <Route path="spaces" element={<Spaces />} />
+        <Route path="system-setting" element={<SystemSetting />} />
         <Route path="backup" element={<Backup />} />
         <Route path="download" element={<Download />} />
         <Route
