@@ -250,7 +250,13 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
+            # `:MAJOR` alias is intentionally suppressed for v0.* releases.
+            # SemVer §4 explicitly permits breaking changes between any two
+            # 0.y.z versions, so a `:0` alias would falsely imply a stable
+            # major-0 stream. Once the project hits v1.0.0 the alias fires
+            # automatically (`:1`, `:2`, ...) with the usual major-stream
+            # backwards-compat contract.
+            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref, 'refs/tags/v0.') }}
             type=raw,value=${{ github.event.inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
 
       - name: Create manifest list and push
