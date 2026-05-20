@@ -13,6 +13,7 @@ import {
   type AppBot,
   type AppBotStatus,
 } from '../../api/app-bot'
+import { buildConnectGuide } from './connectGuide'
 
 interface Props {
   botId: string | null
@@ -51,12 +52,6 @@ async function copyToClipboard(text: string): Promise<void> {
   document.body.removeChild(textarea)
 }
 
-/** Get API server URL for bot connect guide */
-function getApiUrl(): string {
-  // Prefer explicit env var; fallback to current origin (admin is co-located with IM server)
-  return import.meta.env.VITE_BOT_API_URL || window.location.origin
-}
-
 const TOKEN_AUTO_HIDE_MS = 30_000
 
 export default function DetailDrawer({ botId, spaceId, open, onClose, onAvatarUploaded }: Props) {
@@ -65,6 +60,7 @@ export default function DetailDrawer({ botId, spaceId, open, onClose, onAvatarUp
   const [tokenVisible, setTokenVisible] = useState(false)
   const [revealing, setRevealing] = useState(false)
   const [rotating, setRotating] = useState(false)
+  const [copyingGuide, setCopyingGuide] = useState(false)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [avatarVersion, setAvatarVersion] = useState(Date.now)
   const autoHideRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -109,15 +105,20 @@ export default function DetailDrawer({ botId, spaceId, open, onClose, onAvatarUp
     }
   }, [tokenVisible])
 
+  const revealToken = async (): Promise<string | null> => {
+    if (!botId) return null
+    const resp = spaceId
+      ? await revealSpaceAppBotToken(spaceId, botId)
+      : await revealAppBotToken(botId)
+    setBot((prev) => (prev ? { ...prev, token: resp.token } : prev))
+    setTokenVisible(true)
+    return resp.token
+  }
+
   const handleRevealToken = async () => {
-    if (!botId) return
     setRevealing(true)
     try {
-      const resp = spaceId
-        ? await revealSpaceAppBotToken(spaceId, botId)
-        : await revealAppBotToken(botId)
-      setBot((prev) => (prev ? { ...prev, token: resp.token } : prev))
-      setTokenVisible(true)
+      await revealToken()
     } catch (err) {
       if (err instanceof Error) message.error(err.message)
     } finally {
@@ -152,7 +153,36 @@ export default function DetailDrawer({ botId, spaceId, open, onClose, onAvatarUp
     }
   }
 
+  const handleCopyGuide = async () => {
+    if (!bot) return
+    setCopyingGuide(true)
+    try {
+      const token = tokenMasked ? await revealToken() : bot.token
+      if (!token) return
+      await copyToClipboard(
+        buildConnectGuide({
+          displayName: bot.display_name,
+          botId: bot.id,
+          token,
+        }),
+      )
+      message.success('连接指南已复制')
+    } catch (err) {
+      if (err instanceof Error) message.error(err.message)
+      else message.error('复制失败')
+    } finally {
+      setCopyingGuide(false)
+    }
+  }
+
   const status = bot ? STATUS_MAP[bot.status] : null
+  const connectGuide = bot
+    ? buildConnectGuide({
+      displayName: bot.display_name,
+      botId: bot.id,
+      token: tokenMasked ? '<在上方复制 Token>' : (bot.token || '<token>'),
+    })
+    : ''
 
   return (
     <Drawer
@@ -307,27 +337,20 @@ export default function DetailDrawer({ botId, spaceId, open, onClose, onAvatarUp
                 whiteSpace: 'pre-wrap',
               }}
             >
-              {`将 Octo bot ${bot.display_name} 绑定到 Agent。
-默认绑定到当前 Session 的 Agent，agent 标识通过 /status 查看。
-如果用户指定了其他 Agent，使用用户指定的标识替换。
-
-npx -y openclaw-channel-dmwork bind --bot-token ${tokenMasked ? '<在上方复制 Token>' : (bot.token || '<token>')} --api-url ${getApiUrl()} --account-id ${bot.id} --agent <agent标识>`}
+              {connectGuide}
             </div>
             <Space style={{ marginTop: 12 }}>
               <Button
                 size="small"
                 icon={<CopyOutlined />}
-                onClick={() => {
-                  const cmd = `将 Octo bot ${bot.display_name} 绑定到 Agent。\n默认绑定到当前 Session 的 Agent，agent 标识通过 /status 查看。\n如果用户指定了其他 Agent，使用用户指定的标识替换。\n\nnpx -y openclaw-channel-dmwork bind --bot-token ${bot.token || '<token>'} --api-url ${getApiUrl()} --account-id ${bot.id} --agent <agent标识>`
-                  copyToClipboard(cmd).then(() => message.success('连接指南已复制')).catch(() => message.error('复制失败'))
-                }}
-                disabled={tokenMasked}
+                loading={copyingGuide}
+                onClick={handleCopyGuide}
               >
                 复制指南
               </Button>
             </Space>
             <Typography.Paragraph type="secondary" style={{ marginTop: 8, fontSize: 12 }}>
-              💡 如需绑定到其他 Agent，修改 --agent 参数即可。断开连接请在 BotFather 中发送 /disconnect。
+              如需绑定到其他 Agent，修改 --agent 参数即可。断开连接请在 BotFather 中发送 /disconnect。
             </Typography.Paragraph>
           </div>
         </>
