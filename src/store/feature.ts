@@ -6,8 +6,8 @@ import api, { ApiError } from '../api'
 // 成功 / 404（路由未注册）→ 缓存 10 分钟。
 // 5xx / 网络错误（瞬态）→ 仅缓存 30 秒，避免一次启动 race 把菜单卡死 10 分钟，
 // 同时防止持续故障时每次组件 mount 都打请求。
-const APP_BOTS_TTL_MS = 10 * 60 * 1000
-const APP_BOTS_TRANSIENT_TTL_MS = 30 * 1000
+export const APP_BOTS_TTL_MS = 10 * 60 * 1000
+export const APP_BOTS_TRANSIENT_TTL_MS = 30 * 1000
 
 interface FeatureState {
   appBotsAvailable: boolean | null
@@ -41,6 +41,9 @@ export const useFeatureStore = create<FeatureState>()(
           })
         } catch (e) {
           // 401 已被 axios 拦截器处理为登出，此处不到达。
+          // 仅 404 视为稳定信号（路由未注册），10 分钟内不再探测；
+          // 其它一切——5xx、网络错误、超时、以及任何非 404 状态码——
+          // 都按瞬态处理，30 秒后允许重试。本端点目前不会返回其它 4xx。
           const status = e instanceof ApiError ? e.status : undefined
           const transient = status !== 404
           set({

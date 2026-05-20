@@ -9,12 +9,9 @@ vi.mock('../api', async () => {
 })
 
 import api, { ApiError } from '../api'
-import { useFeatureStore } from './feature'
+import { APP_BOTS_TRANSIENT_TTL_MS, APP_BOTS_TTL_MS, useFeatureStore } from './feature'
 
 const apiGet = api.get as unknown as ReturnType<typeof vi.fn>
-
-const APP_BOTS_TTL_MS = 10 * 60 * 1000
-const APP_BOTS_TRANSIENT_TTL_MS = 30 * 1000
 
 beforeEach(() => {
   localStorage.clear()
