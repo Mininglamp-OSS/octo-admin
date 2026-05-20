@@ -1,6 +1,15 @@
 import axios, { AxiosError } from 'axios'
 import { useAuthStore } from '../store/auth'
 
+export class ApiError extends Error {
+  status?: number
+  constructor(message: string, status?: number) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+  }
+}
+
 const API_BASE = import.meta.env.VITE_API_BASE || '/api'
 
 const api = axios.create({
@@ -24,7 +33,7 @@ api.interceptors.response.use(
       window.location.href = '/admin/login'
     }
     const message = error.response?.data?.msg || error.message
-    return Promise.reject(new Error(message))
+    return Promise.reject(new ApiError(message, error.response?.status))
   }
 )
 

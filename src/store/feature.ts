@@ -1,14 +1,18 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import api from '../api'
+import api, { ApiError } from '../api'
 
-// 应用 Bot 模块按后端能力开关；探测结果本地缓存 10 分钟，
-// 期间不再重复请求；过期或本地无记录时重新探测。
+// 应用 Bot 模块按后端能力开关。
+// 成功 / 404（路由未注册）→ 缓存 10 分钟。
+// 5xx / 网络错误（瞬态）→ 仅缓存 30 秒，避免一次启动 race 把菜单卡死 10 分钟，
+// 同时防止持续故障时每次组件 mount 都打请求。
 const APP_BOTS_TTL_MS = 10 * 60 * 1000
+const APP_BOTS_TRANSIENT_TTL_MS = 30 * 1000
 
 interface FeatureState {
   appBotsAvailable: boolean | null
   appBotsCheckedAt: number
+  appBotsCheckTtl: number
   probeAppBots: (force?: boolean) => Promise<void>
   resetFeatures: () => void
 }
@@ -22,21 +26,32 @@ export const useFeatureStore = create<FeatureState>()(
     (set, get) => ({
       appBotsAvailable: null,
       appBotsCheckedAt: 0,
+      appBotsCheckTtl: APP_BOTS_TTL_MS,
       probeAppBots: async (force = false) => {
-        const { appBotsAvailable, appBotsCheckedAt } = get()
-        if (!force && appBotsAvailable !== null && isFresh(appBotsCheckedAt, APP_BOTS_TTL_MS)) {
+        const { appBotsAvailable, appBotsCheckedAt, appBotsCheckTtl } = get()
+        if (!force && appBotsAvailable !== null && isFresh(appBotsCheckedAt, appBotsCheckTtl)) {
           return
         }
         try {
           await api.get('/v1/app_bot/available')
-          set({ appBotsAvailable: true, appBotsCheckedAt: Date.now() })
-        } catch {
-          // 404 → 路由未注册 → 隐藏；其它错误（网络/5xx）保守同样隐藏
-          // 401 已被 axios 拦截器处理为登出，此处不应到达
-          set({ appBotsAvailable: false, appBotsCheckedAt: Date.now() })
+          set({
+            appBotsAvailable: true,
+            appBotsCheckedAt: Date.now(),
+            appBotsCheckTtl: APP_BOTS_TTL_MS,
+          })
+        } catch (e) {
+          // 401 已被 axios 拦截器处理为登出，此处不到达。
+          const status = e instanceof ApiError ? e.status : undefined
+          const transient = status !== 404
+          set({
+            appBotsAvailable: false,
+            appBotsCheckedAt: Date.now(),
+            appBotsCheckTtl: transient ? APP_BOTS_TRANSIENT_TTL_MS : APP_BOTS_TTL_MS,
+          })
         }
       },
-      resetFeatures: () => set({ appBotsAvailable: null, appBotsCheckedAt: 0 }),
+      resetFeatures: () =>
+        set({ appBotsAvailable: null, appBotsCheckedAt: 0, appBotsCheckTtl: APP_BOTS_TTL_MS }),
     }),
     {
       name: 'dm-admin-features',
