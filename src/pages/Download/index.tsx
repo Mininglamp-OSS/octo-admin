@@ -39,6 +39,7 @@ type ForceFilter = 'all' | 'yes' | 'no'
 const osOptions = [
   { label: 'Android', value: 'android' },
   { label: 'iOS', value: 'ios' },
+  { label: 'Web', value: 'web' },
   { label: 'Windows', value: 'windows' },
   { label: 'macOS', value: 'macos' },
   { label: 'Linux', value: 'linux' },
@@ -55,7 +56,10 @@ interface PlatformMeta {
 function platformMeta(os: string): PlatformMeta {
   if (os === 'ios') return { label: 'iOS', icon: <AppleOutlined />, tone: 'ios' }
   if (os === 'android') return { label: 'Android', icon: <AndroidOutlined />, tone: 'android' }
-  if (WEB_PLATFORMS.has(os)) return { label: 'Web', icon: <GlobalOutlined />, tone: 'web' }
+  if (os === 'web') return { label: 'Web', icon: <GlobalOutlined />, tone: 'web' }
+  if (os === 'windows') return { label: 'Windows', icon: <GlobalOutlined />, tone: 'web' }
+  if (os === 'macos') return { label: 'macOS', icon: <GlobalOutlined />, tone: 'web' }
+  if (os === 'linux') return { label: 'Linux', icon: <GlobalOutlined />, tone: 'web' }
   if (os === 'openclaw-plugin') return { label: 'OpenClaw', icon: <ApiOutlined />, tone: 'plugin' }
   return { label: os.toUpperCase(), icon: null, tone: 'neutral' }
 }
