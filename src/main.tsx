@@ -18,7 +18,8 @@ const ANTD_LOCALES: Record<string, Locale> = {
 
 function LocalizedApp() {
   const { i18n } = useTranslation()
-  const locale = ANTD_LOCALES[i18n.language] ?? enUS
+  const lang = i18n.resolvedLanguage ?? i18n.language
+  const locale = ANTD_LOCALES[lang] ?? enUS
   return (
     <ConfigProvider locale={locale} button={{ autoInsertSpace: false }}>
       <App />

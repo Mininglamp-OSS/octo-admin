@@ -34,7 +34,12 @@ i18n
       lookupQuerystring: 'lang',
       lookupCookie: LANG_COOKIE,
       caches: ['cookie'],
-      cookieMinutes: 60 * 24 * 365,
+      cookieOptions: {
+        maxAge: 60 * 60 * 24 * 365,
+        sameSite: 'lax',
+        secure: window.location.protocol === 'https:',
+        path: '/',
+      },
     },
   })
 
