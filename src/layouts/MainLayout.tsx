@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { Layout, Menu, Avatar, Dropdown, Tooltip, Breadcrumb } from 'antd'
 import type { MenuProps } from 'antd'
+import { useTranslation } from 'react-i18next'
 import {
   UserOutlined,
   TeamOutlined,
@@ -27,35 +28,10 @@ const { Header, Sider, Content } = Layout
 
 type MenuItem = { key: string; icon: React.ReactNode; label: string }
 
-const baseMenuItems: MenuItem[] = [
-  { key: '/dashboard', icon: <DashboardOutlined />, label: '仪表盘' },
-  { key: '/users', icon: <UserOutlined />, label: '用户管理' },
-  { key: '/groups', icon: <TeamOutlined />, label: '群组管理' },
-  { key: '/spaces', icon: <AppstoreOutlined />, label: 'Space 管理' },
-]
-
-const appBotMenuItem: MenuItem = {
-  key: '/app-bots',
-  icon: <RobotOutlined />,
-  label: '应用 Bot',
-}
-
-const tailMenuItems: MenuItem[] = [
-  { key: '/system-setting', icon: <SettingOutlined />, label: '系统配置' },
-  { key: '/backup', icon: <CloudUploadOutlined />, label: '备份管理' },
-  { key: '/download', icon: <DownloadOutlined />, label: '下载配置' },
-]
-
 const themeIcon: Record<Theme, React.ReactNode> = {
   light: <SunOutlined />,
   dark: <MoonOutlined />,
   auto: <DesktopOutlined />,
-}
-
-const themeLabel: Record<Theme, string> = {
-  light: '浅色',
-  dark: '深色',
-  auto: '跟随系统',
 }
 
 const MainLayout: React.FC = () => {
@@ -66,18 +42,37 @@ const MainLayout: React.FC = () => {
   const { theme, effective, setTheme } = useTheme()
   const appBotsAvailable = useFeatureStore((s) => s.appBotsAvailable)
   const probeAppBots = useFeatureStore((s) => s.probeAppBots)
+  const { t } = useTranslation(['nav', 'layout'])
 
   useEffect(() => {
     void probeAppBots()
   }, [probeAppBots])
 
-  const menuItems = useMemo<MenuItem[]>(
-    () =>
-      appBotsAvailable === true
-        ? [...baseMenuItems, appBotMenuItem, ...tailMenuItems]
-        : [...baseMenuItems, ...tailMenuItems],
-    [appBotsAvailable],
+  const themeLabel = useMemo<Record<Theme, string>>(
+    () => ({
+      light: t('layout:theme.light'),
+      dark: t('layout:theme.dark'),
+      auto: t('layout:theme.auto'),
+    }),
+    [t],
   )
+
+  const menuItems = useMemo<MenuItem[]>(() => {
+    const base: MenuItem[] = [
+      { key: '/dashboard', icon: <DashboardOutlined />, label: t('nav:dashboard') },
+      { key: '/users', icon: <UserOutlined />, label: t('nav:users') },
+      { key: '/groups', icon: <TeamOutlined />, label: t('nav:groups') },
+      { key: '/spaces', icon: <AppstoreOutlined />, label: t('nav:spaces') },
+    ]
+    const tail: MenuItem[] = [
+      { key: '/system-setting', icon: <SettingOutlined />, label: t('nav:systemSetting') },
+      { key: '/backup', icon: <CloudUploadOutlined />, label: t('nav:backup') },
+      { key: '/download', icon: <DownloadOutlined />, label: t('nav:download') },
+    ]
+    return appBotsAvailable === true
+      ? [...base, { key: '/app-bots', icon: <RobotOutlined />, label: t('nav:appBots') }, ...tail]
+      : [...base, ...tail]
+  }, [appBotsAvailable, t])
 
   const handleMenuClick = ({ key }: { key: string }) => {
     navigate(key)
@@ -177,7 +172,7 @@ const MainLayout: React.FC = () => {
                     }}
                     href="/dashboard"
                   >
-                    管理后台
+                    {t('layout:breadcrumb.admin')}
                   </a>
                 ),
               },
@@ -191,8 +186,8 @@ const MainLayout: React.FC = () => {
               trigger={['click']}
               placement="bottomRight"
             >
-              <Tooltip title={`主题:${themeLabel[theme]}`}>
-                <button className="admin-header-action" aria-label="主题">
+              <Tooltip title={t('layout:theme.tooltip', { name: themeLabel[theme] })}>
+                <button className="admin-header-action" aria-label={t('layout:theme.label')}>
                   <span style={{ fontSize: 18 }}>{themeIcon[theme]}</span>
                 </button>
               </Tooltip>
@@ -206,13 +201,13 @@ const MainLayout: React.FC = () => {
                 margin: '0 6px',
               }}
             />
-            <Tooltip title="通知">
-              <button className="admin-header-action" aria-label="通知">
+            <Tooltip title={t('layout:header.notifications')}>
+              <button className="admin-header-action" aria-label={t('layout:header.notifications')}>
                 <BellOutlined style={{ fontSize: 18 }} />
               </button>
             </Tooltip>
-            <Tooltip title="帮助">
-              <button className="admin-header-action" aria-label="帮助">
+            <Tooltip title={t('layout:header.help')}>
+              <button className="admin-header-action" aria-label={t('layout:header.help')}>
                 <QuestionCircleOutlined style={{ fontSize: 18 }} />
               </button>
             </Tooltip>
@@ -222,7 +217,7 @@ const MainLayout: React.FC = () => {
                   {
                     key: 'logout',
                     icon: <LogoutOutlined />,
-                    label: '退出登录',
+                    label: t('layout:header.logout'),
                     onClick: handleLogout,
                   },
                 ],

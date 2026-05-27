@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Form, Input, Button, Card, message } from 'antd'
 import { UserOutlined, LockOutlined } from '@ant-design/icons'
+import { useTranslation } from 'react-i18next'
 import { login } from '../../api/auth'
 import { useAuthStore } from '../../store/auth'
 
@@ -14,16 +15,17 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
   const authLogin = useAuthStore((state) => state.loginSuper)
+  const { t } = useTranslation('login')
 
   const onFinish = async (values: LoginForm) => {
     setLoading(true)
     try {
       const data = await login(values)
       authLogin(data.token, data.name, data.role)
-      message.success('登录成功')
+      message.success(t('success'))
       navigate('/dashboard')
     } catch (error) {
-      message.error((error as Error).message || '登录失败')
+      message.error((error as Error).message || t('failure'))
     } finally {
       setLoading(false)
     }
@@ -62,24 +64,24 @@ export default function Login() {
             O
           </div>
           <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4, color: 'var(--a-text-primary)', letterSpacing: '-0.01em' }}>Octo</h1>
-          <p style={{ color: 'var(--a-text-tertiary)', fontSize: 13 }}>管理后台</p>
+          <p style={{ color: 'var(--a-text-tertiary)', fontSize: 13 }}>{t('subtitle')}</p>
         </div>
         <Form onFinish={onFinish} size="large">
           <Form.Item
             name="username"
-            rules={[{ required: true, message: '请输入用户名' }]}
+            rules={[{ required: true, message: t('username.required') }]}
           >
-            <Input prefix={<UserOutlined />} placeholder="用户名" />
+            <Input prefix={<UserOutlined />} placeholder={t('username.placeholder')} />
           </Form.Item>
           <Form.Item
             name="password"
-            rules={[{ required: true, message: '请输入密码' }]}
+            rules={[{ required: true, message: t('password.required') }]}
           >
-            <Input.Password prefix={<LockOutlined />} placeholder="密码" />
+            <Input.Password prefix={<LockOutlined />} placeholder={t('password.placeholder')} />
           </Form.Item>
           <Form.Item style={{ marginBottom: 0 }}>
             <Button type="primary" htmlType="submit" loading={loading} block>
-              登录
+              {t('submit')}
             </Button>
           </Form.Item>
         </Form>
@@ -97,11 +99,11 @@ export default function Login() {
           }}
         >
           <a href="mailto:admin@octo.cc" style={{ color: 'var(--a-text-secondary)' }}>
-            忘记密码?
+            {t('forgotPassword')}
           </a>
           <span style={{ color: 'var(--a-text-quaternary)' }}>·</span>
           <a href="mailto:admin@octo.cc" style={{ color: 'var(--a-text-secondary)' }}>
-            联系管理员
+            {t('contactAdmin')}
           </a>
         </div>
       </Card>
@@ -113,7 +115,7 @@ export default function Login() {
           textAlign: 'center',
         }}
       >
-        © {new Date().getFullYear()} Octo · 管理后台
+        {t('footer', { year: new Date().getFullYear() })}
       </p>
     </div>
   )

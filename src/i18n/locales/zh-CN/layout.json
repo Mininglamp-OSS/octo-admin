@@ -1,0 +1,11 @@
+{
+  "breadcrumb.admin": "管理后台",
+  "header.notifications": "通知",
+  "header.help": "帮助",
+  "header.logout": "退出登录",
+  "theme.label": "主题",
+  "theme.tooltip": "主题：{{name}}",
+  "theme.light": "浅色",
+  "theme.dark": "深色",
+  "theme.auto": "跟随系统"
+}

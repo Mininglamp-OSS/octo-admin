@@ -1,0 +1,10 @@
+{
+  "app": {
+    "name": "OCTO Admin"
+  },
+  "language": {
+    "label": "Language",
+    "en-US": "English",
+    "zh-CN": "简体中文"
+  }
+}

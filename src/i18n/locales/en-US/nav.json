@@ -1,0 +1,10 @@
+{
+  "dashboard": "Dashboard",
+  "users": "Users",
+  "groups": "Groups",
+  "spaces": "Spaces",
+  "appBots": "App Bots",
+  "systemSetting": "System Settings",
+  "backup": "Backups",
+  "download": "Downloads"
+}

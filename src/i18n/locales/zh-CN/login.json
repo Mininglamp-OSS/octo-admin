@@ -1,0 +1,13 @@
+{
+  "subtitle": "管理后台",
+  "username.placeholder": "用户名",
+  "username.required": "请输入用户名",
+  "password.placeholder": "密码",
+  "password.required": "请输入密码",
+  "submit": "登录",
+  "success": "登录成功",
+  "failure": "登录失败",
+  "forgotPassword": "忘记密码？",
+  "contactAdmin": "联系管理员",
+  "footer": "© {{year}} Octo · 管理后台"
+}

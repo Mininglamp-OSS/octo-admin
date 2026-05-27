@@ -1,4 +1,5 @@
 import axios, { AxiosError } from 'axios'
+import i18n from '../i18n'
 import { useAuthStore } from '../store/auth'
 
 export class ApiError extends Error {
@@ -22,6 +23,7 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.token = token
   }
+  config.headers['Accept-Language'] = i18n.language
   return config
 })
 

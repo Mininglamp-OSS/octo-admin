@@ -1,0 +1,11 @@
+{
+  "breadcrumb.admin": "Admin",
+  "header.notifications": "Notifications",
+  "header.help": "Help",
+  "header.logout": "Logout",
+  "theme.label": "Theme",
+  "theme.tooltip": "Theme: {{name}}",
+  "theme.light": "Light",
+  "theme.dark": "Dark",
+  "theme.auto": "Auto"
+}

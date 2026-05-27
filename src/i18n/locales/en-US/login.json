@@ -1,0 +1,13 @@
+{
+  "subtitle": "Admin Console",
+  "username.placeholder": "Username",
+  "username.required": "Please enter your username",
+  "password.placeholder": "Password",
+  "password.required": "Please enter your password",
+  "submit": "Sign in",
+  "success": "Signed in",
+  "failure": "Sign-in failed",
+  "forgotPassword": "Forgot password?",
+  "contactAdmin": "Contact admin",
+  "footer": "© {{year}} Octo · Admin Console"
+}

@@ -1,0 +1,10 @@
+{
+  "app": {
+    "name": "OCTO 管理后台"
+  },
+  "language": {
+    "label": "语言",
+    "en-US": "English",
+    "zh-CN": "简体中文"
+  }
+}
