@@ -1,0 +1,20 @@
+{
+  "title": "Dashboard",
+  "subtitle": "Operations overview and key metrics",
+  "status.normal": "System operating normally",
+  "status.meta": "Last 24h · {{count}} alerts",
+  "delta.empty": "No data",
+  "delta.flat": "No change",
+  "delta.label": "vs last week",
+  "kpi.users": "Total users",
+  "kpi.groups": "Total groups",
+  "kpi.spaces": "Total spaces",
+  "kpi.backups": "Backups",
+  "activity.title": "Active users (7d)",
+  "activity.empty.title": "No analytics data",
+  "activity.empty.hint": "Once an analytics SDK is integrated, active users and message volume trends appear here",
+  "activity.empty.cta": "View integration docs →",
+  "recent.title": "Recent activity",
+  "recent.empty.title": "No recent signups",
+  "recent.empty.hint": "New user signups will appear here"
+}

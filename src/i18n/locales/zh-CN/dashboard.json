@@ -1,0 +1,20 @@
+{
+  "title": "仪表盘",
+  "subtitle": "运营概览与关键指标",
+  "status.normal": "系统运行正常",
+  "status.meta": "最近 24h · {{count}} 条告警",
+  "delta.empty": "暂无数据",
+  "delta.flat": "持平",
+  "delta.label": "较上周",
+  "kpi.users": "用户总数",
+  "kpi.groups": "群组总数",
+  "kpi.spaces": "空间总数",
+  "kpi.backups": "备份数量",
+  "activity.title": "近 7 日活跃",
+  "activity.empty.title": "暂无埋点数据",
+  "activity.empty.hint": "接入统计 SDK 后，将在此展示活跃用户与消息量趋势",
+  "activity.empty.cta": "查看接入文档 →",
+  "recent.title": "最近动态",
+  "recent.empty.title": "暂无最近注册",
+  "recent.empty.hint": "新用户注册后会在此出现"
+}

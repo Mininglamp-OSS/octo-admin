@@ -9,6 +9,12 @@ import layoutEN from './locales/en-US/layout.json'
 import layoutZH from './locales/zh-CN/layout.json'
 import loginEN from './locales/en-US/login.json'
 import loginZH from './locales/zh-CN/login.json'
+import dashboardEN from './locales/en-US/dashboard.json'
+import dashboardZH from './locales/zh-CN/dashboard.json'
+import usersEN from './locales/en-US/users.json'
+import usersZH from './locales/zh-CN/users.json'
+import groupsEN from './locales/en-US/groups.json'
+import groupsZH from './locales/zh-CN/groups.json'
 
 export const SUPPORTED_LANGUAGES = ['en-US', 'zh-CN'] as const
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number]
@@ -21,13 +27,29 @@ i18n
   .use(initReactI18next)
   .init({
     resources: {
-      'en-US': { common: commonEN, nav: navEN, layout: layoutEN, login: loginEN },
-      'zh-CN': { common: commonZH, nav: navZH, layout: layoutZH, login: loginZH },
+      'en-US': {
+        common: commonEN,
+        nav: navEN,
+        layout: layoutEN,
+        login: loginEN,
+        dashboard: dashboardEN,
+        users: usersEN,
+        groups: groupsEN,
+      },
+      'zh-CN': {
+        common: commonZH,
+        nav: navZH,
+        layout: layoutZH,
+        login: loginZH,
+        dashboard: dashboardZH,
+        users: usersZH,
+        groups: groupsZH,
+      },
     },
     fallbackLng: FALLBACK_LANGUAGE,
     supportedLngs: SUPPORTED_LANGUAGES,
     defaultNS: 'common',
-    ns: ['common', 'nav', 'layout', 'login'],
+    ns: ['common', 'nav', 'layout', 'login', 'dashboard', 'users', 'groups'],
     interpolation: { escapeValue: false },
     detection: {
       order: ['querystring', 'cookie', 'navigator'],

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Table, Input, Button, Select, message, Modal, Tooltip, Typography } from 'antd'
 import { SearchOutlined, ReloadOutlined, RobotOutlined, SettingOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
+import { useTranslation } from 'react-i18next'
 import api from '../../api'
 
 const { Text } = Typography
@@ -24,6 +25,7 @@ type TypeFilter = 'all' | 'human' | 'bot' | 'system'
 type StatusFilter = 'all' | 'online' | 'offline' | 'banned' | 'destroyed'
 
 export default function Users() {
+  const { t } = useTranslation(['users', 'common'])
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<User[]>([])
   const [total, setTotal] = useState(0)
@@ -104,10 +106,10 @@ export default function Users() {
 
   const handleBan = async (uid: string, status: number) => {
     Modal.confirm({
-      title: status === 0 ? '确认封禁用户？' : '确认解封用户？',
+      title: status === 0 ? t('confirm.ban') : t('confirm.unban'),
       onOk: async () => {
         await api.put(`/v1/manager/user/liftban/${uid}/${status}`)
-        message.success(status === 0 ? '已封禁' : '已解封')
+        message.success(status === 0 ? t('toast.banned') : t('toast.unbanned'))
         fetchData(page, pageSize, typeFilter, keyword)
       },
     })
@@ -115,7 +117,7 @@ export default function Users() {
 
   const columns: ColumnsType<User> = [
     {
-      title: '用户名',
+      title: t('column.name'),
       dataIndex: 'name',
       key: 'name',
       width: 200,
@@ -123,12 +125,12 @@ export default function Users() {
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <span className="cell-primary">{name}</span>
           {record.is_system === 1 ? (
-            <span className="ai-tag" aria-label="系统账号">
-              <SettingOutlined /> 系统
+            <span className="ai-tag" aria-label={t('tag.system.aria')}>
+              <SettingOutlined /> {t('tag.system')}
             </span>
           ) : record.is_bot === 1 ? (
-            <span className="ai-tag" aria-label="Bot 账号">
-              <RobotOutlined /> BOT
+            <span className="ai-tag" aria-label={t('tag.bot.aria')}>
+              <RobotOutlined /> {t('tag.bot')}
             </span>
           ) : null}
         </span>
@@ -153,52 +155,52 @@ export default function Users() {
       ),
     },
     {
-      title: 'Email',
+      title: t('column.email'),
       dataIndex: 'email',
       key: 'email',
       width: 200,
       render: (v) => <span style={{ color: 'var(--a-text-tertiary)' }}>{v || '-'}</span>,
     },
     {
-      title: '手机号',
+      title: t('column.phone'),
       dataIndex: 'phone',
       key: 'phone',
       width: 140,
       render: (v) => <span style={{ color: 'var(--a-text-tertiary)' }}>{v || '-'}</span>,
     },
     {
-      title: '状态',
+      title: t('column.status'),
       key: 'status',
       width: 100,
       render: (_, record) => {
-        if (record.is_destroy === 1) return <span className="pill-dot destroyed">已注销</span>
-        if (record.status === 0) return <span className="pill-dot banned">封禁</span>
+        if (record.is_destroy === 1) return <span className="pill-dot destroyed">{t('status.destroyed')}</span>
+        if (record.status === 0) return <span className="pill-dot banned">{t('status.banned')}</span>
         return record.online === 1 ? (
-          <span className="pill-dot online">在线</span>
+          <span className="pill-dot online">{t('status.online')}</span>
         ) : (
-          <span className="pill-dot offline">离线</span>
+          <span className="pill-dot offline">{t('status.offline')}</span>
         )
       },
     },
     {
-      title: '注册时间',
+      title: t('column.registerTime'),
       dataIndex: 'register_time',
       key: 'register_time',
       width: 170,
-      render: (t) => <span style={{ color: 'var(--a-text-tertiary)' }}>{t}</span>,
+      render: (value) => <span style={{ color: 'var(--a-text-tertiary)' }}>{value}</span>,
     },
     {
-      title: '操作',
+      title: t('column.action'),
       key: 'action',
       width: 100,
       align: 'right',
       render: (_, record) => (
         <div className="row-actions" style={{ display: 'inline-flex', gap: 4 }}>
           {record.status === 1 && record.is_destroy !== 1 && (
-            <Button size="small" danger onClick={() => handleBan(record.uid, 0)}>封禁</Button>
+            <Button size="small" danger onClick={() => handleBan(record.uid, 0)}>{t('action.ban')}</Button>
           )}
           {record.status === 0 && record.is_destroy !== 1 && (
-            <Button size="small" type="primary" ghost onClick={() => handleBan(record.uid, 1)}>解封</Button>
+            <Button size="small" type="primary" ghost onClick={() => handleBan(record.uid, 1)}>{t('action.unban')}</Button>
           )}
         </div>
       ),
@@ -207,11 +209,11 @@ export default function Users() {
 
   return (
     <div>
-      <h1 className="page-title">用户管理</h1>
-      <p className="page-subtitle">管理真人与 AI 账号、处理封禁/解封流程</p>
+      <h1 className="page-title">{t('title')}</h1>
+      <p className="page-subtitle">{t('subtitle')}</p>
       <div className="toolbar">
         <Input
-          placeholder="搜索 UID/手机号/用户名/Email"
+          placeholder={t('search.placeholder')}
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
           onPressEnter={handleSearch}
@@ -223,10 +225,10 @@ export default function Users() {
           onChange={handleTypeFilterChange}
           style={{ width: 130 }}
           options={[
-            { value: 'all', label: '全部类型' },
-            { value: 'human', label: '真实用户' },
-            { value: 'bot', label: 'Bot 账号' },
-            { value: 'system', label: '系统账号' },
+            { value: 'all', label: t('type.all') },
+            { value: 'human', label: t('type.human') },
+            { value: 'bot', label: t('type.bot') },
+            { value: 'system', label: t('type.system') },
           ]}
         />
         <Select
@@ -234,18 +236,18 @@ export default function Users() {
           onChange={setStatusFilter}
           style={{ width: 120 }}
           options={[
-            { value: 'all', label: '全部状态' },
-            { value: 'online', label: '在线' },
-            { value: 'offline', label: '离线' },
-            { value: 'banned', label: '封禁' },
-            { value: 'destroyed', label: '已注销' },
+            { value: 'all', label: t('status.all') },
+            { value: 'online', label: t('status.online') },
+            { value: 'offline', label: t('status.offline') },
+            { value: 'banned', label: t('status.banned') },
+            { value: 'destroyed', label: t('status.destroyed') },
           ]}
         />
         <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
-          搜索
+          {t('common:action.search')}
         </Button>
         <Button icon={<ReloadOutlined />} onClick={() => fetchData()}>
-          刷新
+          {t('common:action.refresh')}
         </Button>
       </div>
       <Table
@@ -264,7 +266,7 @@ export default function Users() {
             setPage(p)
             if (ps !== pageSize) setPageSize(ps)
           },
-          showTotal: (t) => `共 ${t} 条`,
+          showTotal: (count) => t('common:table.total', { count }),
         }}
       />
     </div>

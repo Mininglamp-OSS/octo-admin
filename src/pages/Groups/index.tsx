@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Table, Input, Button, Select, Tooltip, Typography, message, Modal, Form } from 'antd'
 import { SearchOutlined, ReloadOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
+import { useTranslation } from 'react-i18next'
 import api from '../../api'
 
 const { Text } = Typography
@@ -23,6 +24,7 @@ interface RemoveMemberModal {
 }
 
 export default function Groups() {
+  const { t } = useTranslation(['groups', 'common'])
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<Group[]>([])
   const [total, setTotal] = useState(0)
@@ -71,10 +73,10 @@ export default function Groups() {
 
   const handleBan = async (groupNo: string, status: number) => {
     Modal.confirm({
-      title: status === 0 ? '确认封禁群组？' : '确认解封群组？',
+      title: status === 0 ? t('confirm.ban') : t('confirm.unban'),
       onOk: async () => {
         await api.put(`/v1/manager/group/liftban/${groupNo}/${status}`)
-        message.success(status === 0 ? '已封禁' : '已解封')
+        message.success(status === 0 ? t('toast.banned') : t('toast.unbanned'))
         fetchData()
       },
     })
@@ -82,7 +84,7 @@ export default function Groups() {
 
   const handleForbid = async (groupNo: string, on: number) => {
     await api.put(`/v1/manager/groups/${groupNo}/forbidden/${on}`)
-    message.success(on === 1 ? '已开启禁言' : '已解除禁言')
+    message.success(on === 1 ? t('toast.forbidden') : t('toast.unforbidden'))
     fetchData()
   }
 
@@ -98,7 +100,7 @@ export default function Groups() {
     setRemoveLoading(true)
     try {
       await api.delete(`/v1/manager/groups/${removeModal.groupNo}/members`, { data: { uid: uids } })
-      message.success(`已移除 ${uids.length} 个成员`)
+      message.success(t('remove.success', { count: uids.length }))
       setRemoveModal({ open: false, groupNo: '', groupName: '' })
       fetchData()
     } catch (error) {
@@ -110,13 +112,13 @@ export default function Groups() {
 
   const columns: ColumnsType<Group> = [
     {
-      title: '群名称',
+      title: t('column.name'),
       dataIndex: 'name',
       key: 'name',
       render: (name) => <span className="cell-primary">{name}</span>,
     },
     {
-      title: '群编号',
+      title: t('column.groupNo'),
       dataIndex: 'group_no',
       key: 'group_no',
       width: 220,
@@ -133,47 +135,47 @@ export default function Groups() {
         </Tooltip>
       ),
     },
-    { title: '创建者', dataIndex: 'create_name', key: 'create_name', width: 140 },
+    { title: t('column.creator'), dataIndex: 'create_name', key: 'create_name', width: 140 },
     {
-      title: '成员数',
+      title: t('column.memberCount'),
       dataIndex: 'member_count',
       key: 'member_count',
       width: 100,
       render: (n) => <span className="cell-primary">{n}</span>,
     },
     {
-      title: '状态',
+      title: t('column.status'),
       key: 'status',
       width: 160,
       render: (_, record) => (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
           {record.status === 1 ? (
-            <span className="pill-dot online">正常</span>
+            <span className="pill-dot online">{t('status.normal')}</span>
           ) : (
-            <span className="pill-dot banned">封禁</span>
+            <span className="pill-dot banned">{t('status.banned')}</span>
           )}
-          {record.forbidden === 1 && <span className="pill-dot warning">禁言</span>}
+          {record.forbidden === 1 && <span className="pill-dot warning">{t('tag.forbidden')}</span>}
         </span>
       ),
     },
     {
-      title: '操作',
+      title: t('column.action'),
       key: 'action',
       width: 240,
       align: 'right',
       render: (_, record) => (
         <div className="row-actions" style={{ display: 'inline-flex', gap: 4 }}>
           {record.status === 1 ? (
-            <Button size="small" danger onClick={() => handleBan(record.group_no, 0)}>封禁</Button>
+            <Button size="small" danger onClick={() => handleBan(record.group_no, 0)}>{t('action.ban')}</Button>
           ) : (
-            <Button size="small" type="primary" ghost onClick={() => handleBan(record.group_no, 1)}>解封</Button>
+            <Button size="small" type="primary" ghost onClick={() => handleBan(record.group_no, 1)}>{t('action.unban')}</Button>
           )}
           {record.forbidden !== 1 ? (
-            <Button size="small" className="btn-mute" onClick={() => handleForbid(record.group_no, 1)}>禁言</Button>
+            <Button size="small" className="btn-mute" onClick={() => handleForbid(record.group_no, 1)}>{t('action.forbid')}</Button>
           ) : (
-            <Button size="small" type="primary" ghost onClick={() => handleForbid(record.group_no, 0)}>解除禁言</Button>
+            <Button size="small" type="primary" ghost onClick={() => handleForbid(record.group_no, 0)}>{t('action.unforbid')}</Button>
           )}
-          <Button size="small" danger onClick={() => openRemoveModal(record)}>移除成员</Button>
+          <Button size="small" danger onClick={() => openRemoveModal(record)}>{t('action.removeMember')}</Button>
         </div>
       ),
     },
@@ -181,11 +183,11 @@ export default function Groups() {
 
   return (
     <div>
-      <h1 className="page-title">群组管理</h1>
-      <p className="page-subtitle">管理群组状态、禁言与成员移除</p>
+      <h1 className="page-title">{t('title')}</h1>
+      <p className="page-subtitle">{t('subtitle')}</p>
       <div className="toolbar">
         <Input
-          placeholder="搜索群名称/群编号"
+          placeholder={t('search.placeholder')}
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
           onPressEnter={handleSearch}
@@ -197,17 +199,17 @@ export default function Groups() {
           onChange={setStatusFilter}
           style={{ width: 140 }}
           options={[
-            { value: 'all', label: '全部状态' },
-            { value: 'normal', label: '正常' },
-            { value: 'banned', label: '封禁' },
-            { value: 'forbidden', label: '禁言中' },
+            { value: 'all', label: t('status.all') },
+            { value: 'normal', label: t('status.normal') },
+            { value: 'banned', label: t('status.banned') },
+            { value: 'forbidden', label: t('status.forbidden') },
           ]}
         />
         <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
-          搜索
+          {t('common:action.search')}
         </Button>
         <Button icon={<ReloadOutlined />} onClick={fetchData}>
-          刷新
+          {t('common:action.refresh')}
         </Button>
       </div>
       <Table
@@ -223,27 +225,27 @@ export default function Groups() {
           pageSizeOptions: [20, 50, 100],
           showSizeChanger: true,
           onChange: setPage,
-          showTotal: (t) => `共 ${t} 条`,
+          showTotal: (count) => t('common:table.total', { count }),
         }}
       />
 
       <Modal
-        title={`移除成员 — ${removeModal.groupName}`}
+        title={t('remove.title', { name: removeModal.groupName })}
         open={removeModal.open}
         onOk={handleRemoveMember}
         onCancel={() => setRemoveModal({ open: false, groupNo: '', groupName: '' })}
         confirmLoading={removeLoading}
-        okText="确认移除"
+        okText={t('remove.ok')}
         okButtonProps={{ danger: true }}
       >
         <Form form={form} layout="vertical">
           <Form.Item
             name="uid"
-            label="用户 UID"
-            rules={[{ required: true, message: '请输入要移除的 UID' }]}
-            extra="多个 UID 用逗号或空格分隔"
+            label={t('remove.field.label')}
+            rules={[{ required: true, message: t('remove.field.required') }]}
+            extra={t('remove.field.extra')}
           >
-            <Input.TextArea rows={3} placeholder="例如：uid1, uid2, uid3" />
+            <Input.TextArea rows={3} placeholder={t('remove.field.placeholder')} />
           </Form.Item>
         </Form>
       </Modal>

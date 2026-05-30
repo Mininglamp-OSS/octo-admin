@@ -6,5 +6,12 @@
     "label": "语言",
     "en-US": "English",
     "zh-CN": "简体中文"
+  },
+  "action": {
+    "search": "搜索",
+    "refresh": "刷新"
+  },
+  "table": {
+    "total": "共 {{count}} 条"
   }
 }
