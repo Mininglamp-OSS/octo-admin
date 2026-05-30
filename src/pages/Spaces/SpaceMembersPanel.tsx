@@ -276,7 +276,11 @@ export default function SpaceMembersPanel({ spaceId, scope, readOnly = false }: 
     <div>
       <div className="toolbar toolbar-plain">
         <Input
-          placeholder={t('members.search.placeholder')}
+          placeholder={t(
+            scope.kind === 'super'
+              ? 'members.search.placeholderSuper'
+              : 'members.search.placeholder',
+          )}
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
           onPressEnter={handleSearch}

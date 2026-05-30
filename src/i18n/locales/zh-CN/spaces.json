@@ -60,6 +60,7 @@
   "detail.tab.invites": "邀请码",
   "detail.tab.joinApplies": "加入申请",
   "members.search.placeholder": "搜索 UID / 昵称",
+  "members.search.placeholderSuper": "搜索 昵称 / 用户名 / UID / Email / 手机号",
   "members.add": "添加成员",
   "members.role.member": "成员",
   "members.role.admin": "管理员",
