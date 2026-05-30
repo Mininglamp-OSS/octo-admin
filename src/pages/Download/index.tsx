@@ -232,7 +232,7 @@ export default function Download() {
       dataIndex: 'created_at',
       key: 'created_at',
       width: 170,
-      render: (t) => <span style={{ color: 'var(--a-text-tertiary)' }}>{t}</span>,
+      render: (value) => <span style={{ color: 'var(--a-text-tertiary)' }}>{value}</span>,
     },
     {
       title: t('column.action'),

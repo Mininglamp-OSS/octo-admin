@@ -4,7 +4,7 @@
   "search.placeholder": "搜索 UID/手机号/用户名/Email",
   "tag.system": "系统",
   "tag.system.aria": "系统账号",
-  "tag.bot": "BOT",
+  "tag.bot": "机器人",
   "tag.bot.aria": "Bot 账号",
   "type.all": "全部类型",
   "type.human": "真实用户",

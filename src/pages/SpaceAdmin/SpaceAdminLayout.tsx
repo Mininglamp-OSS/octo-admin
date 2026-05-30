@@ -34,6 +34,7 @@ import {
 } from '../../api/space-user'
 import type { MySpace } from '../../store/auth'
 import SpaceSwitcher from './SpaceSwitcher'
+import LanguageSwitcher from '../../components/LanguageSwitcher'
 
 const { Header, Content } = Layout
 
@@ -242,6 +243,7 @@ export default function SpaceAdminLayout() {
         <SpaceSwitcher />
         <div style={{ flex: 1 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <LanguageSwitcher />
           <Dropdown
             menu={{ items: themeMenu, selectedKeys: [theme] }}
             trigger={['click']}
