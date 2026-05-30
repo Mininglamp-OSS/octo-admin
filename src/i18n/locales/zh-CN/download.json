@@ -1,0 +1,50 @@
+{
+  "title": "下载配置",
+  "subtitle": "管理客户端版本、渠道与灰度",
+  "action": {
+    "addVersion": "添加版本",
+    "edit": "编辑"
+  },
+  "filter": {
+    "platform": {
+      "all": "全部平台",
+      "webDesktop": "Web / 桌面"
+    },
+    "force": {
+      "all": "全部更新",
+      "yes": "强制更新",
+      "no": "非强制"
+    }
+  },
+  "column": {
+    "appVersion": "版本号",
+    "platform": "平台",
+    "isForce": "强制更新",
+    "updateDesc": "更新说明",
+    "downloadUrl": "下载地址",
+    "createdAt": "创建时间",
+    "action": "操作"
+  },
+  "tag": {
+    "force": "强制"
+  },
+  "modal": {
+    "addTitle": "添加版本",
+    "editTitle": "编辑版本",
+    "okText": "保存",
+    "cancelText": "取消"
+  },
+  "form": {
+    "platform": "平台",
+    "appVersion": "版本号",
+    "downloadUrl": "下载地址",
+    "downloadUrlPlaceholder": "https://example.com/app.apk",
+    "updateDesc": "更新说明",
+    "updateDescPlaceholder": "本次更新内容...",
+    "isForce": "强制更新"
+  },
+  "toast": {
+    "addSuccess": "添加成功",
+    "updateSuccess": "更新成功"
+  }
+}

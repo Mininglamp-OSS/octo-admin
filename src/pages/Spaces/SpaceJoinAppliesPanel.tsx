@@ -3,6 +3,7 @@ import { Table, Button, Select, Modal, Tooltip, Typography, message } from 'antd
 
 const { Text } = Typography
 import { ReloadOutlined, CheckOutlined, CloseOutlined, ClockCircleOutlined } from '@ant-design/icons'
+import { useTranslation } from 'react-i18next'
 import type { ColumnsType } from 'antd/es/table'
 import type { JoinApplyStatus } from '../../api/space'
 import type { JoinApplyItem, SpaceScope } from '../../hooks/useSpaceScope'
@@ -17,16 +18,17 @@ const PAGE_SIZE = 20
 
 const STATUS_META: Record<
   JoinApplyStatus,
-  { text: string; tone: 'warning' | 'online' | 'banned'; icon: React.ReactNode }
+  { textKey: string; tone: 'warning' | 'online' | 'banned'; icon: React.ReactNode }
 > = {
-  0: { text: '待处理', tone: 'warning', icon: <ClockCircleOutlined /> },
-  1: { text: '已通过', tone: 'online', icon: <CheckOutlined /> },
-  2: { text: '已拒绝', tone: 'banned', icon: <CloseOutlined /> },
+  0: { textKey: 'applies.status.pending', tone: 'warning', icon: <ClockCircleOutlined /> },
+  1: { textKey: 'applies.status.approved', tone: 'online', icon: <CheckOutlined /> },
+  2: { textKey: 'applies.status.rejected', tone: 'banned', icon: <CloseOutlined /> },
 }
 
 type StatusFilter = 'all' | JoinApplyStatus
 
 export default function SpaceJoinAppliesPanel({ spaceId, scope, readOnly = false }: Props) {
+  const { t } = useTranslation(['spaces', 'common'])
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<JoinApplyItem[]>([])
   const [total, setTotal] = useState(0)
@@ -62,11 +64,11 @@ export default function SpaceJoinAppliesPanel({ spaceId, scope, readOnly = false
 
   const handleApprove = (id: number, name: string) => {
     Modal.confirm({
-      title: `通过 ${name} 的加入申请？`,
+      title: t('applies.approve.title', { name }),
       onOk: async () => {
         try {
           await scope.api.approveJoinApply(spaceId, id)
-          message.success('已通过')
+          message.success(t('applies.approve.success'))
           fetchData()
         } catch (error) {
           message.error((error as Error).message)
@@ -77,12 +79,12 @@ export default function SpaceJoinAppliesPanel({ spaceId, scope, readOnly = false
 
   const handleReject = (id: number, name: string) => {
     Modal.confirm({
-      title: `拒绝 ${name} 的加入申请？`,
+      title: t('applies.reject.title', { name }),
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
           await scope.api.rejectJoinApply(spaceId, id)
-          message.success('已拒绝')
+          message.success(t('applies.reject.success'))
           fetchData()
         } catch (error) {
           message.error((error as Error).message)
@@ -94,7 +96,7 @@ export default function SpaceJoinAppliesPanel({ spaceId, scope, readOnly = false
   const actionColumn = !canReview
     ? null
     : ({
-        title: '操作',
+        title: t('applies.column.action'),
         key: 'action',
         width: 140,
         render: (_: unknown, record: JoinApplyItem) =>
@@ -106,7 +108,7 @@ export default function SpaceJoinAppliesPanel({ spaceId, scope, readOnly = false
                 icon={<CheckOutlined />}
                 onClick={() => handleApprove(record.id, record.applicant_name)}
               >
-                通过
+                {t('applies.action.approve')}
               </Button>
               <Button
                 size="small"
@@ -115,7 +117,7 @@ export default function SpaceJoinAppliesPanel({ spaceId, scope, readOnly = false
                 icon={<CloseOutlined />}
                 onClick={() => handleReject(record.id, record.applicant_name)}
               >
-                拒绝
+                {t('applies.action.reject')}
               </Button>
             </div>
           ) : (
@@ -125,7 +127,7 @@ export default function SpaceJoinAppliesPanel({ spaceId, scope, readOnly = false
 
   const statusColumn: ColumnsType<JoinApplyItem>[number] | null = scope.supportsApplyFilter
     ? {
-        title: '状态',
+        title: t('applies.column.status'),
         dataIndex: 'status',
         key: 'status',
         width: 100,
@@ -134,7 +136,7 @@ export default function SpaceJoinAppliesPanel({ spaceId, scope, readOnly = false
           return (
             <span className={`pill-icon ${meta.tone}`}>
               {meta.icon}
-              {meta.text}
+              {t(meta.textKey)}
             </span>
           )
         },
@@ -143,13 +145,13 @@ export default function SpaceJoinAppliesPanel({ spaceId, scope, readOnly = false
 
   const baseColumns: ColumnsType<JoinApplyItem> = [
     {
-      title: '申请人',
+      title: t('applies.column.applicant'),
       dataIndex: 'applicant_name',
       key: 'applicant_name',
       render: (name) => <span className="cell-primary">{name}</span>,
     },
     {
-      title: 'UID',
+      title: t('applies.column.uid'),
       dataIndex: 'uid',
       key: 'uid',
       width: 200,
@@ -167,7 +169,7 @@ export default function SpaceJoinAppliesPanel({ spaceId, scope, readOnly = false
       ),
     },
     {
-      title: '邀请码',
+      title: t('applies.column.inviteCode'),
       dataIndex: 'invite_code',
       key: 'invite_code',
       width: 140,
@@ -179,7 +181,7 @@ export default function SpaceJoinAppliesPanel({ spaceId, scope, readOnly = false
         ),
     },
     {
-      title: '备注',
+      title: t('applies.column.remark'),
       dataIndex: 'remark',
       key: 'remark',
       ellipsis: true,
@@ -187,7 +189,7 @@ export default function SpaceJoinAppliesPanel({ spaceId, scope, readOnly = false
     },
     ...(statusColumn ? [statusColumn] : []),
     {
-      title: '申请时间',
+      title: t('applies.column.appliedAt'),
       dataIndex: 'created_at',
       key: 'created_at',
       width: 170,
@@ -208,20 +210,20 @@ export default function SpaceJoinAppliesPanel({ spaceId, scope, readOnly = false
             onChange={setStatusFilter}
             style={{ width: 140 }}
             options={[
-              { value: 'all', label: '全部状态' },
-              { value: 0, label: '待处理' },
-              { value: 1, label: '已通过' },
-              { value: 2, label: '已拒绝' },
+              { value: 'all', label: t('applies.filter.all') },
+              { value: 0, label: t('applies.filter.pending') },
+              { value: 1, label: t('applies.filter.approved') },
+              { value: 2, label: t('applies.filter.rejected') },
             ]}
           />
         ) : (
           <span className="filter-chip">
             <ClockCircleOutlined />
-            仅显示待处理
+            {t('applies.pendingOnly')}
           </span>
         )}
         <Button icon={<ReloadOutlined />} onClick={() => fetchData()}>
-          刷新
+          {t('common:action.refresh')}
         </Button>
       </div>
       <Table<JoinApplyItem>
@@ -237,7 +239,7 @@ export default function SpaceJoinAppliesPanel({ spaceId, scope, readOnly = false
                 current: page,
                 total,
                 pageSize: PAGE_SIZE,
-                showTotal: (t) => `共 ${t} 条`,
+                showTotal: (count) => t('common:table.total', { count }),
                 onChange: (p) => {
                   setPage(p)
                   fetchData(p)

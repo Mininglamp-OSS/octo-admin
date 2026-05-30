@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Button, Form, Input, Modal, Space, Typography, message } from 'antd'
 import { CopyOutlined } from '@ant-design/icons'
+import { useTranslation } from 'react-i18next'
 import { createAppBot, createSpaceAppBot, type AppBotCreateReq } from '../../api/app-bot'
 import { buildConnectGuide } from './connectGuide'
 
@@ -34,6 +35,7 @@ async function copyToClipboard(text: string): Promise<void> {
 }
 
 export default function CreateModal({ open, spaceId, onClose, onSuccess }: Props) {
+  const { t } = useTranslation('appBots')
   const [form] = Form.useForm<AppBotCreateReq>()
   const [loading, setLoading] = useState(false)
   const [createdBot, setCreatedBot] = useState<CreatedBotInfo | null>(null)
@@ -80,9 +82,9 @@ export default function CreateModal({ open, spaceId, onClose, onSuccess }: Props
     if (!createdBot) return
     try {
       await copyToClipboard(createdBot.token)
-      message.success('Token copied')
+      message.success(t('create.token.copied'))
     } catch {
-      message.error('复制失败')
+      message.error(t('create.token.copyFailed'))
     }
   }
 
@@ -90,33 +92,39 @@ export default function CreateModal({ open, spaceId, onClose, onSuccess }: Props
     if (!createdBot) return
     try {
       await copyToClipboard(
-        buildConnectGuide({
-          displayName: createdBot.displayName,
-          botId: createdBot.id,
-          token: createdBot.token,
-        }),
+        buildConnectGuide(
+          {
+            displayName: createdBot.displayName,
+            botId: createdBot.id,
+            token: createdBot.token,
+          },
+          t,
+        ),
       )
-      message.success('连接指南已复制')
+      message.success(t('create.guide.copied'))
     } catch {
-      message.error('复制失败')
+      message.error(t('create.token.copyFailed'))
     }
   }
 
   const connectGuide = createdBot
-    ? buildConnectGuide({
-      displayName: createdBot.displayName,
-      botId: createdBot.id,
-      token: createdBot.token,
-    })
+    ? buildConnectGuide(
+      {
+        displayName: createdBot.displayName,
+        botId: createdBot.id,
+        token: createdBot.token,
+      },
+      t,
+    )
     : ''
 
   return (
     <Modal
-      title={createdBot ? '创建成功 - 请保存 Token 并完成绑定' : '创建应用 Bot'}
+      title={createdBot ? t('create.title.success') : t('create.title')}
       open={open}
       onOk={handleOk}
       onCancel={handleCancel}
-      okText={createdBot ? '已保存，关闭' : '确定'}
+      okText={createdBot ? t('create.ok.success') : t('create.ok')}
       confirmLoading={loading}
       destroyOnClose
       width={createdBot ? 680 : undefined}
@@ -124,10 +132,10 @@ export default function CreateModal({ open, spaceId, onClose, onSuccess }: Props
       {createdBot ? (
         <div>
           <Typography.Paragraph type="warning" style={{ marginBottom: 12 }}>
-            Token 仅在创建时完整显示一次。请复制 Token，并将连接指南发给 OpenClaw 执行完成绑定。
+            {t('create.warning')}
           </Typography.Paragraph>
           <Typography.Title level={5} style={{ marginTop: 0 }}>
-            API Token
+            {t('create.token.title')}
           </Typography.Title>
           <div
             style={{
@@ -143,14 +151,14 @@ export default function CreateModal({ open, spaceId, onClose, onSuccess }: Props
             {createdBot.token}
           </div>
           <Button size="small" icon={<CopyOutlined />} onClick={handleCopyToken}>
-            复制 Token
+            {t('create.token.copy')}
           </Button>
 
           <Typography.Title level={5} style={{ marginTop: 24 }}>
-            连接指南
+            {t('create.guide.title')}
           </Typography.Title>
           <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-            将以下内容发给 OpenClaw 执行，即可将此 Bot 绑定到 Agent：
+            {t('create.guide.intro')}
           </Typography.Paragraph>
           <div
             style={{
@@ -168,41 +176,41 @@ export default function CreateModal({ open, spaceId, onClose, onSuccess }: Props
           </div>
           <Space style={{ marginTop: 12 }}>
             <Button size="small" icon={<CopyOutlined />} onClick={handleCopyGuide}>
-              复制指南
+              {t('create.guide.copy')}
             </Button>
           </Space>
           <Typography.Paragraph type="secondary" style={{ marginTop: 8, fontSize: 12 }}>
-            如需绑定到其他 Agent，修改 --agent 参数即可。断开连接请在 BotFather 中发送 /disconnect。
+            {t('create.guide.footer')}
           </Typography.Paragraph>
         </div>
       ) : (
         <Form form={form} layout="vertical" autoComplete="off">
           <Form.Item
             name="id"
-            label="Bot ID"
+            label={t('form.id.label')}
             rules={[
-              { required: true, message: '请输入 Bot ID' },
+              { required: true, message: t('form.id.required') },
               {
                 pattern: /^[a-z0-9][a-z0-9_-]{0,29}$/,
-                message: '小写字母/数字/下划线/短横，1-30 字符',
+                message: t('form.id.pattern'),
               },
             ]}
-            extra="唯一标识，创建后不可修改。如：octo-butler"
+            extra={t('form.id.extra')}
           >
             <Input placeholder="octo-butler" />
           </Form.Item>
           <Form.Item
             name="display_name"
-            label="显示名称"
-            rules={[{ required: true, message: '请输入显示名称' }]}
+            label={t('form.displayName.label')}
+            rules={[{ required: true, message: t('form.displayName.required') }]}
           >
-            <Input placeholder="Octo 管家" maxLength={100} />
+            <Input placeholder={t('form.displayName.placeholder')} maxLength={100} />
           </Form.Item>
-          <Form.Item name="description" label="描述">
-            <Input.TextArea placeholder="智能工作助手，支持..." maxLength={500} rows={3} />
+          <Form.Item name="description" label={t('form.description.label')}>
+            <Input.TextArea placeholder={t('form.description.placeholder')} maxLength={500} rows={3} />
           </Form.Item>
-          <Form.Item name="welcome_msg" label="欢迎语" extra="用户首次连接时自动发送的消息，留空则使用默认提示">
-            <Input.TextArea placeholder="你好！我是 xx 助手，有什么可以帮你的？" maxLength={500} rows={2} />
+          <Form.Item name="welcome_msg" label={t('form.welcome.label')} extra={t('form.welcome.extra')}>
+            <Input.TextArea placeholder={t('form.welcome.placeholder')} maxLength={500} rows={2} />
           </Form.Item>
         </Form>
       )}

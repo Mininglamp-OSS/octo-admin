@@ -11,6 +11,7 @@ import {
   UserDeleteOutlined,
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
+import { useTranslation } from 'react-i18next'
 
 const { Text } = Typography
 import { updateSpaceMemberRole, type SpaceMemberRole } from '../../api/space'
@@ -22,15 +23,16 @@ interface Props {
   readOnly?: boolean
 }
 
-const ROLE_LABEL: Record<SpaceMemberRole, { text: string; tone: 'neutral' | 'warning' | 'brand' }> = {
-  0: { text: '成员', tone: 'neutral' },
-  1: { text: '管理员', tone: 'warning' },
-  2: { text: '拥有者', tone: 'brand' },
+const ROLE_LABEL: Record<SpaceMemberRole, { textKey: string; tone: 'neutral' | 'warning' | 'brand' }> = {
+  0: { textKey: 'members.role.member', tone: 'neutral' },
+  1: { textKey: 'members.role.admin', tone: 'warning' },
+  2: { textKey: 'members.role.owner', tone: 'brand' },
 }
 
 const PAGE_SIZE = 20
 
 export default function SpaceMembersPanel({ spaceId, scope, readOnly = false }: Props) {
+  const { t } = useTranslation(['spaces', 'common'])
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<MemberItem[]>([])
   const [total, setTotal] = useState(0)
@@ -73,17 +75,17 @@ export default function SpaceMembersPanel({ spaceId, scope, readOnly = false }: 
   }
 
   const handleChangeRole = (uid: string, name: string, role: SpaceMemberRole) => {
-    const roleText = ROLE_LABEL[role].text
+    const roleText = t(ROLE_LABEL[role].textKey)
     Modal.confirm({
-      title: `确认将 ${name} 设为「${roleText}」？`,
+      title: t('members.changeRole.title', { name, role: roleText }),
       content:
         role === 2
-          ? '设置为拥有者将触发原子所有权转让，当前拥有者会自动降级为管理员。'
+          ? t('members.changeRole.ownerContent')
           : undefined,
       onOk: async () => {
         try {
           await updateSpaceMemberRole(spaceId, uid, role)
-          message.success('角色已更新')
+          message.success(t('members.changeRole.success'))
           fetchData()
         } catch (error) {
           message.error((error as Error).message)
@@ -94,13 +96,13 @@ export default function SpaceMembersPanel({ spaceId, scope, readOnly = false }: 
 
   const handleRemove = (uid: string, name: string) => {
     Modal.confirm({
-      title: `确认移除成员 ${name}？`,
+      title: t('members.remove.title', { name }),
       okButtonProps: { danger: true },
-      okText: '移除',
+      okText: t('members.remove.ok'),
       onOk: async () => {
         try {
           await scope.api.removeMembers(spaceId, [uid])
-          message.success('已移除')
+          message.success(t('members.remove.success'))
           fetchData()
         } catch (error) {
           message.error((error as Error).message)
@@ -117,14 +119,14 @@ export default function SpaceMembersPanel({ spaceId, scope, readOnly = false }: 
       .filter(Boolean)
     if (list.length === 0) return
     if (list.length > 200) {
-      message.error('单次最多 200 个 UID')
+      message.error(t('members.add.tooMany'))
       return
     }
     if (!scope.api.addMembers) return
     setAddLoading(true)
     try {
       await scope.api.addMembers(spaceId, list)
-      message.success(`已添加 ${list.length} 个成员`)
+      message.success(t('members.add.success', { count: list.length }))
       setAddOpen(false)
       form.resetFields()
       fetchData()
@@ -139,7 +141,7 @@ export default function SpaceMembersPanel({ spaceId, scope, readOnly = false }: 
     !canRemove && !canChangeRole
       ? null
       : ({
-          title: '操作',
+          title: t('members.column.action'),
           key: 'action',
           width: 180,
           render: (_: unknown, record: MemberItem) => {
@@ -150,21 +152,21 @@ export default function SpaceMembersPanel({ spaceId, scope, readOnly = false }: 
               if (record.role !== 2) {
                 items.push({
                   key: 'owner',
-                  label: '转让为拥有者',
+                  label: t('members.action.toOwner'),
                   onClick: () => handleChangeRole(record.uid, record.name, 2),
                 })
               }
               if (record.role === 0) {
                 items.push({
                   key: 'admin-up',
-                  label: '升为管理员',
+                  label: t('members.action.promoteAdmin'),
                   onClick: () => handleChangeRole(record.uid, record.name, 1),
                 })
               }
               if (record.role === 1) {
                 items.push({
                   key: 'admin-down',
-                  label: '降为成员',
+                  label: t('members.action.demoteMember'),
                   onClick: () => handleChangeRole(record.uid, record.name, 0),
                 })
               }
@@ -177,7 +179,7 @@ export default function SpaceMembersPanel({ spaceId, scope, readOnly = false }: 
                 {items.length > 0 && (
                   <Dropdown menu={{ items }} trigger={['click']} placement="bottomRight">
                     <Button size="small" className="btn-row-edit" icon={<UserSwitchOutlined />}>
-                      角色
+                      {t('members.action.role')}
                     </Button>
                   </Dropdown>
                 )}
@@ -189,7 +191,7 @@ export default function SpaceMembersPanel({ spaceId, scope, readOnly = false }: 
                     icon={<UserDeleteOutlined />}
                     onClick={() => handleRemove(record.uid, record.name)}
                   >
-                    移除
+                    {t('members.action.remove')}
                   </Button>
                 )}
               </div>
@@ -199,7 +201,7 @@ export default function SpaceMembersPanel({ spaceId, scope, readOnly = false }: 
 
   const baseColumns: ColumnsType<MemberItem> = [
     {
-      title: '昵称',
+      title: t('members.column.name'),
       dataIndex: 'name',
       key: 'name',
       render: (name, record) => (
@@ -217,7 +219,7 @@ export default function SpaceMembersPanel({ spaceId, scope, readOnly = false }: 
       ),
     },
     {
-      title: 'UID',
+      title: t('members.column.uid'),
       dataIndex: 'uid',
       key: 'uid',
       width: 220,
@@ -235,18 +237,18 @@ export default function SpaceMembersPanel({ spaceId, scope, readOnly = false }: 
       ),
     },
     {
-      title: '角色',
+      title: t('members.column.role'),
       dataIndex: 'role',
       key: 'role',
       width: 110,
       render: (role: SpaceMemberRole) => (
         <span className={`pill-outline ${ROLE_LABEL[role].tone}`}>
-          {ROLE_LABEL[role].text}
+          {t(ROLE_LABEL[role].textKey)}
         </span>
       ),
     },
     {
-      title: '状态',
+      title: t('members.column.status'),
       dataIndex: 'status',
       key: 'status',
       width: 100,
@@ -254,16 +256,16 @@ export default function SpaceMembersPanel({ spaceId, scope, readOnly = false }: 
         status === undefined || status === 1 ? (
           <span className="pill-icon online">
             <CheckCircleOutlined />
-            活跃
+            {t('members.status.active')}
           </span>
         ) : (
           <span className="pill-icon destroyed">
             <MinusCircleOutlined />
-            已移除
+            {t('members.status.removed')}
           </span>
         ),
     },
-    { title: '加入时间', dataIndex: 'created_at', key: 'created_at', width: 170 },
+    { title: t('members.column.joinedAt'), dataIndex: 'created_at', key: 'created_at', width: 170 },
   ]
 
   const columns: ColumnsType<MemberItem> = actionColumn
@@ -274,7 +276,7 @@ export default function SpaceMembersPanel({ spaceId, scope, readOnly = false }: 
     <div>
       <div className="toolbar toolbar-plain">
         <Input
-          placeholder="搜索 UID / 昵称"
+          placeholder={t('members.search.placeholder')}
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
           onPressEnter={handleSearch}
@@ -282,10 +284,10 @@ export default function SpaceMembersPanel({ spaceId, scope, readOnly = false }: 
           allowClear
         />
         <Button icon={<SearchOutlined />} onClick={handleSearch}>
-          搜索
+          {t('common:action.search')}
         </Button>
         <Button icon={<ReloadOutlined />} onClick={() => fetchData()}>
-          刷新
+          {t('common:action.refresh')}
         </Button>
         <div className="toolbar-spacer" />
         {canAdd && (
@@ -294,7 +296,7 @@ export default function SpaceMembersPanel({ spaceId, scope, readOnly = false }: 
             icon={<UserAddOutlined />}
             onClick={() => setAddOpen(true)}
           >
-            添加成员
+            {t('members.add')}
           </Button>
         )}
       </div>
@@ -311,7 +313,7 @@ export default function SpaceMembersPanel({ spaceId, scope, readOnly = false }: 
                 current: page,
                 total,
                 pageSize: PAGE_SIZE,
-                showTotal: (t) => `共 ${t} 条`,
+                showTotal: (count) => t('common:table.total', { count }),
                 onChange: (p) => {
                   setPage(p)
                   fetchData(p)
@@ -322,21 +324,21 @@ export default function SpaceMembersPanel({ spaceId, scope, readOnly = false }: 
       />
 
       <Modal
-        title="添加成员"
+        title={t('members.addModal.title')}
         open={addOpen}
         onOk={handleAdd}
         onCancel={() => setAddOpen(false)}
         confirmLoading={addLoading}
-        okText="添加"
+        okText={t('members.addModal.ok')}
       >
         <Form form={form} layout="vertical">
           <Form.Item
             name="uids"
-            label="用户 UID"
-            rules={[{ required: true, message: '请输入 UID' }]}
-            extra="多个 UID 用逗号或空格分隔，单次上限 200，自动去重；此接口绕过 max_users 限制"
+            label={t('members.addModal.field.label')}
+            rules={[{ required: true, message: t('members.addModal.field.required') }]}
+            extra={t('members.addModal.field.extra')}
           >
-            <Input.TextArea rows={4} placeholder="例如：uid1, uid2, uid3" />
+            <Input.TextArea rows={4} placeholder={t('members.addModal.field.placeholder')} />
           </Form.Item>
         </Form>
       </Modal>

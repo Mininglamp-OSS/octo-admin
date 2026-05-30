@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { Input, InputNumber, Radio, Button, Space, Tooltip, message } from 'antd'
 import { EditOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons'
+import { useTranslation } from 'react-i18next'
 
 export type InlineFieldKind = 'text' | 'textarea' | 'number' | 'select'
 
@@ -56,6 +57,7 @@ function runeLen(s: string): number {
 }
 
 export default function InlineEditField(props: InlineEditFieldProps) {
+  const { t } = useTranslation('spaces')
   const { value, display, readOnly, emptyText = '—', validate, onSave } = props
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<string | number>(value ?? '')
@@ -123,10 +125,10 @@ export default function InlineEditField(props: InlineEditFieldProps) {
       <span className="inline-edit-display">
         <span>{display ?? (hasValue ? value : <span style={{ color: 'var(--a-text-quaternary)' }}>{emptyText}</span>)}</span>
         {!readOnly && (
-          <Tooltip title="编辑" mouseEnterDelay={0.3}>
+          <Tooltip title={t('inline.edit')} mouseEnterDelay={0.3}>
             <button
               type="button"
-              aria-label="编辑"
+              aria-label={t('inline.edit')}
               className="inline-edit-trigger"
               onClick={() => setEditing(true)}
             >
@@ -209,7 +211,7 @@ export default function InlineEditField(props: InlineEditFieldProps) {
           ) : (
             <span />
           )}
-          <Tooltip title="Ctrl/⌘+Enter 提交">{actions}</Tooltip>
+          <Tooltip title={t('inline.submitHint')}>{actions}</Tooltip>
         </div>
       </div>
     )

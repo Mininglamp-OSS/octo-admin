@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Modal, Form, Input, Avatar, Upload, message } from 'antd'
 import { CameraOutlined, LoadingOutlined, RobotOutlined } from '@ant-design/icons'
+import { useTranslation } from 'react-i18next'
 import {
   updateAppBot,
   updateSpaceAppBot,
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export default function EditModal({ bot, spaceId, open, onClose, onSuccess, onAvatarUploaded }: Props) {
+  const { t } = useTranslation('appBots')
   const [form] = Form.useForm<AppBotUpdateReq>()
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -44,7 +46,7 @@ export default function EditModal({ bot, spaceId, open, onClose, onSuccess, onAv
       spaceId
         ? await updateSpaceAppBot(spaceId, bot.id, values)
         : await updateAppBot(bot.id, values)
-      message.success('已更新')
+      message.success(t('edit.toast.updated'))
       onSuccess()
     } catch (err) {
       if (err instanceof Error) message.error(err.message)
@@ -58,7 +60,7 @@ export default function EditModal({ bot, spaceId, open, onClose, onSuccess, onAv
     setUploading(true)
     try {
       await uploadAppBotAvatar(bot.uid, file)
-      message.success('头像已更新')
+      message.success(t('detail.avatar.toast.updated'))
       setAvatarVersion(Date.now())
       onAvatarUploaded?.(bot.uid)
     } catch (err) {
@@ -71,7 +73,7 @@ export default function EditModal({ bot, spaceId, open, onClose, onSuccess, onAv
 
   return (
     <Modal
-      title={`编辑 ${bot?.display_name || ''}`}
+      title={t('edit.title', { name: bot?.display_name || '' })}
       open={open}
       onOk={handleOk}
       onCancel={onClose}
@@ -89,7 +91,7 @@ export default function EditModal({ bot, spaceId, open, onClose, onSuccess, onAv
           >
             <div
               style={{ position: 'relative', display: 'inline-block', cursor: 'pointer' }}
-              title="点击上传头像"
+              title={t('detail.avatar.title')}
             >
               <Avatar
                 src={botAvatarUrl(bot.uid, avatarVersion)}
@@ -113,23 +115,23 @@ export default function EditModal({ bot, spaceId, open, onClose, onSuccess, onAv
               </div>
             </div>
           </Upload>
-          <div style={{ fontSize: 12, color: '#999', marginTop: 6 }}>点击更换头像</div>
+          <div style={{ fontSize: 12, color: '#999', marginTop: 6 }}>{t('detail.avatar.hint')}</div>
         </div>
       )}
 
       <Form form={form} layout="vertical" autoComplete="off">
         <Form.Item
           name="display_name"
-          label="显示名称"
-          rules={[{ required: true, message: '请输入显示名称' }]}
+          label={t('form.displayName.label')}
+          rules={[{ required: true, message: t('form.displayName.required') }]}
         >
           <Input maxLength={100} />
         </Form.Item>
-        <Form.Item name="description" label="描述">
+        <Form.Item name="description" label={t('form.description.label')}>
           <Input.TextArea maxLength={500} rows={3} />
         </Form.Item>
-        <Form.Item name="welcome_msg" label="欢迎语" extra="用户首次连接时自动发送的消息，留空则使用默认提示">
-          <Input.TextArea placeholder="你好！我是 xx 助手，有什么可以帮你的？" maxLength={500} rows={2} />
+        <Form.Item name="welcome_msg" label={t('form.welcome.label')} extra={t('form.welcome.extra')}>
+          <Input.TextArea placeholder={t('form.welcome.placeholder')} maxLength={500} rows={2} />
         </Form.Item>
       </Form>
     </Modal>

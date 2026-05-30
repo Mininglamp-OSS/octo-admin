@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { Drawer, Descriptions, Tag, Button, Typography, Space, Popconfirm, Avatar, Upload, message } from 'antd'
 import { CopyOutlined, ReloadOutlined, CameraOutlined, LoadingOutlined, RobotOutlined } from '@ant-design/icons'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import {
   getAppBot,
   getSpaceAppBot,
@@ -23,10 +25,16 @@ interface Props {
   onAvatarUploaded?: (uid: string) => void
 }
 
-const STATUS_MAP: Record<AppBotStatus, { label: string; color: string }> = {
-  0: { label: '草稿', color: 'default' },
-  1: { label: '已上架', color: 'green' },
-  2: { label: '已下架', color: 'orange' },
+const STATUS_COLOR: Record<AppBotStatus, string> = {
+  0: 'default',
+  1: 'green',
+  2: 'orange',
+}
+
+const statusLabel = (t: TFunction, status: AppBotStatus): string => {
+  if (status === 1) return t('status.published')
+  if (status === 2) return t('status.unpublished')
+  return t('status.draft')
 }
 
 /** Check if token is a masked placeholder (e.g. "****abcd") */
@@ -55,6 +63,7 @@ async function copyToClipboard(text: string): Promise<void> {
 const TOKEN_AUTO_HIDE_MS = 30_000
 
 export default function DetailDrawer({ botId, spaceId, open, onClose, onAvatarUploaded }: Props) {
+  const { t } = useTranslation('appBots')
   const [bot, setBot] = useState<AppBot | null>(null)
   const [loading, setLoading] = useState(false)
   const [tokenVisible, setTokenVisible] = useState(false)
@@ -130,9 +139,9 @@ export default function DetailDrawer({ botId, spaceId, open, onClose, onAvatarUp
     if (!bot?.token || tokenMasked) return
     try {
       await copyToClipboard(bot.token)
-      message.success('Token copied')
+      message.success(t('detail.token.copied'))
     } catch {
-      message.error('复制失败')
+      message.error(t('detail.token.copyFailed'))
     }
   }
 
@@ -145,7 +154,7 @@ export default function DetailDrawer({ botId, spaceId, open, onClose, onAvatarUp
         : await rotateAppBotToken(botId)
       setBot((prev) => (prev ? { ...prev, token: resp.token } : prev))
       setTokenVisible(true)
-      message.success('Token 已轮换，旧 Token 立即失效')
+      message.success(t('detail.token.rotated'))
     } catch (err) {
       if (err instanceof Error) message.error(err.message)
     } finally {
@@ -160,33 +169,38 @@ export default function DetailDrawer({ botId, spaceId, open, onClose, onAvatarUp
       const token = tokenMasked ? await revealToken() : bot.token
       if (!token) return
       await copyToClipboard(
-        buildConnectGuide({
-          displayName: bot.display_name,
-          botId: bot.id,
-          token,
-        }),
+        buildConnectGuide(
+          {
+            displayName: bot.display_name,
+            botId: bot.id,
+            token,
+          },
+          t,
+        ),
       )
-      message.success('连接指南已复制')
+      message.success(t('detail.guide.copied'))
     } catch (err) {
       if (err instanceof Error) message.error(err.message)
-      else message.error('复制失败')
+      else message.error(t('detail.token.copyFailed'))
     } finally {
       setCopyingGuide(false)
     }
   }
 
-  const status = bot ? STATUS_MAP[bot.status] : null
   const connectGuide = bot
-    ? buildConnectGuide({
-      displayName: bot.display_name,
-      botId: bot.id,
-      token: tokenMasked ? '<在上方复制 Token>' : (bot.token || '<token>'),
-    })
+    ? buildConnectGuide(
+      {
+        displayName: bot.display_name,
+        botId: bot.id,
+        token: tokenMasked ? t('detail.guide.tokenPlaceholder') : (bot.token || '<token>'),
+      },
+      t,
+    )
     : ''
 
   return (
     <Drawer
-      title="App Bot 详情"
+      title={t('detail.title')}
       open={open}
       onClose={onClose}
       width={520}
@@ -203,7 +217,7 @@ export default function DetailDrawer({ botId, spaceId, open, onClose, onAvatarUp
                 setUploadingAvatar(true)
                 try {
                   await uploadAppBotAvatar(bot.uid, file as File)
-                  message.success('头像已更新')
+                  message.success(t('detail.avatar.toast.updated'))
                   setAvatarVersion(Date.now())
                   onAvatarUploaded?.(bot.uid)
                 } catch (err) {
@@ -217,7 +231,7 @@ export default function DetailDrawer({ botId, spaceId, open, onClose, onAvatarUp
             >
               <div
                 style={{ position: 'relative', display: 'inline-block', cursor: 'pointer' }}
-                title="点击上传头像"
+                title={t('detail.avatar.title')}
               >
                 <Avatar
                   src={botAvatarUrl(bot.uid, avatarVersion)}
@@ -243,26 +257,26 @@ export default function DetailDrawer({ botId, spaceId, open, onClose, onAvatarUp
                 </div>
               </div>
             </Upload>
-            <div style={{ fontSize: 12, color: '#999', marginTop: 6 }}>点击更换头像</div>
+            <div style={{ fontSize: 12, color: '#999', marginTop: 6 }}>{t('detail.avatar.hint')}</div>
           </div>
 
           <Descriptions column={1} size="small" bordered>
-            <Descriptions.Item label="ID">{bot.id}</Descriptions.Item>
-            <Descriptions.Item label="UID">{bot.uid}</Descriptions.Item>
-            <Descriptions.Item label="显示名称">{bot.display_name}</Descriptions.Item>
-            <Descriptions.Item label="描述">{bot.description || '—'}</Descriptions.Item>
-            <Descriptions.Item label="Scope">
-              {bot.scope === 'platform' ? '平台' : `Space: ${bot.space_id}`}
+            <Descriptions.Item label={t('detail.field.id')}>{bot.id}</Descriptions.Item>
+            <Descriptions.Item label={t('detail.field.uid')}>{bot.uid}</Descriptions.Item>
+            <Descriptions.Item label={t('detail.field.displayName')}>{bot.display_name}</Descriptions.Item>
+            <Descriptions.Item label={t('detail.field.description')}>{bot.description || '—'}</Descriptions.Item>
+            <Descriptions.Item label={t('detail.field.scope')}>
+              {bot.scope === 'platform' ? t('detail.scope.platform') : t('detail.scope.space', { spaceId: bot.space_id })}
             </Descriptions.Item>
-            <Descriptions.Item label="状态">
-              {status && <Tag color={status.color}>{status.label}</Tag>}
+            <Descriptions.Item label={t('detail.field.status')}>
+              <Tag color={STATUS_COLOR[bot.status]}>{statusLabel(t, bot.status)}</Tag>
             </Descriptions.Item>
-            <Descriptions.Item label="创建时间">{bot.created_at}</Descriptions.Item>
-            <Descriptions.Item label="更新时间">{bot.updated_at}</Descriptions.Item>
+            <Descriptions.Item label={t('detail.field.createdAt')}>{bot.created_at}</Descriptions.Item>
+            <Descriptions.Item label={t('detail.field.updatedAt')}>{bot.updated_at}</Descriptions.Item>
           </Descriptions>
 
           <div style={{ marginTop: 24 }}>
-            <Typography.Title level={5}>API Token</Typography.Title>
+            <Typography.Title level={5}>{t('detail.token.title')}</Typography.Title>
             <div
               style={{
                 padding: '12px 16px',
@@ -282,14 +296,14 @@ export default function DetailDrawer({ botId, spaceId, open, onClose, onAvatarUp
                   loading={revealing}
                   onClick={handleRevealToken}
                 >
-                  显示
+                  {t('detail.token.reveal')}
                 </Button>
               ) : (
                 <Button
                   size="small"
                   onClick={() => setTokenVisible((v) => !v)}
                 >
-                  {tokenVisible ? '隐藏' : '显示'}
+                  {tokenVisible ? t('detail.token.hide') : t('detail.token.show')}
                 </Button>
               )}
               <Button
@@ -298,14 +312,14 @@ export default function DetailDrawer({ botId, spaceId, open, onClose, onAvatarUp
                 onClick={handleCopyToken}
                 disabled={tokenMasked}
               >
-                复制
+                {t('detail.token.copy')}
               </Button>
               <Popconfirm
-                title="确认轮换 Token？"
-                description="旧 Token 将立即失效，已连接的 OpenClaw 实例会断开。"
+                title={t('detail.rotate.confirm.title')}
+                description={t('detail.rotate.confirm.desc')}
                 onConfirm={handleRotateToken}
-                okText="确认轮换"
-                cancelText="取消"
+                okText={t('detail.rotate.confirm.ok')}
+                cancelText={t('confirm.cancel')}
               >
                 <Button
                   size="small"
@@ -313,7 +327,7 @@ export default function DetailDrawer({ botId, spaceId, open, onClose, onAvatarUp
                   loading={rotating}
                   danger
                 >
-                  轮换
+                  {t('detail.token.rotate')}
                 </Button>
               </Popconfirm>
             </Space>
@@ -321,9 +335,9 @@ export default function DetailDrawer({ botId, spaceId, open, onClose, onAvatarUp
 
           {/* 连接指南 — 参考 botfather /connect 命令输出 */}
           <div style={{ marginTop: 24 }}>
-            <Typography.Title level={5}>🔌 连接指南</Typography.Title>
+            <Typography.Title level={5}>{t('detail.guide.title')}</Typography.Title>
             <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-              将以下内容发给 OpenClaw 执行，即可将此 Bot 绑定到 Agent：
+              {t('detail.guide.intro')}
             </Typography.Paragraph>
             <div
               style={{
@@ -346,11 +360,11 @@ export default function DetailDrawer({ botId, spaceId, open, onClose, onAvatarUp
                 loading={copyingGuide}
                 onClick={handleCopyGuide}
               >
-                复制指南
+                {t('detail.guide.copy')}
               </Button>
             </Space>
             <Typography.Paragraph type="secondary" style={{ marginTop: 8, fontSize: 12 }}>
-              如需绑定到其他 Agent，修改 --agent 参数即可。断开连接请在 BotFather 中发送 /disconnect。
+              {t('detail.guide.footer')}
             </Typography.Paragraph>
           </div>
         </>

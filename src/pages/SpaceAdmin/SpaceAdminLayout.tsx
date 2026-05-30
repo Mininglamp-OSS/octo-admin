@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Outlet, useNavigate, useParams, useLocation } from 'react-router-dom'
 import {
   Layout,
@@ -42,20 +43,20 @@ const themeIcon: Record<Theme, React.ReactNode> = {
   auto: <DesktopOutlined />,
 }
 
-const themeLabel: Record<Theme, string> = {
-  light: '浅色',
-  dark: '深色',
-  auto: '跟随系统',
+const themeLabelKey: Record<Theme, string> = {
+  light: 'theme.light',
+  dark: 'theme.dark',
+  auto: 'theme.auto',
 }
 
 const BASE_TAB_KEYS = ['members', 'invites', 'join-applies'] as const
 type TabKey = (typeof BASE_TAB_KEYS)[number] | 'app-bots'
 
-const TAB_LABEL: Record<TabKey, string> = {
-  members: '成员',
-  invites: '邀请码',
-  'join-applies': '加入申请',
-  'app-bots': '应用 Bot',
+const TAB_LABEL_KEY: Record<TabKey, string> = {
+  members: 'tab.members',
+  invites: 'tab.invites',
+  'join-applies': 'tab.joinApplies',
+  'app-bots': 'tab.appBots',
 }
 
 function currentTabFromPath(pathname: string, visible: readonly TabKey[]): TabKey {
@@ -64,6 +65,7 @@ function currentTabFromPath(pathname: string, visible: readonly TabKey[]): TabKe
 }
 
 export default function SpaceAdminLayout() {
+  const { t } = useTranslation('spaceAdmin')
   const navigate = useNavigate()
   const location = useLocation()
   const { spaceId } = useParams<{ spaceId: string }>()
@@ -118,7 +120,7 @@ export default function SpaceAdminLayout() {
         ),
       )
     }
-    message.success('已保存')
+    message.success(t('toast.saved'))
   }
 
   // 每次挂载/spaceId 变化时强拉 /space/my,校验权限,防止 mySpaces 过期显示已退出的空间
@@ -164,11 +166,11 @@ export default function SpaceAdminLayout() {
   const canvas = isDark ? '#0b0d12' : '#f7f8fa'
   const textPrimary = isDark ? '#e6e8ec' : '#0f172a'
 
-  const themeMenu: MenuProps['items'] = (['light', 'dark', 'auto'] as Theme[]).map((t) => ({
-    key: t,
-    icon: themeIcon[t],
-    label: themeLabel[t],
-    onClick: () => setTheme(t),
+  const themeMenu: MenuProps['items'] = (['light', 'dark', 'auto'] as Theme[]).map((th) => ({
+    key: th,
+    icon: themeIcon[th],
+    label: t(themeLabelKey[th]),
+    onClick: () => setTheme(th),
   }))
 
   const activeTab = currentTabFromPath(location.pathname, visibleTabKeys)
@@ -178,12 +180,12 @@ export default function SpaceAdminLayout() {
       <Layout className="admin-shell" style={{ minHeight: '100vh', background: canvas }}>
         <Content style={{ padding: 40 }}>
           <div style={{ maxWidth: 480, margin: '80px auto', textAlign: 'center' }}>
-            <h2 style={{ color: textPrimary }}>暂无可管理的空间</h2>
+            <h2 style={{ color: textPrimary }}>{t('empty.title')}</h2>
             <p style={{ color: 'var(--a-text-tertiary)' }}>
-              你还不是任何空间的管理员或拥有者。请联系空间管理员邀请你，或先回到应用继续使用。
+              {t('empty.desc')}
             </p>
             <a onClick={handleLogout} style={{ color: 'var(--a-brand)' }}>
-              退出登录
+              {t('empty.logout')}
             </a>
           </div>
         </Content>
@@ -207,10 +209,10 @@ export default function SpaceAdminLayout() {
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {window.history.length > 1 && (
-            <Tooltip title="返回应用">
+            <Tooltip title={t('header.back.tooltip')}>
               <button
                 className="admin-header-action"
-                aria-label="返回"
+                aria-label={t('header.back.aria')}
                 onClick={() => window.history.back()}
               >
                 <ArrowLeftOutlined style={{ fontSize: 16 }} />
@@ -234,7 +236,7 @@ export default function SpaceAdminLayout() {
             O
           </div>
           <span style={{ fontSize: 15, fontWeight: 600, color: textPrimary }}>
-            空间管理
+            {t('header.title')}
           </span>
         </div>
         <SpaceSwitcher />
@@ -245,8 +247,8 @@ export default function SpaceAdminLayout() {
             trigger={['click']}
             placement="bottomRight"
           >
-            <Tooltip title={`主题：${themeLabel[theme]}`}>
-              <button className="admin-header-action" aria-label="主题">
+            <Tooltip title={t('header.theme.tooltip', { label: t(themeLabelKey[theme]) })}>
+              <button className="admin-header-action" aria-label={t('header.theme.aria')}>
                 <span style={{ fontSize: 18 }}>{themeIcon[theme]}</span>
               </button>
             </Tooltip>
@@ -258,7 +260,7 @@ export default function SpaceAdminLayout() {
                 {
                   key: 'logout',
                   icon: <LogoutOutlined />,
-                  label: '退出登录',
+                  label: t('menu.logout'),
                   onClick: handleLogout,
                 },
               ],
@@ -287,7 +289,7 @@ export default function SpaceAdminLayout() {
                 {name ? name.trim().charAt(0) : null}
               </Avatar>
               <span style={{ fontWeight: 500, color: textPrimary, fontSize: 13 }}>
-                {name || '空间管理员'}
+                {name || t('header.defaultAdminName')}
               </span>
             </div>
           </Dropdown>
@@ -315,14 +317,14 @@ export default function SpaceAdminLayout() {
                 bordered={false}
                 style={{ margin: 0 }}
               >
-                {detail.join_mode === 0 ? '直接加入' : '需审批'}
+                {detail.join_mode === 0 ? t('joinMode.direct') : t('joinMode.approval')}
               </Tag>
               <span className="meta-sep" aria-hidden />
               <span>
-                <span className="meta-label">成员</span>
+                <span className="meta-label">{t('meta.members')}</span>
                 <span className="cell-primary">{detail.member_count}</span>
                 <span style={{ color: 'var(--a-text-tertiary)' }}>
-                  {detail.max_users > 0 ? ` / ${detail.max_users}` : ' / 不限'}
+                  {detail.max_users > 0 ? ` / ${detail.max_users}` : ` / ${t('meta.unlimited')}`}
                 </span>
               </span>
               {detail.description && (
@@ -351,7 +353,7 @@ export default function SpaceAdminLayout() {
               items={[
                 {
                   key: 'info',
-                  label: <span style={{ color: 'var(--a-text-tertiary)' }}>空间信息</span>,
+                  label: <span style={{ color: 'var(--a-text-tertiary)' }}>{t('info.title')}</span>,
                   children: (
                     <Descriptions
                       size="small"
@@ -366,16 +368,17 @@ export default function SpaceAdminLayout() {
                       }}
                       contentStyle={{ fontSize: 13, padding: '6px 0' }}
                     >
-                      <Descriptions.Item label="名称">
+                      <Descriptions.Item label={t('field.name')}>
                         <InlineEditField
                           kind="text"
                           value={detail.name}
                           readOnly={!canEdit}
                           maxLength={NAME_MAX}
                           validate={(v) => {
-                            const t = String(v).trim()
-                            if (!t) return '空间名称不能为空'
-                            if (runeCount(t) > NAME_MAX) return `空间名称不能超过 ${NAME_MAX} 个字符`
+                            const trimmed = String(v).trim()
+                            if (!trimmed) return t('validate.nameRequired')
+                            if (runeCount(trimmed) > NAME_MAX)
+                              return t('validate.nameTooLong', { max: NAME_MAX })
                             return null
                           }}
                           onSave={(v) =>
@@ -383,21 +386,21 @@ export default function SpaceAdminLayout() {
                           }
                         />
                       </Descriptions.Item>
-                      <Descriptions.Item label="加入方式">
+                      <Descriptions.Item label={t('field.joinMode')}>
                         <InlineEditField
                           kind="select"
                           value={detail.join_mode}
                           readOnly={!canEdit}
                           display={
                             detail.join_mode === 0 ? (
-                              <span className="pill-outline neutral">直接加入</span>
+                              <span className="pill-outline neutral">{t('joinMode.direct')}</span>
                             ) : (
-                              <span className="pill-outline warning">需审批</span>
+                              <span className="pill-outline warning">{t('joinMode.approval')}</span>
                             )
                           }
                           options={[
-                            { value: 0, label: '直接加入' },
-                            { value: 1, label: '需审批' },
+                            { value: 0, label: t('joinMode.direct') },
+                            { value: 1, label: t('joinMode.approval') },
                           ]}
                           onSave={(v) => {
                             const jm = (Number(v) === 1 ? 1 : 0) as 0 | 1
@@ -408,17 +411,17 @@ export default function SpaceAdminLayout() {
                           }}
                         />
                       </Descriptions.Item>
-                      <Descriptions.Item label="Logo" span={2}>
+                      <Descriptions.Item label={t('field.logo')} span={2}>
                         <InlineEditField
                           kind="text"
                           value={detail.logo}
                           readOnly={!canEdit}
                           maxLength={LOGO_MAX}
-                          placeholder="https://..."
-                          emptyText="未设置"
+                          placeholder={t('field.logo.placeholder')}
+                          emptyText={t('field.logo.empty')}
                           validate={(v) =>
                             runeCount(String(v)) > LOGO_MAX
-                              ? `Logo 不能超过 ${LOGO_MAX} 个字符`
+                              ? t('validate.logoTooLong', { max: LOGO_MAX })
                               : null
                           }
                           onSave={(v) =>
@@ -426,17 +429,17 @@ export default function SpaceAdminLayout() {
                           }
                         />
                       </Descriptions.Item>
-                      <Descriptions.Item label="简介" span={2}>
+                      <Descriptions.Item label={t('field.description')} span={2}>
                         <InlineEditField
                           kind="textarea"
                           value={detail.description}
                           readOnly={!canEdit}
                           maxLength={DESC_MAX}
                           rows={3}
-                          emptyText="未填写"
+                          emptyText={t('field.description.empty')}
                           validate={(v) =>
                             runeCount(String(v).trim()) > DESC_MAX
-                              ? `空间描述不能超过 ${DESC_MAX} 个字符`
+                              ? t('validate.descriptionTooLong', { max: DESC_MAX })
                               : null
                           }
                           onSave={(v) =>
@@ -456,7 +459,7 @@ export default function SpaceAdminLayout() {
             <Tabs
               activeKey={activeTab}
               onChange={(k) => navigate(`/space/${spaceId}/${k}`)}
-              items={visibleTabKeys.map((k) => ({ key: k, label: TAB_LABEL[k] }))}
+              items={visibleTabKeys.map((k) => ({ key: k, label: t(TAB_LABEL_KEY[k]) }))}
               destroyInactiveTabPane
               tabBarStyle={{ marginBottom: 16 }}
             />

@@ -1,14 +1,16 @@
 import { Select, Tag } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '../../store/auth'
 import { useNavigate } from 'react-router-dom'
 
-const ROLE_LABEL: Record<0 | 1 | 2, { text: string; color: string }> = {
-  0: { text: '成员', color: 'default' },
-  1: { text: '管理员', color: 'gold' },
-  2: { text: '拥有者', color: 'geekblue' },
+const ROLE_META: Record<0 | 1 | 2, { key: string; color: string }> = {
+  0: { key: 'role.member', color: 'default' },
+  1: { key: 'role.admin', color: 'gold' },
+  2: { key: 'role.owner', color: 'geekblue' },
 }
 
 export default function SpaceSwitcher() {
+  const { t } = useTranslation('spaceAdmin')
   const mySpaces = useAuthStore((s) => s.mySpaces)
   const currentSpaceId = useAuthStore((s) => s.currentSpaceId)
   const setCurrentSpaceId = useAuthStore((s) => s.setCurrentSpaceId)
@@ -28,8 +30,8 @@ export default function SpaceSwitcher() {
         >
           {s.name}
         </span>
-        <Tag color={ROLE_LABEL[s.role].color} style={{ margin: 0 }}>
-          {ROLE_LABEL[s.role].text}
+        <Tag color={ROLE_META[s.role].color} style={{ margin: 0 }}>
+          {t(ROLE_META[s.role].key)}
         </Tag>
       </span>
     ),
@@ -44,7 +46,7 @@ export default function SpaceSwitcher() {
       }}
       options={options}
       style={{ minWidth: 240 }}
-      placeholder="选择空间"
+      placeholder={t('switcher.placeholder')}
       variant="filled"
     />
   )

@@ -21,6 +21,7 @@ import {
   ApiOutlined,
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
+import { useTranslation } from 'react-i18next'
 import api from '../../api'
 
 interface AppVersion {
@@ -74,6 +75,7 @@ function formatUrl(url: string): string {
 }
 
 export default function Download() {
+  const { t } = useTranslation(['download', 'common'])
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<AppVersion[]>([])
   const [total, setTotal] = useState(0)
@@ -142,10 +144,10 @@ export default function Download() {
     try {
       if (editingId) {
         await api.put(`/v1/manager/download/versions/${editingId}`, payload)
-        message.success('更新成功')
+        message.success(t('toast.updateSuccess'))
       } else {
         await api.post('/v1/common/appversion', payload)
-        message.success('添加成功')
+        message.success(t('toast.addSuccess'))
       }
       setModalVisible(false)
       fetchData()
@@ -156,14 +158,14 @@ export default function Download() {
 
   const columns: ColumnsType<AppVersion> = [
     {
-      title: '版本号',
+      title: t('column.appVersion'),
       dataIndex: 'app_version',
       key: 'app_version',
       width: 140,
       render: (v) => <span className="cell-primary mono">{v}</span>,
     },
     {
-      title: '平台',
+      title: t('column.platform'),
       dataIndex: 'os',
       key: 'os',
       width: 120,
@@ -178,20 +180,20 @@ export default function Download() {
       },
     },
     {
-      title: '强制更新',
+      title: t('column.isForce'),
       dataIndex: 'is_force',
       key: 'is_force',
       width: 100,
       align: 'center',
       render: (v) =>
         v === 1 ? (
-          <span className="pill-outline danger">强制</span>
+          <span className="pill-outline danger">{t('tag.force')}</span>
         ) : (
           <span style={{ color: 'var(--a-text-quaternary)' }}>—</span>
         ),
     },
     {
-      title: '更新说明',
+      title: t('column.updateDesc'),
       dataIndex: 'update_desc',
       key: 'update_desc',
       ellipsis: true,
@@ -202,7 +204,7 @@ export default function Download() {
       ),
     },
     {
-      title: '下载地址',
+      title: t('column.downloadUrl'),
       dataIndex: 'download_url',
       key: 'download_url',
       width: 260,
@@ -226,14 +228,14 @@ export default function Download() {
         ),
     },
     {
-      title: '创建时间',
+      title: t('column.createdAt'),
       dataIndex: 'created_at',
       key: 'created_at',
       width: 170,
       render: (t) => <span style={{ color: 'var(--a-text-tertiary)' }}>{t}</span>,
     },
     {
-      title: '操作',
+      title: t('column.action'),
       key: 'action',
       width: 80,
       align: 'right',
@@ -245,7 +247,7 @@ export default function Download() {
             icon={<EditOutlined />}
             onClick={() => handleEdit(record)}
           >
-            编辑
+            {t('action.edit')}
           </Button>
         </div>
       ),
@@ -254,21 +256,21 @@ export default function Download() {
 
   return (
     <div>
-      <h1 className="page-title">下载配置</h1>
-      <p className="page-subtitle">管理客户端版本、渠道与灰度</p>
+      <h1 className="page-title">{t('title')}</h1>
+      <p className="page-subtitle">{t('subtitle')}</p>
       <div className="toolbar">
         <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
-          添加版本
+          {t('action.addVersion')}
         </Button>
         <Select
           value={platformFilter}
           onChange={setPlatformFilter}
           style={{ width: 140 }}
           options={[
-            { value: 'all', label: '全部平台' },
+            { value: 'all', label: t('filter.platform.all') },
             { value: 'ios', label: 'iOS' },
             { value: 'android', label: 'Android' },
-            { value: 'web', label: 'Web / 桌面' },
+            { value: 'web', label: t('filter.platform.webDesktop') },
             { value: 'openclaw-plugin', label: 'OpenClaw' },
           ]}
         />
@@ -277,14 +279,14 @@ export default function Download() {
           onChange={setForceFilter}
           style={{ width: 140 }}
           options={[
-            { value: 'all', label: '全部更新' },
-            { value: 'yes', label: '强制更新' },
-            { value: 'no', label: '非强制' },
+            { value: 'all', label: t('filter.force.all') },
+            { value: 'yes', label: t('filter.force.yes') },
+            { value: 'no', label: t('filter.force.no') },
           ]}
         />
         <div className="toolbar-spacer" />
         <Button icon={<ReloadOutlined />} onClick={fetchData}>
-          刷新
+          {t('common:action.refresh')}
         </Button>
       </div>
       <Table
@@ -300,32 +302,32 @@ export default function Download() {
           pageSizeOptions: [20, 50, 100],
           showSizeChanger: true,
           onChange: setPage,
-          showTotal: (t) => `共 ${t} 条`,
+          showTotal: (count) => t('common:table.total', { count }),
         }}
       />
 
       <Modal
-        title={editingId ? '编辑版本' : '添加版本'}
+        title={editingId ? t('modal.editTitle') : t('modal.addTitle')}
         open={modalVisible}
         onOk={handleSubmit}
         onCancel={() => setModalVisible(false)}
-        okText="保存"
-        cancelText="取消"
+        okText={t('modal.okText')}
+        cancelText={t('modal.cancelText')}
       >
         <Form form={form} layout="vertical">
-          <Form.Item name="os" label="平台" rules={[{ required: true }]}>
+          <Form.Item name="os" label={t('form.platform')} rules={[{ required: true }]}>
             <Select options={osOptions} />
           </Form.Item>
-          <Form.Item name="app_version" label="版本号" rules={[{ required: true }]}>
+          <Form.Item name="app_version" label={t('form.appVersion')} rules={[{ required: true }]}>
             <Input placeholder="1.0.0" />
           </Form.Item>
-          <Form.Item name="download_url" label="下载地址" rules={[{ required: true }]}>
-            <Input placeholder="https://example.com/app.apk" />
+          <Form.Item name="download_url" label={t('form.downloadUrl')} rules={[{ required: true }]}>
+            <Input placeholder={t('form.downloadUrlPlaceholder')} />
           </Form.Item>
-          <Form.Item name="update_desc" label="更新说明">
-            <Input.TextArea rows={3} placeholder="本次更新内容..." />
+          <Form.Item name="update_desc" label={t('form.updateDesc')}>
+            <Input.TextArea rows={3} placeholder={t('form.updateDescPlaceholder')} />
           </Form.Item>
-          <Form.Item name="is_force" label="强制更新" valuePropName="checked">
+          <Form.Item name="is_force" label={t('form.isForce')} valuePropName="checked">
             <Switch />
           </Form.Item>
         </Form>

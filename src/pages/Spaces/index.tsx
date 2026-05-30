@@ -15,6 +15,7 @@ import {
   message,
 } from 'antd'
 import { PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons'
+import { useTranslation } from 'react-i18next'
 import type { ColumnsType } from 'antd/es/table'
 import api from '../../api'
 import {
@@ -46,13 +47,14 @@ type TabKey = 'active' | 'disabled'
 
 const PAGE_SIZE = 20
 
-const STATUS_META: Record<SpaceStatus, { text: string; tone: 'online' | 'destroyed' | 'banned' }> = {
-  0: { text: '已解散', tone: 'destroyed' },
-  1: { text: '正常', tone: 'online' },
-  2: { text: '已封禁', tone: 'banned' },
+const STATUS_META: Record<SpaceStatus, { textKey: string; tone: 'online' | 'destroyed' | 'banned' }> = {
+  0: { textKey: 'status.dissolved', tone: 'destroyed' },
+  1: { textKey: 'status.normal', tone: 'online' },
+  2: { textKey: 'status.banned', tone: 'banned' },
 }
 
 export default function Spaces() {
+  const { t } = useTranslation(['spaces', 'common'])
   const [tab, setTab] = useState<TabKey>('active')
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<SpaceItem[]>([])
@@ -146,13 +148,13 @@ export default function Spaces() {
 
   const handleBan = (space: SpaceItem) => {
     Modal.confirm({
-      title: `确认封禁空间「${space.name}」？`,
-      content: '封禁后该空间将进入封禁列表，可在封禁列表中解禁。',
+      title: t('ban.title', { name: space.name }),
+      content: t('ban.content'),
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
           await updateSpaceStatus(space.space_id, 2)
-          message.success('已封禁')
+          message.success(t('ban.success'))
           fetchData()
         } catch (error) {
           message.error((error as Error).message)
@@ -163,11 +165,11 @@ export default function Spaces() {
 
   const handleUnban = (space: SpaceItem) => {
     Modal.confirm({
-      title: `确认解禁空间「${space.name}」？`,
+      title: t('unban.title', { name: space.name }),
       onOk: async () => {
         try {
           await updateSpaceStatus(space.space_id, 1)
-          message.success('已解禁')
+          message.success(t('unban.success'))
           fetchData()
         } catch (error) {
           message.error((error as Error).message)
@@ -178,14 +180,14 @@ export default function Spaces() {
 
   const handleDissolve = (space: SpaceItem) => {
     Modal.confirm({
-      title: `确认强制解散「${space.name}」？`,
-      content: '该操作不可撤销。所有成员将被置为已移除状态。',
+      title: t('dissolve.title', { name: space.name }),
+      content: t('dissolve.content'),
       okButtonProps: { danger: true },
-      okText: '强制解散',
+      okText: t('dissolve.ok'),
       onOk: async () => {
         try {
           await dissolveSpace(space.space_id)
-          message.success('已解散')
+          message.success(t('dissolve.success'))
           fetchData()
         } catch (error) {
           message.error((error as Error).message)
@@ -206,11 +208,11 @@ export default function Spaces() {
       try {
         const parsed = JSON.parse(preset)
         if (!Array.isArray(parsed) || parsed.some((v) => typeof v !== 'string')) {
-          message.error('预设群组必须是字符串数组 JSON，如 ["g1","g2"]')
+          message.error(t('create.presetInvalid'))
           return
         }
       } catch {
-        message.error('预设群组 JSON 格式错误')
+        message.error(t('create.presetJsonError'))
         return
       }
     }
@@ -227,8 +229,8 @@ export default function Spaces() {
       })
       message.success(
         resp.invite_code
-          ? `创建成功，邀请码：${resp.invite_code}`
-          : '创建成功',
+          ? t('create.successWithCode', { code: resp.invite_code })
+          : t('create.success'),
       )
       setCreateOpen(false)
       createForm.resetFields()
@@ -247,7 +249,7 @@ export default function Spaces() {
 
   const columns: ColumnsType<SpaceItem> = [
     {
-      title: 'Space 名称',
+      title: t('column.name'),
       dataIndex: 'name',
       key: 'name',
       render: (name, record) => (
@@ -257,7 +259,7 @@ export default function Spaces() {
       ),
     },
     {
-      title: 'Space ID',
+      title: t('column.spaceId'),
       dataIndex: 'space_id',
       key: 'space_id',
       width: 220,
@@ -275,7 +277,7 @@ export default function Spaces() {
       ),
     },
     {
-      title: '创建者',
+      title: t('column.creator'),
       dataIndex: 'creator_name',
       key: 'creator_name',
       width: 180,
@@ -291,65 +293,65 @@ export default function Spaces() {
       ),
     },
     {
-      title: '成员数',
+      title: t('column.memberCount'),
       dataIndex: 'member_count',
       key: 'member_count',
       width: 90,
       render: (n) => <span className="cell-primary">{n}</span>,
     },
     {
-      title: '加入方式',
+      title: t('column.joinMode'),
       dataIndex: 'join_mode',
       key: 'join_mode',
       width: 110,
       render: (m: number) =>
         m === 0 ? (
-          <span className="pill-outline neutral">直接加入</span>
+          <span className="pill-outline neutral">{t('joinMode.direct')}</span>
         ) : (
-          <span className="pill-outline warning">需审批</span>
+          <span className="pill-outline warning">{t('joinMode.approval')}</span>
         ),
     },
     {
-      title: '状态',
+      title: t('column.status'),
       dataIndex: 'status',
       key: 'status',
       width: 100,
       render: (status: SpaceStatus) => {
         const meta = STATUS_META[status]
-        return <span className={`pill-dot ${meta.tone}`}>{meta.text}</span>
+        return <span className={`pill-dot ${meta.tone}`}>{t(meta.textKey)}</span>
       },
     },
-    { title: '创建时间', dataIndex: 'created_at', key: 'created_at', width: 170 },
+    { title: t('column.createdAt'), dataIndex: 'created_at', key: 'created_at', width: 170 },
     {
-      title: '操作',
+      title: t('column.action'),
       key: 'action',
       width: 280,
       align: 'right',
       render: (_, record) => (
         <div className="row-actions" style={{ display: 'inline-flex', gap: 4 }}>
           <Button size="small" className="btn-row-edit" onClick={() => openDetail(record.space_id)}>
-            详情
+            {t('action.detail')}
           </Button>
           <Button
             size="small"
             className="btn-row-edit"
             onClick={() => openDetail(record.space_id, 'invites')}
           >
-            邀请码
+            {t('action.inviteCode')}
           </Button>
           {record.status === 1 && (
             <>
               <Button size="small" danger onClick={() => handleBan(record)}>
-                封禁
+                {t('action.ban')}
               </Button>
               <Button size="small" danger onClick={() => handleDissolve(record)}>
-                解散
+                {t('action.dissolve')}
               </Button>
             </>
           )}
           {record.status === 2 && (
             <Button size="small" type="primary" ghost onClick={() => handleUnban(record)}>
-              解禁
+              {t('action.unban')}
             </Button>
           )}
         </div>
@@ -359,21 +361,21 @@ export default function Spaces() {
 
   return (
     <div>
-      <h1 className="page-title">Space 管理</h1>
-      <p className="page-subtitle">查看与管理团队空间：成员、邀请码、加入申请</p>
+      <h1 className="page-title">{t('title')}</h1>
+      <p className="page-subtitle">{t('subtitle')}</p>
 
       <Tabs
         activeKey={tab}
         onChange={(k) => setTab(k as TabKey)}
         items={[
-          { key: 'active', label: '活跃空间' },
-          { key: 'disabled', label: '已解散 / 已封禁' },
+          { key: 'active', label: t('tab.active') },
+          { key: 'disabled', label: t('tab.disabled') },
         ]}
       />
 
       <div className="toolbar">
         <Input
-          placeholder="搜索 Space 名称"
+          placeholder={t('search.placeholder')}
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
           onPressEnter={handleSearch}
@@ -381,10 +383,10 @@ export default function Spaces() {
           allowClear
         />
         <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
-          搜索
+          {t('common:action.search')}
         </Button>
         <Button icon={<ReloadOutlined />} onClick={() => fetchData()}>
-          刷新
+          {t('common:action.refresh')}
         </Button>
         <div className="toolbar-spacer" />
         <Button
@@ -396,7 +398,7 @@ export default function Spaces() {
             searchUsers('')
           }}
         >
-          创建空间
+          {t('action.create')}
         </Button>
       </div>
 
@@ -416,7 +418,7 @@ export default function Spaces() {
             setPage(p)
             fetchData(tab, p, keyword)
           },
-          showTotal: (t) => `共 ${t} 条`,
+          showTotal: (count) => t('common:table.total', { count }),
         }}
       />
 
@@ -429,12 +431,12 @@ export default function Spaces() {
       />
 
       <Modal
-        title="创建空间"
+        title={t('create.title')}
         open={createOpen}
         onOk={handleCreate}
         onCancel={() => setCreateOpen(false)}
         confirmLoading={createLoading}
-        okText="创建"
+        okText={t('create.ok')}
         destroyOnClose
       >
         <Form
@@ -445,13 +447,13 @@ export default function Spaces() {
         >
           <Form.Item
             name="creator_uid"
-            label="拥有者"
-            rules={[{ required: true, message: '请选择拥有者' }]}
-            extra="管理员代建，该用户将成为空间拥有者"
+            label={t('create.field.owner')}
+            rules={[{ required: true, message: t('create.field.ownerRequired') }]}
+            extra={t('create.field.ownerExtra')}
           >
             <Select
               showSearch
-              placeholder="按昵称 / 用户名 / UID / Email / 手机号搜索"
+              placeholder={t('create.field.ownerPlaceholder')}
               filterOption={false}
               onSearch={(v) => searchUsers(v.trim())}
               notFoundContent={userSearching ? <Spin size="small" /> : null}
@@ -466,37 +468,37 @@ export default function Spaces() {
           </Form.Item>
           <Form.Item
             name="name"
-            label="空间名称"
-            rules={[{ required: true, message: '请输入空间名称' }]}
+            label={t('create.field.name')}
+            rules={[{ required: true, message: t('create.field.nameRequired') }]}
           >
-            <Input placeholder="例如：产品研发团队" maxLength={60} />
+            <Input placeholder={t('create.field.namePlaceholder')} maxLength={60} />
           </Form.Item>
-          <Form.Item name="description" label="空间描述">
+          <Form.Item name="description" label={t('create.field.description')}>
             <Input.TextArea rows={2} maxLength={200} showCount />
           </Form.Item>
-          <Form.Item name="logo" label="Logo URL">
+          <Form.Item name="logo" label={t('create.field.logo')}>
             <Input placeholder="https://..." />
           </Form.Item>
-          <Form.Item name="join_mode" label="加入方式">
+          <Form.Item name="join_mode" label={t('create.field.joinMode')}>
             <Radio.Group>
-              <Radio value={0}>直接加入</Radio>
-              <Radio value={1}>需审批</Radio>
+              <Radio value={0}>{t('joinMode.direct')}</Radio>
+              <Radio value={1}>{t('joinMode.approval')}</Radio>
             </Radio.Group>
           </Form.Item>
           <Form.Item
             name="max_users"
-            label="人数上限"
-            extra={`0 表示不限；上限 ${MAX_USERS_HARD_CAP}`}
+            label={t('create.field.maxUsers')}
+            extra={t('create.field.maxUsersExtra', { cap: MAX_USERS_HARD_CAP })}
             rules={[
               {
                 validator: (_, value: number | undefined) => {
                   if (value === undefined || value === null) return Promise.resolve()
                   if (!Number.isInteger(value) || value < 0) {
-                    return Promise.reject(new Error('人数上限必须为非负整数'))
+                    return Promise.reject(new Error(t('create.field.maxUsersInvalid')))
                   }
                   if (value > MAX_USERS_HARD_CAP) {
                     return Promise.reject(
-                      new Error(`人数上限不能超过 ${MAX_USERS_HARD_CAP}`),
+                      new Error(t('create.field.maxUsersExceed', { cap: MAX_USERS_HARD_CAP })),
                     )
                   }
                   return Promise.resolve()
@@ -516,8 +518,8 @@ export default function Spaces() {
           </Form.Item>
           <Form.Item
             name="preset_group_ids"
-            label="预设群组（可选）"
-            extra={'JSON 数组字符串，例如 ["g1","g2"]'}
+            label={t('create.field.presetGroups')}
+            extra={t('create.field.presetGroupsExtra')}
           >
             <Input.TextArea rows={2} placeholder='["g1","g2"]' />
           </Form.Item>

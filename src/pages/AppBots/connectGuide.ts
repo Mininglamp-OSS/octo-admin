@@ -1,3 +1,5 @@
+import type { TFunction } from 'i18next'
+
 interface BuildConnectGuideParams {
   displayName: string
   botId: string
@@ -10,18 +12,18 @@ export function getBotApiUrl(): string {
   return import.meta.env.VITE_BOT_API_URL || window.location.origin
 }
 
-export function buildConnectCommand({
-  botId,
-  token,
-  apiUrl = getBotApiUrl(),
-}: BuildConnectGuideParams): string {
-  return `npx -y openclaw-channel-dmwork bind --bot-token ${token} --api-url ${apiUrl} --account-id ${botId} --agent <agent标识>`
+export function buildConnectCommand(
+  { botId, token, apiUrl = getBotApiUrl() }: BuildConnectGuideParams,
+  t: TFunction,
+): string {
+  const agent = t('appBots:detail.guide.agentPlaceholder')
+  return `npx -y openclaw-channel-dmwork bind --bot-token ${token} --api-url ${apiUrl} --account-id ${botId} --agent <${agent}>`
 }
 
-export function buildConnectGuide(params: BuildConnectGuideParams): string {
-  return `将 Octo bot ${params.displayName} 绑定到 Agent。
-默认绑定到当前 Session 的 Agent，agent 标识通过 /status 查看。
-如果用户指定了其他 Agent，使用用户指定的标识替换。
+export function buildConnectGuide(params: BuildConnectGuideParams, t: TFunction): string {
+  return `${t('appBots:detail.guide.body.line1', { name: params.displayName })}
+${t('appBots:detail.guide.body.line2')}
+${t('appBots:detail.guide.body.line3')}
 
-${buildConnectCommand(params)}`
+${buildConnectCommand(params, t)}`
 }

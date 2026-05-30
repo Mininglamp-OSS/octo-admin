@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Typography, Tooltip, message } from 'antd'
+import { useTranslation } from 'react-i18next'
 import InlineEditField from './InlineEditField'
 import {
   MAX_USERS_HARD_CAP,
@@ -14,10 +15,10 @@ const NAME_MAX = 100
 const DESC_MAX = 500
 const LOGO_MAX = 200
 
-const STATUS_META: Record<SpaceStatus, { text: string; tone: 'online' | 'destroyed' | 'banned' }> = {
-  0: { text: '已解散', tone: 'destroyed' },
-  1: { text: '正常', tone: 'online' },
-  2: { text: '已封禁', tone: 'banned' },
+const STATUS_META: Record<SpaceStatus, { textKey: string; tone: 'online' | 'destroyed' | 'banned' }> = {
+  0: { textKey: 'info.status.dissolved', tone: 'destroyed' },
+  1: { textKey: 'info.status.normal', tone: 'online' },
+  2: { textKey: 'info.status.banned', tone: 'banned' },
 }
 
 function runeCount(s: string): number {
@@ -46,6 +47,7 @@ function Field({ label, children, span = 1 }: FieldProps) {
 }
 
 export default function SpaceInfoPanel({ space, onSpaceChange, onUpdated }: Props) {
+  const { t } = useTranslation('spaces')
   const editable = space.status === 1
   const [logoBroken, setLogoBroken] = useState(false)
 
@@ -54,7 +56,7 @@ export default function SpaceInfoPanel({ space, onSpaceChange, onUpdated }: Prop
       [field]: value,
     } as Parameters<typeof updateSpaceProfile>[1])
     onSpaceChange({ ...space, [field]: value })
-    message.success('已保存')
+    message.success(t('info.saved'))
     onUpdated?.()
   }
 
@@ -64,7 +66,7 @@ export default function SpaceInfoPanel({ space, onSpaceChange, onUpdated }: Prop
     <div className="space-info-card">
       <div className="space-info-header">
         <div className="space-info-header-main">
-          <span className={`pill-dot ${statusMeta.tone}`}>{statusMeta.text}</span>
+          <span className={`pill-dot ${statusMeta.tone}`}>{t(statusMeta.textKey)}</span>
           <Typography.Text
             copyable={{ text: space.space_id }}
             className="mono space-info-id"
@@ -75,7 +77,7 @@ export default function SpaceInfoPanel({ space, onSpaceChange, onUpdated }: Prop
       </div>
 
       <div className="space-info-grid">
-        <Field label="Logo" span={2}>
+        <Field label={t('info.field.logo')} span={2}>
           <div className="space-info-logo-row">
             {space.logo && !logoBroken ? (
               <img
@@ -96,10 +98,10 @@ export default function SpaceInfoPanel({ space, onSpaceChange, onUpdated }: Prop
                 readOnly={!editable}
                 maxLength={LOGO_MAX}
                 placeholder="https://..."
-                emptyText="未设置"
+                emptyText={t('info.logo.empty')}
                 validate={(v) =>
                   runeCount(String(v)) > LOGO_MAX
-                    ? `Logo 不能超过 ${LOGO_MAX} 个字符`
+                    ? t('info.logo.exceed', { max: LOGO_MAX })
                     : null
                 }
                 onSave={(v) => {
@@ -111,44 +113,44 @@ export default function SpaceInfoPanel({ space, onSpaceChange, onUpdated }: Prop
           </div>
         </Field>
 
-        <Field label="名称">
+        <Field label={t('info.field.name')}>
           <InlineEditField
             kind="text"
             value={space.name}
             readOnly={!editable}
             maxLength={NAME_MAX}
-            placeholder="空间名称"
+            placeholder={t('info.name.placeholder')}
             validate={(v) => {
-              const t = String(v).trim()
-              if (!t) return '空间名称不能为空'
-              if (runeCount(t) > NAME_MAX) return `空间名称不能超过 ${NAME_MAX} 个字符`
+              const trimmed = String(v).trim()
+              if (!trimmed) return t('info.name.empty')
+              if (runeCount(trimmed) > NAME_MAX) return t('info.name.exceed', { max: NAME_MAX })
               return null
             }}
             onSave={(v) => save('name', String(v))}
           />
         </Field>
 
-        <Field label="加入方式">
+        <Field label={t('info.field.joinMode')}>
           <InlineEditField
             kind="select"
             value={space.join_mode}
             readOnly={!editable}
             display={
               space.join_mode === 0 ? (
-                <span className="pill-outline neutral">直接加入</span>
+                <span className="pill-outline neutral">{t('info.joinMode.direct')}</span>
               ) : (
-                <span className="pill-outline warning">需审批</span>
+                <span className="pill-outline warning">{t('info.joinMode.approval')}</span>
               )
             }
             options={[
-              { value: 0, label: '直接加入' },
-              { value: 1, label: '需审批' },
+              { value: 0, label: t('info.joinMode.direct') },
+              { value: 1, label: t('info.joinMode.approval') },
             ]}
             onSave={(v) => save('join_mode', Number(v) as SpaceJoinMode)}
           />
         </Field>
 
-        <Field label="创建者">
+        <Field label={t('info.field.creator')}>
           <span className="space-info-creator">
             <span className="cell-primary">{space.creator_name}</span>
             {space.creator && (
@@ -161,7 +163,7 @@ export default function SpaceInfoPanel({ space, onSpaceChange, onUpdated }: Prop
           </span>
         </Field>
 
-        <Field label="成员">
+        <Field label={t('info.field.members')}>
           <span className="space-info-members">
             <span className="cell-primary">{space.member_count}</span>
             <span className="space-info-members-sep">/</span>
@@ -173,17 +175,17 @@ export default function SpaceInfoPanel({ space, onSpaceChange, onUpdated }: Prop
               max={MAX_USERS_HARD_CAP}
               display={
                 space.max_users === 0 ? (
-                  <span style={{ color: 'var(--a-text-tertiary)' }}>不限</span>
+                  <span style={{ color: 'var(--a-text-tertiary)' }}>{t('info.members.unlimited')}</span>
                 ) : (
                   space.max_users
                 )
               }
               validate={(v) => {
                 const n = Number(v)
-                if (n < 0) return '成员上限不能为负'
-                if (n > MAX_USERS_HARD_CAP) return `成员上限不能超过 ${MAX_USERS_HARD_CAP}`
+                if (n < 0) return t('info.members.negative')
+                if (n > MAX_USERS_HARD_CAP) return t('info.members.exceed', { max: MAX_USERS_HARD_CAP })
                 if (n > 0 && n < space.member_count) {
-                  return `成员上限 (${n}) 不能低于当前成员数 (${space.member_count})`
+                  return t('info.members.belowCurrent', { max: n, current: space.member_count })
                 }
                 return null
               }}
@@ -192,22 +194,22 @@ export default function SpaceInfoPanel({ space, onSpaceChange, onUpdated }: Prop
           </span>
         </Field>
 
-        <Field label="创建时间">
+        <Field label={t('info.field.createdAt')}>
           <span className="space-info-muted">{space.created_at}</span>
         </Field>
 
-        <Field label="更新时间">
+        <Field label={t('info.field.updatedAt')}>
           <span className="space-info-muted">{space.updated_at}</span>
         </Field>
 
-        <Field label="简介" span={2}>
+        <Field label={t('info.field.description')} span={2}>
           <InlineEditField
             kind="textarea"
             value={space.description}
             readOnly={!editable}
             maxLength={DESC_MAX}
             rows={3}
-            emptyText="未填写"
+            emptyText={t('info.description.empty')}
             display={
               space.description ? (
                 <span
@@ -223,7 +225,7 @@ export default function SpaceInfoPanel({ space, onSpaceChange, onUpdated }: Prop
             }
             validate={(v) =>
               runeCount(String(v).trim()) > DESC_MAX
-                ? `空间描述不能超过 ${DESC_MAX} 个字符`
+                ? t('info.description.exceed', { max: DESC_MAX })
                 : null
             }
             onSave={(v) => save('description', String(v))}

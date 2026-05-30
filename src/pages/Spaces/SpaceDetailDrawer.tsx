@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Drawer, Tabs, Skeleton, message } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { getSpace, type Space } from '../../api/space'
 import { useSpaceScope } from '../../hooks/useSpaceScope'
 import SpaceMembersPanel from './SpaceMembersPanel'
@@ -25,6 +26,7 @@ export default function SpaceDetailDrawer({
   defaultTab = 'members',
   onUpdated,
 }: Props) {
+  const { t } = useTranslation('spaces')
   const [loading, setLoading] = useState(false)
   const [space, setSpace] = useState<Space | null>(null)
   const [activeTab, setActiveTab] = useState<TabKey>(defaultTab)
@@ -47,7 +49,7 @@ export default function SpaceDetailDrawer({
 
   return (
     <Drawer
-      title={space ? `Space 详情 — ${space.name}` : 'Space 详情'}
+      title={space ? t('detail.titleWithName', { name: space.name }) : t('detail.title')}
       open={open}
       onClose={onClose}
       width={840}
@@ -71,7 +73,7 @@ export default function SpaceDetailDrawer({
             items={[
               {
                 key: 'members',
-                label: '成员',
+                label: t('detail.tab.members'),
                 children: (
                   <SpaceMembersPanel
                     spaceId={space.space_id}
@@ -82,7 +84,7 @@ export default function SpaceDetailDrawer({
               },
               {
                 key: 'invites',
-                label: '邀请码',
+                label: t('detail.tab.invites'),
                 children: (
                   <SpaceInvitesPanel
                     spaceId={space.space_id}
@@ -93,7 +95,7 @@ export default function SpaceDetailDrawer({
               },
               {
                 key: 'join-applies',
-                label: '加入申请',
+                label: t('detail.tab.joinApplies'),
                 children: (
                   <SpaceJoinAppliesPanel
                     spaceId={space.space_id}

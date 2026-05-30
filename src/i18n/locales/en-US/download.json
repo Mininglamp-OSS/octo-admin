@@ -1,0 +1,50 @@
+{
+  "title": "Download Settings",
+  "subtitle": "Manage client versions, channels, and rollouts",
+  "action": {
+    "addVersion": "Add Version",
+    "edit": "Edit"
+  },
+  "filter": {
+    "platform": {
+      "all": "All Platforms",
+      "webDesktop": "Web / Desktop"
+    },
+    "force": {
+      "all": "All Updates",
+      "yes": "Forced",
+      "no": "Optional"
+    }
+  },
+  "column": {
+    "appVersion": "Version",
+    "platform": "Platform",
+    "isForce": "Forced Update",
+    "updateDesc": "Release Notes",
+    "downloadUrl": "Download URL",
+    "createdAt": "Created At",
+    "action": "Actions"
+  },
+  "tag": {
+    "force": "Forced"
+  },
+  "modal": {
+    "addTitle": "Add Version",
+    "editTitle": "Edit Version",
+    "okText": "Save",
+    "cancelText": "Cancel"
+  },
+  "form": {
+    "platform": "Platform",
+    "appVersion": "Version",
+    "downloadUrl": "Download URL",
+    "downloadUrlPlaceholder": "https://example.com/app.apk",
+    "updateDesc": "Release Notes",
+    "updateDescPlaceholder": "What's new in this release...",
+    "isForce": "Forced Update"
+  },
+  "toast": {
+    "addSuccess": "Added successfully",
+    "updateSuccess": "Updated successfully"
+  }
+}

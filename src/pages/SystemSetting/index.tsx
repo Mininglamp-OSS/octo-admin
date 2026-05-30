@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import {
   Alert,
   Button,
@@ -38,10 +40,10 @@ interface TestEmailFormValues {
 const settingMapKey = (category: string, key: string) => `${category}.${key}`
 const settingFormName = (category: string, key: string) => settingMapKey(category, key)
 
-const categoryTitles: Record<string, string> = {
-  login: '登录配置',
-  register: '注册配置',
-  support: '邮件服务',
+const categoryTitleKeys: Record<string, string> = {
+  login: 'category.login',
+  register: 'category.register',
+  support: 'category.support',
 }
 
 function normaliseBoolValue(value: string): BoolFormValue {
@@ -50,11 +52,11 @@ function normaliseBoolValue(value: string): BoolFormValue {
   return ''
 }
 
-function boolText(value: string | undefined) {
+function boolText(t: TFunction, value: string | undefined) {
   const normalised = normaliseBoolValue(value ?? '')
-  if (normalised === '1') return '是'
-  if (normalised === '0') return '否'
-  return '未配置'
+  if (normalised === '1') return t('bool.yes')
+  if (normalised === '0') return t('bool.no')
+  return t('bool.unset')
 }
 
 function formValueToString(value: SettingFormValue) {
@@ -86,40 +88,46 @@ function valuesFromSettings(items: SystemSettingItem[]): SystemSettingFormValues
   }, {})
 }
 
-function categoryTitle(category: string) {
-  return categoryTitles[category] || `${category} 配置`
+function categoryTitle(t: TFunction, category: string) {
+  const titleKey = categoryTitleKeys[category]
+  return titleKey ? t(titleKey) : t('category.generic', { category })
 }
 
-function settingSource(item: SystemSettingItem) {
-  return item.configured ? 'DB 配置' : '默认配置'
+function settingSource(t: TFunction, item: SystemSettingItem) {
+  return item.configured ? t('source.db') : t('source.default')
 }
 
-function genericSettingExtra(item: SystemSettingItem) {
+function genericSettingExtra(t: TFunction, item: SystemSettingItem) {
   const identity = settingMapKey(item.category, item.key)
   if (!item.effective_value) return identity
-  if (item.value_type === 'encrypted') return `${identity}。当前生效：已配置（${settingSource(item)}）`
-  if (item.value_type === 'bool') {
-    return `${identity}。当前生效：${boolText(item.effective_value)}（${settingSource(item)}）`
+  const source = settingSource(t, item)
+  if (item.value_type === 'encrypted') {
+    return t('extra.effectiveEncrypted', { identity, source })
   }
-  return `${identity}。当前生效：${item.effective_value}（${settingSource(item)}）`
+  if (item.value_type === 'bool') {
+    return t('extra.effectiveValue', { identity, value: boolText(t, item.effective_value), source })
+  }
+  return t('extra.effectiveValue', { identity, value: item.effective_value, source })
 }
 
-function genericBoolDefaultLabel(item: SystemSettingItem) {
-  return item.effective_value ? `跟随默认配置（当前：${boolText(item.effective_value)}）` : '跟随默认配置'
+function genericBoolDefaultLabel(t: TFunction, item: SystemSettingItem) {
+  return item.effective_value
+    ? t('input.boolDefaultWithCurrent', { value: boolText(t, item.effective_value) })
+    : t('input.boolDefault')
 }
 
 function settingLabel(item: SystemSettingItem) {
   return item.description || item.key
 }
 
-function renderSettingInput(item: SystemSettingItem) {
+function renderSettingInput(t: TFunction, item: SystemSettingItem) {
   if (item.value_type === 'bool') {
     return (
       <Select
         options={[
-          { value: '', label: genericBoolDefaultLabel(item) },
-          { value: '1', label: '是' },
-          { value: '0', label: '否' },
+          { value: '', label: genericBoolDefaultLabel(t, item) },
+          { value: '1', label: t('bool.yes') },
+          { value: '0', label: t('bool.no') },
         ]}
       />
     )
@@ -130,7 +138,7 @@ function renderSettingInput(item: SystemSettingItem) {
       <Input.Password
         allowClear
         autoComplete="new-password"
-        placeholder={item.configured ? '留空保留现有值' : '留空跟随默认配置'}
+        placeholder={item.configured ? t('input.encryptedKeep') : t('input.encryptedDefault')}
       />
     )
   }
@@ -139,6 +147,7 @@ function renderSettingInput(item: SystemSettingItem) {
 }
 
 export default function SystemSetting() {
+  const { t } = useTranslation(['systemSetting', 'common'])
   const [form] = Form.useForm<SystemSettingFormValues>()
   const [testForm] = Form.useForm<TestEmailFormValues>()
   const [loading, setLoading] = useState(false)
@@ -168,7 +177,7 @@ export default function SystemSetting() {
       form.setFieldsValue(valuesFromSettings(items))
       setDirty(false)
     } catch (error) {
-      message.error('获取系统配置失败: ' + (error as Error).message)
+      message.error(t('toast.fetchFailed', { message: (error as Error).message }))
     } finally {
       setLoading(false)
     }
@@ -183,10 +192,10 @@ export default function SystemSetting() {
     setSaving(true)
     try {
       await updateSystemSettings(valuesToPayload(values, settings))
-      message.success('配置已保存')
+      message.success(t('toast.saved'))
       await fetchSettings()
     } catch (error) {
-      message.error('保存失败: ' + (error as Error).message)
+      message.error(t('toast.saveFailed', { message: (error as Error).message }))
     } finally {
       setSaving(false)
     }
@@ -197,11 +206,11 @@ export default function SystemSetting() {
     setTesting(true)
     try {
       await testSystemSettingEmail(values.to)
-      message.success('测试邮件已发送')
+      message.success(t('toast.testSent'))
       setTestModalOpen(false)
       testForm.resetFields()
     } catch (error) {
-      message.error('发送失败: ' + (error as Error).message)
+      message.error(t('toast.testFailed', { message: (error as Error).message }))
     } finally {
       setTesting(false)
     }
@@ -209,25 +218,25 @@ export default function SystemSetting() {
 
   return (
     <div>
-      <h1 className="page-title">系统配置</h1>
-      <p className="page-subtitle">登录、注册策略与邮件服务配置</p>
+      <h1 className="page-title">{t('title')}</h1>
+      <p className="page-subtitle">{t('subtitle')}</p>
 
       <div className="toolbar">
         <Button icon={<ReloadOutlined />} onClick={fetchSettings} loading={loading}>
-          刷新
+          {t('common:action.refresh')}
         </Button>
         <div className="toolbar-spacer" />
-        <Tooltip title={dirty ? '请先保存配置后再发送测试邮件' : ''}>
+        <Tooltip title={dirty ? t('tooltip.saveBeforeTest') : ''}>
           <Button
             icon={<SendOutlined />}
             onClick={() => setTestModalOpen(true)}
             disabled={dirty}
           >
-            测试邮件
+            {t('action.testEmail')}
           </Button>
         </Tooltip>
         <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={saving}>
-          保存配置
+          {t('action.save')}
         </Button>
       </div>
 
@@ -240,15 +249,15 @@ export default function SystemSetting() {
         <Row gutter={[16, 16]}>
           {settingGroups.map(([category, items]) => (
             <Col xs={24} lg={12} key={category}>
-              <Card title={categoryTitle(category)} loading={loading}>
+              <Card title={categoryTitle(t, category)} loading={loading}>
                 {items.map((item) => (
                   <Form.Item
                     key={settingMapKey(item.category, item.key)}
                     name={settingFormName(item.category, item.key)}
                     label={settingLabel(item)}
-                    extra={genericSettingExtra(item)}
+                    extra={genericSettingExtra(t, item)}
                   >
-                    {renderSettingInput(item)}
+                    {renderSettingInput(t, item)}
                   </Form.Item>
                 ))}
               </Card>
@@ -258,30 +267,30 @@ export default function SystemSetting() {
       </Form>
 
       <Modal
-        title="发送测试邮件"
+        title={t('test.title')}
         open={testModalOpen}
         onOk={handleTestEmail}
         onCancel={() => {
           setTestModalOpen(false)
           testForm.resetFields()
         }}
-        okText="发送"
-        cancelText="取消"
+        okText={t('test.okText')}
+        cancelText={t('test.cancelText')}
         confirmLoading={testing}
       >
         <Alert
           type="info"
           showIcon
-          message="测试邮件将使用当前已保存的配置发送。如刚刚修改了配置，请先点击「保存配置」。"
+          message={t('test.alert')}
           style={{ marginBottom: 16 }}
         />
         <Form form={testForm} layout="vertical">
           <Form.Item
             name="to"
-            label="收件邮箱"
+            label={t('test.field.label')}
             rules={[
-              { required: true, message: '请输入收件邮箱' },
-              { type: 'email', message: '请输入有效的邮箱地址' },
+              { required: true, message: t('test.field.required') },
+              { type: 'email', message: t('test.field.invalid') },
             ]}
           >
             <Input placeholder="admin@example.com" />

@@ -15,6 +15,18 @@ import usersEN from './locales/en-US/users.json'
 import usersZH from './locales/zh-CN/users.json'
 import groupsEN from './locales/en-US/groups.json'
 import groupsZH from './locales/zh-CN/groups.json'
+import spacesEN from './locales/en-US/spaces.json'
+import spacesZH from './locales/zh-CN/spaces.json'
+import spaceAdminEN from './locales/en-US/spaceAdmin.json'
+import spaceAdminZH from './locales/zh-CN/spaceAdmin.json'
+import appBotsEN from './locales/en-US/appBots.json'
+import appBotsZH from './locales/zh-CN/appBots.json'
+import systemSettingEN from './locales/en-US/systemSetting.json'
+import systemSettingZH from './locales/zh-CN/systemSetting.json'
+import backupEN from './locales/en-US/backup.json'
+import backupZH from './locales/zh-CN/backup.json'
+import downloadEN from './locales/en-US/download.json'
+import downloadZH from './locales/zh-CN/download.json'
 
 export const SUPPORTED_LANGUAGES = ['en-US', 'zh-CN'] as const
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number]
@@ -35,6 +47,12 @@ i18n
         dashboard: dashboardEN,
         users: usersEN,
         groups: groupsEN,
+        spaces: spacesEN,
+        spaceAdmin: spaceAdminEN,
+        appBots: appBotsEN,
+        systemSetting: systemSettingEN,
+        backup: backupEN,
+        download: downloadEN,
       },
       'zh-CN': {
         common: commonZH,
@@ -44,12 +62,32 @@ i18n
         dashboard: dashboardZH,
         users: usersZH,
         groups: groupsZH,
+        spaces: spacesZH,
+        spaceAdmin: spaceAdminZH,
+        appBots: appBotsZH,
+        systemSetting: systemSettingZH,
+        backup: backupZH,
+        download: downloadZH,
       },
     },
     fallbackLng: FALLBACK_LANGUAGE,
     supportedLngs: SUPPORTED_LANGUAGES,
     defaultNS: 'common',
-    ns: ['common', 'nav', 'layout', 'login', 'dashboard', 'users', 'groups'],
+    ns: [
+      'common',
+      'nav',
+      'layout',
+      'login',
+      'dashboard',
+      'users',
+      'groups',
+      'spaces',
+      'spaceAdmin',
+      'appBots',
+      'systemSetting',
+      'backup',
+      'download',
+    ],
     interpolation: { escapeValue: false },
     detection: {
       order: ['querystring', 'cookie', 'navigator'],

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { Spin, Result, Button } from 'antd'
 import { useAuthStore } from '../../store/auth'
@@ -42,6 +43,7 @@ function decodeJwtUid(token: string): string {
 }
 
 export default function SpaceEntry() {
+  const { t } = useTranslation('spaceAdmin')
   const navigate = useNavigate()
   const loginSpace = useAuthStore((s) => s.loginSpace)
   const [status, setStatus] = useState<'loading' | 'no-token' | 'no-space' | 'error'>('loading')
@@ -135,7 +137,7 @@ export default function SpaceEntry() {
           justifyContent: 'center',
         }}
       >
-        <Spin size="large" tip="正在进入空间管理…" />
+        <Spin size="large" tip={t('entry.loading')} />
       </div>
     )
   }
@@ -144,11 +146,11 @@ export default function SpaceEntry() {
     return (
       <Result
         status="warning"
-        title="未检测到登录态"
-        subTitle="请先在应用内登录后再进入空间管理，或使用超级管理员账号登录。"
+        title={t('entry.noToken.title')}
+        subTitle={t('entry.noToken.subtitle')}
         extra={
           <Button type="primary" onClick={() => navigate('/login')}>
-            去登录
+            {t('entry.noToken.action')}
           </Button>
         }
       />
@@ -159,10 +161,10 @@ export default function SpaceEntry() {
     return (
       <Result
         status="info"
-        title="暂无可管理的空间"
-        subTitle="你还不是任何空间的管理员或拥有者。"
+        title={t('entry.noSpace.title')}
+        subTitle={t('entry.noSpace.subtitle')}
         extra={
-          <Button onClick={() => navigate('/login')}>返回登录</Button>
+          <Button onClick={() => navigate('/login')}>{t('entry.noSpace.action')}</Button>
         }
       />
     )
@@ -171,11 +173,11 @@ export default function SpaceEntry() {
   return (
     <Result
       status="error"
-      title="加载空间失败"
+      title={t('entry.error.title')}
       subTitle={errorMsg}
       extra={
         <Button type="primary" onClick={() => window.location.reload()}>
-          重试
+          {t('entry.error.action')}
         </Button>
       }
     />

@@ -24,6 +24,7 @@ import {
   StopOutlined,
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
+import { useTranslation } from 'react-i18next'
 import dayjs, { type Dayjs } from 'dayjs'
 import type { InviteListItem, SpaceScope } from '../../hooks/useSpaceScope'
 import { getUser } from '../../api/space-user'
@@ -80,11 +81,11 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-const EXPIRES_PRESETS: ReadonlyArray<{ label: string; days: number | null }> = [
-  { label: '7 天', days: 7 },
-  { label: '14 天', days: 14 },
-  { label: '30 天', days: 30 },
-  { label: '永不过期', days: null },
+const EXPIRES_PRESETS: ReadonlyArray<{ labelKey: string; days: number | null }> = [
+  { labelKey: 'invites.editor.preset.7d', days: 7 },
+  { labelKey: 'invites.editor.preset.14d', days: 14 },
+  { labelKey: 'invites.editor.preset.30d', days: 30 },
+  { labelKey: 'invites.editor.preset.never', days: null },
 ]
 
 function matchPreset(value: Dayjs | null | undefined): number | null | undefined {
@@ -98,6 +99,7 @@ function matchPreset(value: Dayjs | null | undefined): number | null | undefined
 }
 
 export default function SpaceInvitesPanel({ spaceId, scope, readOnly = false }: Props) {
+  const { t } = useTranslation(['spaces', 'common'])
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<InviteListItem[]>([])
   const [total, setTotal] = useState(0)
@@ -200,15 +202,15 @@ export default function SpaceInvitesPanel({ spaceId, scope, readOnly = false }: 
         const copied = await copyText(buildInviteLink(resp.invite_code))
         message.success(
           copied
-            ? `邀请链接已复制到剪贴板 (code: ${resp.invite_code})`
-            : `邀请码已生成：${resp.invite_code}`,
+            ? t('invites.submit.linkCopied', { code: resp.invite_code })
+            : t('invites.submit.generated', { code: resp.invite_code }),
         )
       } else if (editor.code) {
         await scope.api.updateInvite(spaceId, editor.code, {
           max_uses: maxUses,
           expires_at: expires,
         })
-        message.success('已保存')
+        message.success(t('invites.submit.saved'))
       }
       setEditor({ open: false, mode: 'create', code: null, initial: {} })
       fetchData()
@@ -221,11 +223,11 @@ export default function SpaceInvitesPanel({ spaceId, scope, readOnly = false }: 
 
   const handleEnable = (code: string) => {
     Modal.confirm({
-      title: `确认启用邀请码 ${code}？`,
+      title: t('invites.enable.title', { code }),
       onOk: async () => {
         try {
           await scope.api.updateInvite(spaceId, code, { status: 1 })
-          message.success('已启用')
+          message.success(t('invites.enable.success'))
           fetchData()
         } catch (error) {
           message.error((error as Error).message)
@@ -236,12 +238,12 @@ export default function SpaceInvitesPanel({ spaceId, scope, readOnly = false }: 
 
   const handleDisable = (code: string) => {
     Modal.confirm({
-      title: `确认禁用邀请码 ${code}？`,
+      title: t('invites.disable.title', { code }),
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
           await scope.api.disableInvite(spaceId, code)
-          message.success('已禁用')
+          message.success(t('invites.disable.success'))
           fetchData()
         } catch (error) {
           message.error((error as Error).message)
@@ -254,16 +256,16 @@ export default function SpaceInvitesPanel({ spaceId, scope, readOnly = false }: 
     const link = buildInviteLink(code)
     const ok = await copyText(link)
     if (ok) {
-      message.success('邀请链接已复制')
+      message.success(t('invites.copyLink.success'))
     } else {
-      message.error('复制失败,请手动选中')
+      message.error(t('invites.copyLink.error'))
     }
   }
 
   const actionColumn = !canManage
     ? null
     : ({
-        title: '操作',
+        title: t('invites.column.action'),
         key: 'action',
         width: 260,
         render: (_: unknown, record: InviteListItem) => (
@@ -275,7 +277,7 @@ export default function SpaceInvitesPanel({ spaceId, scope, readOnly = false }: 
               onClick={() => handleCopyLink(record.invite_code)}
               disabled={record.status !== 1}
             >
-              复制链接
+              {t('invites.action.copyLink')}
             </Button>
             <Button
               size="small"
@@ -283,7 +285,7 @@ export default function SpaceInvitesPanel({ spaceId, scope, readOnly = false }: 
               icon={<EditOutlined />}
               onClick={() => openEdit(record)}
             >
-              编辑
+              {t('invites.action.edit')}
             </Button>
             {record.status === 1 ? (
               <Button
@@ -293,7 +295,7 @@ export default function SpaceInvitesPanel({ spaceId, scope, readOnly = false }: 
                 icon={<StopOutlined />}
                 onClick={() => handleDisable(record.invite_code)}
               >
-                禁用
+                {t('invites.action.disable')}
               </Button>
             ) : (
               <Button
@@ -303,7 +305,7 @@ export default function SpaceInvitesPanel({ spaceId, scope, readOnly = false }: 
                 icon={<PlayCircleOutlined />}
                 onClick={() => handleEnable(record.invite_code)}
               >
-                启用
+                {t('invites.action.enable')}
               </Button>
             )}
           </div>
@@ -312,7 +314,7 @@ export default function SpaceInvitesPanel({ spaceId, scope, readOnly = false }: 
 
   const baseColumns: ColumnsType<InviteListItem> = [
     {
-      title: '邀请码',
+      title: t('invites.column.code'),
       dataIndex: 'invite_code',
       key: 'invite_code',
       width: 180,
@@ -331,7 +333,7 @@ export default function SpaceInvitesPanel({ spaceId, scope, readOnly = false }: 
       ),
     },
     {
-      title: '状态',
+      title: t('invites.column.status'),
       key: 'status',
       width: 110,
       render: (_, record) => {
@@ -339,7 +341,7 @@ export default function SpaceInvitesPanel({ spaceId, scope, readOnly = false }: 
           return (
             <span className="pill-icon destroyed">
               <StopOutlined />
-              已禁用
+              {t('invites.status.disabled')}
             </span>
           )
         }
@@ -347,7 +349,7 @@ export default function SpaceInvitesPanel({ spaceId, scope, readOnly = false }: 
           return (
             <span className="pill-icon banned">
               <ClockCircleOutlined />
-              已过期
+              {t('invites.status.expired')}
             </span>
           )
         }
@@ -355,20 +357,20 @@ export default function SpaceInvitesPanel({ spaceId, scope, readOnly = false }: 
           return (
             <span className="pill-icon banned">
               <ExclamationCircleOutlined />
-              已用完
+              {t('invites.status.usedUp')}
             </span>
           )
         }
         return (
           <span className="pill-icon online">
             <CheckCircleOutlined />
-            有效
+            {t('invites.status.valid')}
           </span>
         )
       },
     },
     {
-      title: '使用情况',
+      title: t('invites.column.usage'),
       key: 'usage',
       width: 110,
       render: (_, record) => {
@@ -381,24 +383,24 @@ export default function SpaceInvitesPanel({ spaceId, scope, readOnly = false }: 
       },
     },
     {
-      title: '过期时间',
+      title: t('invites.column.expiresAt'),
       dataIndex: 'expires_at',
       key: 'expires_at',
       width: 150,
-      render: (t: string) => {
-        if (!t) {
-          return <span style={{ color: 'var(--a-text-quaternary)' }}>永久</span>
+      render: (value: string) => {
+        if (!value) {
+          return <span style={{ color: 'var(--a-text-quaternary)' }}>{t('invites.expires.permanent')}</span>
         }
-        const expired = dayjs(t).isBefore(dayjs())
+        const expired = dayjs(value).isBefore(dayjs())
         return (
           <span style={{ color: expired ? 'var(--a-danger)' : 'var(--a-text-secondary)' }}>
-            {t}
+            {value}
           </span>
         )
       },
     },
     {
-      title: '创建者',
+      title: t('invites.column.creator'),
       dataIndex: 'creator',
       key: 'creator',
       width: 140,
@@ -409,18 +411,18 @@ export default function SpaceInvitesPanel({ spaceId, scope, readOnly = false }: 
         return (
           <Tooltip title={uid} mouseEnterDelay={0.2}>
             <span className="cell-primary">
-              {name || <span style={{ color: 'var(--a-text-tertiary)' }}>加载中…</span>}
+              {name || <span style={{ color: 'var(--a-text-tertiary)' }}>{t('invites.creator.loading')}</span>}
             </span>
           </Tooltip>
         )
       },
     },
     {
-      title: '创建时间',
+      title: t('invites.column.createdAt'),
       dataIndex: 'created_at',
       key: 'created_at',
       width: 150,
-      render: (t) => <span style={{ color: 'var(--a-text-tertiary)' }}>{t}</span>,
+      render: (value) => <span style={{ color: 'var(--a-text-tertiary)' }}>{value}</span>,
     },
   ]
 
@@ -436,18 +438,18 @@ export default function SpaceInvitesPanel({ spaceId, scope, readOnly = false }: 
           onChange={setStatusFilter}
           style={{ width: 130 }}
           options={[
-            { value: '1', label: '仅有效' },
-            { value: '0', label: '仅禁用' },
-            { value: 'all', label: '全部' },
+            { value: '1', label: t('invites.filter.valid') },
+            { value: '0', label: t('invites.filter.disabled') },
+            { value: 'all', label: t('invites.filter.all') },
           ]}
         />
         <Button icon={<ReloadOutlined />} onClick={() => fetchData()}>
-          刷新
+          {t('common:action.refresh')}
         </Button>
         <div className="toolbar-spacer" />
         {canManage && (
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-            生成邀请码
+            {t('invites.generate')}
           </Button>
         )}
       </div>
@@ -464,7 +466,7 @@ export default function SpaceInvitesPanel({ spaceId, scope, readOnly = false }: 
                 current: page,
                 total,
                 pageSize: PAGE_SIZE,
-                showTotal: (t) => `共 ${t} 条`,
+                showTotal: (count) => t('common:table.total', { count }),
                 onChange: (p) => {
                   setPage(p)
                   fetchData(p)
@@ -475,12 +477,12 @@ export default function SpaceInvitesPanel({ spaceId, scope, readOnly = false }: 
       />
 
       <Modal
-        title={editor.mode === 'create' ? '生成邀请码' : '编辑邀请码'}
+        title={editor.mode === 'create' ? t('invites.editor.createTitle') : t('invites.editor.editTitle')}
         open={editor.open}
         onOk={handleEditorSubmit}
         onCancel={() => setEditor({ open: false, mode: 'create', code: null, initial: {} })}
         confirmLoading={editorLoading}
-        okText={editor.mode === 'create' ? '生成' : '保存'}
+        okText={editor.mode === 'create' ? t('invites.editor.createOk') : t('invites.editor.editOk')}
         destroyOnClose
       >
         <Form
@@ -489,9 +491,9 @@ export default function SpaceInvitesPanel({ spaceId, scope, readOnly = false }: 
           preserve={false}
           initialValues={editor.initial}
         >
-          <Form.Item label="使用次数上限" style={{ marginBottom: 8 }}>
+          <Form.Item label={t('invites.editor.maxUsesLabel')} style={{ marginBottom: 8 }}>
             <Form.Item name="no_limit" valuePropName="checked" noStyle>
-              <Checkbox>不限次数</Checkbox>
+              <Checkbox>{t('invites.editor.noLimit')}</Checkbox>
             </Form.Item>
           </Form.Item>
           <Form.Item noStyle shouldUpdate={(p, c) => p.no_limit !== c.no_limit}>
@@ -500,11 +502,11 @@ export default function SpaceInvitesPanel({ spaceId, scope, readOnly = false }: 
                 <Form.Item
                   name="max_uses"
                   rules={[
-                    { required: true, message: '请输入使用次数' },
+                    { required: true, message: t('invites.editor.maxUsesRequired') },
                     {
                       type: 'integer',
                       min: 1,
-                      message: '必须是不小于 1 的整数',
+                      message: t('invites.editor.maxUsesInteger'),
                     },
                   ]}
                 >
@@ -512,14 +514,14 @@ export default function SpaceInvitesPanel({ spaceId, scope, readOnly = false }: 
                     min={1}
                     precision={0}
                     style={{ width: '100%' }}
-                    placeholder="请输入使用次数"
+                    placeholder={t('invites.editor.maxUsesPlaceholder')}
                   />
                 </Form.Item>
               )
             }
           </Form.Item>
 
-          <Form.Item label="过期时间" style={{ marginBottom: 8 }}>
+          <Form.Item label={t('invites.editor.expiresLabel')} style={{ marginBottom: 8 }}>
             <Form.Item
               noStyle
               shouldUpdate={(p, c) => p.expires_at !== c.expires_at}
@@ -533,7 +535,7 @@ export default function SpaceInvitesPanel({ spaceId, scope, readOnly = false }: 
                       const isActive = active === preset.days
                       return (
                         <Button
-                          key={preset.label}
+                          key={preset.labelKey}
                           size="small"
                           type={isActive ? 'primary' : 'default'}
                           onClick={() =>
@@ -543,7 +545,7 @@ export default function SpaceInvitesPanel({ spaceId, scope, readOnly = false }: 
                             )
                           }
                         >
-                          {preset.label}
+                          {t(preset.labelKey)}
                         </Button>
                       )
                     })}
@@ -560,7 +562,7 @@ export default function SpaceInvitesPanel({ spaceId, scope, readOnly = false }: 
                     if (!value) return Promise.resolve()
                     return value.isAfter(dayjs())
                       ? Promise.resolve()
-                      : Promise.reject(new Error('过期时间需晚于当前时间'))
+                      : Promise.reject(new Error(t('invites.editor.expiresAfterNow')))
                   },
                 },
               ]}
@@ -569,7 +571,7 @@ export default function SpaceInvitesPanel({ spaceId, scope, readOnly = false }: 
                 showTime={{ format: 'HH:mm' }}
                 format="YYYY-MM-DD HH:mm"
                 style={{ width: '100%' }}
-                placeholder="自定义过期时间"
+                placeholder={t('invites.editor.expiresPlaceholder')}
               />
             </Form.Item>
           </Form.Item>

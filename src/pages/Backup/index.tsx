@@ -28,6 +28,7 @@ import {
   PlayCircleOutlined,
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
+import { useTranslation } from 'react-i18next'
 import {
   BackupHistory,
   getBackupConfig,
@@ -41,6 +42,7 @@ import {
 } from '../../api/backup'
 
 export default function Backup() {
+  const { t } = useTranslation(['backup', 'common'])
   const [form] = Form.useForm()
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -65,7 +67,7 @@ export default function Backup() {
         region: config.region,
       })
     } catch (error) {
-      message.error('获取配置失败: ' + (error as Error).message)
+      message.error(t('toast.fetchConfigFailed', { message: (error as Error).message }))
     } finally {
       setLoading(false)
     }
@@ -78,7 +80,7 @@ export default function Backup() {
       setHistory(data.list || [])
       setHistoryTotal(data.count || 0)
     } catch (error) {
-      message.error('获取备份历史失败: ' + (error as Error).message)
+      message.error(t('toast.fetchHistoryFailed', { message: (error as Error).message }))
     } finally {
       setHistoryLoading(false)
     }
@@ -110,9 +112,9 @@ export default function Backup() {
     setSaving(true)
     try {
       await updateBackupConfig(values)
-      message.success('配置已保存')
+      message.success(t('toast.configSaved'))
     } catch (error) {
-      message.error('保存失败: ' + (error as Error).message)
+      message.error(t('toast.saveFailed', { message: (error as Error).message }))
     } finally {
       setSaving(false)
     }
@@ -122,9 +124,9 @@ export default function Backup() {
     setTesting(true)
     try {
       await testBackupConnection()
-      message.success('连接测试成功')
+      message.success(t('toast.testSuccess'))
     } catch (error) {
-      message.error('连接测试失败: ' + (error as Error).message)
+      message.error(t('toast.testFailed', { message: (error as Error).message }))
     } finally {
       setTesting(false)
     }
@@ -134,11 +136,11 @@ export default function Backup() {
     setTriggering(true)
     try {
       const data = await triggerBackup()
-      message.success(data.message || '备份已开始')
+      message.success(data.message || t('toast.backupStarted'))
       fetchStatus()
       setTimeout(fetchHistory, 2000)
     } catch (error) {
-      message.error('触发备份失败: ' + (error as Error).message)
+      message.error(t('toast.triggerFailed', { message: (error as Error).message }))
     } finally {
       setTriggering(false)
     }
@@ -149,17 +151,17 @@ export default function Backup() {
       const data = await getBackupDownloadURL(id)
       window.open(data.url, '_blank')
     } catch (error) {
-      message.error('获取下载链接失败: ' + (error as Error).message)
+      message.error(t('toast.downloadFailed', { message: (error as Error).message }))
     }
   }
 
   const handleDelete = async (id: number) => {
     try {
       await deleteBackupHistory(id)
-      message.success('已删除')
+      message.success(t('toast.deleted'))
       fetchHistory()
     } catch (error) {
-      message.error('删除失败: ' + (error as Error).message)
+      message.error(t('toast.deleteFailed', { message: (error as Error).message }))
     }
   }
 
@@ -178,10 +180,10 @@ export default function Backup() {
 
   const statusTag = (s: string) => {
     const map: Record<string, { color: string; text: string }> = {
-      success: { color: 'success', text: '成功' },
-      running: { color: 'processing', text: '运行中' },
-      failed: { color: 'error', text: '失败' },
-      pending: { color: 'warning', text: '等待中' },
+      success: { color: 'success', text: t('tag.success') },
+      running: { color: 'processing', text: t('tag.running') },
+      failed: { color: 'error', text: t('tag.failed') },
+      pending: { color: 'warning', text: t('tag.pending') },
     }
     const item = map[s] || { color: 'default', text: s }
     return <Tag color={item.color}>{item.text}</Tag>
@@ -189,7 +191,7 @@ export default function Backup() {
 
   const columns: ColumnsType<BackupHistory> = [
     {
-      title: '状态',
+      title: t('column.status'),
       key: 'status',
       width: 90,
       render: (_, record) => (
@@ -199,12 +201,12 @@ export default function Backup() {
         </Space>
       ),
     },
-    { title: '文件名', dataIndex: 'file_name', key: 'file_name', ellipsis: true },
-    { title: '大小', dataIndex: 'file_size_str', key: 'file_size_str', width: 90 },
-    { title: '开始时间', dataIndex: 'started_at', key: 'started_at', width: 150 },
-    { title: '完成时间', dataIndex: 'finished_at', key: 'finished_at', width: 150 },
+    { title: t('column.fileName'), dataIndex: 'file_name', key: 'file_name', ellipsis: true },
+    { title: t('column.size'), dataIndex: 'file_size_str', key: 'file_size_str', width: 90 },
+    { title: t('column.startedAt'), dataIndex: 'started_at', key: 'started_at', width: 150 },
+    { title: t('column.finishedAt'), dataIndex: 'finished_at', key: 'finished_at', width: 150 },
     {
-      title: '错误信息',
+      title: t('column.errorMessage'),
       dataIndex: 'error_message',
       key: 'error_message',
       width: 150,
@@ -212,7 +214,7 @@ export default function Backup() {
       render: (text) => text && <Tooltip title={text}><span style={{ color: '#f5222d' }}>{text}</span></Tooltip>,
     },
     {
-      title: '操作',
+      title: t('column.action'),
       key: 'action',
       width: 140,
       render: (_, record) => (
@@ -225,7 +227,7 @@ export default function Backup() {
               onClick={() => handleDownload(record.id)}
             />
           )}
-          <Popconfirm title="确定删除此备份？" onConfirm={() => handleDelete(record.id)}>
+          <Popconfirm title={t('confirm.delete')} onConfirm={() => handleDelete(record.id)}>
             <Button type="link" size="small" danger icon={<DeleteOutlined />} />
           </Popconfirm>
         </Space>
@@ -235,48 +237,48 @@ export default function Backup() {
 
   return (
     <div>
-      <h1 className="page-title">备份管理</h1>
-      <p className="page-subtitle">备份策略配置、测试与恢复</p>
+      <h1 className="page-title">{t('title')}</h1>
+      <p className="page-subtitle">{t('subtitle')}</p>
 
       <Row gutter={24}>
         <Col span={12}>
           <Card
-            title="备份配置"
+            title={t('card.config')}
             loading={loading}
             extra={
               <Space>
                 <Button onClick={handleTest} loading={testing}>
-                  测试连接
+                  {t('action.testConnection')}
                 </Button>
                 <Button type="primary" onClick={handleSave} loading={saving}>
-                  保存配置
+                  {t('action.saveConfig')}
                 </Button>
               </Space>
             }
           >
             {/* 系统 COS 配置（只读） */}
-            <Descriptions title="存储配置（系统 COS）" size="small" column={1} style={{ marginBottom: 24 }}>
-              <Descriptions.Item label="存储类型">{cosConfig?.storage_type?.toUpperCase() || '-'}</Descriptions.Item>
-              <Descriptions.Item label="Bucket">{cosConfig?.bucket || '-'}</Descriptions.Item>
-              <Descriptions.Item label="Region">{cosConfig?.region || '-'}</Descriptions.Item>
+            <Descriptions title={t('storage.title')} size="small" column={1} style={{ marginBottom: 24 }}>
+              <Descriptions.Item label={t('storage.type')}>{cosConfig?.storage_type?.toUpperCase() || '-'}</Descriptions.Item>
+              <Descriptions.Item label={t('storage.bucket')}>{cosConfig?.bucket || '-'}</Descriptions.Item>
+              <Descriptions.Item label={t('storage.region')}>{cosConfig?.region || '-'}</Descriptions.Item>
             </Descriptions>
 
             <Divider />
 
             <Form form={form} layout="vertical">
-              <Form.Item name="enabled" label="启用备份" valuePropName="checked">
+              <Form.Item name="enabled" label={t('form.enabled')} valuePropName="checked">
                 <Switch />
               </Form.Item>
-              <Form.Item name="prefix" label="备份路径前缀" rules={[{ required: true }]}>
+              <Form.Item name="prefix" label={t('form.prefix')} rules={[{ required: true }]}>
                 <Input placeholder="backup/" />
               </Form.Item>
-              <Form.Item name="cron_expr" label="定时表达式" rules={[{ required: true }]} extra="示例: 0 2 * * * (每天凌晨2点)">
+              <Form.Item name="cron_expr" label={t('form.cronExpr')} rules={[{ required: true }]} extra={t('form.cronExpr.extra')}>
                 <Input placeholder="0 2 * * *" />
               </Form.Item>
-              <Form.Item name="retention_count" label="保留数量" rules={[{ required: true }]}>
+              <Form.Item name="retention_count" label={t('form.retentionCount')} rules={[{ required: true }]}>
                 <InputNumber min={1} max={100} style={{ width: '100%' }} />
               </Form.Item>
-              <Form.Item name="data_dir" label="数据目录" rules={[{ required: true }]}>
+              <Form.Item name="data_dir" label={t('form.dataDir')} rules={[{ required: true }]}>
                 <Input placeholder="/data/octo" />
               </Form.Item>
             </Form>
@@ -285,7 +287,7 @@ export default function Backup() {
 
         <Col span={12}>
           <Card
-            title="备份状态"
+            title={t('card.status')}
             extra={
               <Button
                 type="primary"
@@ -294,23 +296,23 @@ export default function Backup() {
                 loading={triggering || status?.is_running}
                 disabled={status?.is_running}
               >
-                {status?.is_running ? '备份中...' : '立即备份'}
+                {status?.is_running ? t('action.backingUp') : t('action.backupNow')}
               </Button>
             }
           >
             <p>
-              <strong>当前状态：</strong>
+              <strong>{t('status.label')}</strong>
               {status?.is_running ? (
                 <Tag color="processing" icon={<LoadingOutlined />}>
-                  正在备份
+                  {t('status.backingUp')}
                 </Tag>
               ) : (
-                <Tag color="success">空闲</Tag>
+                <Tag color="success">{t('status.idle')}</Tag>
               )}
             </p>
             {status?.next_run && (
               <p>
-                <strong>下次备份：</strong>
+                <strong>{t('status.nextRun')}</strong>
                 {status.next_run}
               </p>
             )}
@@ -321,10 +323,10 @@ export default function Backup() {
       <Divider />
 
       <Card
-        title="备份历史"
+        title={t('card.history')}
         extra={
           <Button icon={<ReloadOutlined />} onClick={fetchHistory}>
-            刷新
+            {t('common:action.refresh')}
           </Button>
         }
       >
@@ -338,7 +340,7 @@ export default function Backup() {
             total: historyTotal,
             pageSize: 10,
             onChange: setHistoryPage,
-            showTotal: (t) => `共 ${t} 条`,
+            showTotal: (count) => t('common:table.total', { count }),
           }}
         />
       </Card>

@@ -13,6 +13,8 @@ import {
 } from 'antd'
 import { PlusOutlined, SearchOutlined, RobotOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import {
   listAppBots,
   listSpaceAppBots,
@@ -33,17 +35,23 @@ import DetailDrawer from './DetailDrawer'
 const PAGE_SIZE = 20
 const SEARCH_DEBOUNCE_MS = 300
 
-const STATUS_MAP: Record<AppBotStatus, { label: string; color: string }> = {
-  0: { label: '草稿', color: 'default' },
-  1: { label: '已上架', color: 'green' },
-  2: { label: '已下架', color: 'orange' },
+const STATUS_COLOR: Record<AppBotStatus, string> = {
+  0: 'default',
+  1: 'green',
+  2: 'orange',
 }
 
-const STATUS_OPTIONS = [
-  { value: '', label: '全部状态' },
-  { value: '0', label: '草稿' },
-  { value: '1', label: '已上架' },
-  { value: '2', label: '已下架' },
+const statusLabel = (t: TFunction, status: AppBotStatus): string => {
+  if (status === 1) return t('status.published')
+  if (status === 2) return t('status.unpublished')
+  return t('status.draft')
+}
+
+const statusOptions = (t: TFunction) => [
+  { value: '', label: t('list.statusFilter.all') },
+  { value: '0', label: t('status.draft') },
+  { value: '1', label: t('status.published') },
+  { value: '2', label: t('status.unpublished') },
 ]
 
 interface Props {
@@ -51,6 +59,7 @@ interface Props {
 }
 
 export default function AppBotsPage({ spaceId }: Props) {
+  const { t } = useTranslation(['appBots', 'common'])
   const [data, setData] = useState<AppBot[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -105,7 +114,7 @@ export default function AppBotsPage({ spaceId }: Props) {
   const handleDelete = async (id: string) => {
     try {
       spaceId ? await deleteSpaceAppBot(spaceId, id) : await deleteAppBot(id)
-      message.success('已删除')
+      message.success(t('list.toast.deleted'))
       fetchList()
     } catch (err) {
       if (err instanceof Error) message.error(err.message)
@@ -116,10 +125,10 @@ export default function AppBotsPage({ spaceId }: Props) {
     try {
       if (bot.status === 1) {
         spaceId ? await unpublishSpaceAppBot(spaceId, bot.id) : await unpublishAppBot(bot.id)
-        message.success('已下架')
+        message.success(t('list.toast.unpublished'))
       } else {
         spaceId ? await publishSpaceAppBot(spaceId, bot.id) : await publishAppBot(bot.id)
-        message.success('已上架')
+        message.success(t('list.toast.published'))
       }
       fetchList()
     } catch (err) {
@@ -129,7 +138,7 @@ export default function AppBotsPage({ spaceId }: Props) {
 
   const columns: ColumnsType<AppBot> = [
     {
-      title: '应用 Bot',
+      title: t('column.bot'),
       key: 'bot',
       width: 260,
       render: (_, record) => (
@@ -152,7 +161,7 @@ export default function AppBotsPage({ spaceId }: Props) {
       ),
     },
     {
-      title: 'UID',
+      title: t('column.uid'),
       dataIndex: 'uid',
       width: 180,
       render: (uid: string) => (
@@ -160,48 +169,47 @@ export default function AppBotsPage({ spaceId }: Props) {
       ),
     },
     {
-      title: '状态',
+      title: t('column.status'),
       dataIndex: 'status',
       width: 90,
-      render: (status: AppBotStatus) => {
-        const s = STATUS_MAP[status]
-        return <Tag color={s.color}>{s.label}</Tag>
-      },
+      render: (status: AppBotStatus) => (
+        <Tag color={STATUS_COLOR[status]}>{statusLabel(t, status)}</Tag>
+      ),
     },
     {
-      title: '创建时间',
+      title: t('column.createdAt'),
       dataIndex: 'created_at',
       width: 170,
     },
     {
-      title: '操作',
+      title: t('column.action'),
       key: 'actions',
       width: 220,
       render: (_, record) => (
         <Space size="small">
-          <a onClick={() => setEditBot(record)}>编辑</a>
-          <a onClick={() => setDetailId(record.id)}>Token</a>
+          <a onClick={() => setEditBot(record)}>{t('action.edit')}</a>
+          <a onClick={() => setDetailId(record.id)}>{t('action.token')}</a>
           <Popconfirm
-            title={record.status === 1 ? '确认下架？' : '确认上架？'}
+            title={record.status === 1 ? t('confirm.unpublish.title') : t('confirm.publish.title')}
             description={
               record.status === 1
-                ? '下架后用户将不可见此 Bot。'
-                : '上架后用户可在应用入口发现此 Bot。'
+                ? t('confirm.unpublish.desc')
+                : t('confirm.publish.desc')
             }
             onConfirm={() => handleTogglePublish(record)}
-            okText="确认"
-            cancelText="取消"
+            okText={t('confirm.ok')}
+            cancelText={t('confirm.cancel')}
           >
-            <a>{record.status === 1 ? '下架' : '上架'}</a>
+            <a>{record.status === 1 ? t('action.unpublish') : t('action.publish')}</a>
           </Popconfirm>
           <Popconfirm
-            title="确认删除？"
-            description="将物理删除此 Bot 并清理 IM 连接，不可恢复。"
+            title={t('confirm.delete.title')}
+            description={t('confirm.delete.desc')}
             onConfirm={() => handleDelete(record.id)}
-            okText="删除"
-            cancelText="取消"
+            okText={t('confirm.delete.ok')}
+            cancelText={t('confirm.cancel')}
           >
-            <a style={{ color: 'var(--ant-color-error, #ff4d4f)' }}>删除</a>
+            <a style={{ color: 'var(--ant-color-error, #ff4d4f)' }}>{t('action.delete')}</a>
           </Popconfirm>
         </Space>
       ),
@@ -212,17 +220,17 @@ export default function AppBotsPage({ spaceId }: Props) {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <Typography.Title level={4} style={{ margin: 0 }}>
-          {spaceId ? 'Space 应用 Bot' : '平台应用 Bot'}
+          {spaceId ? t('list.title.space') : t('list.title.platform')}
         </Typography.Title>
         <Space>
           <Select
             value={statusFilter}
             onChange={(v) => { setStatusFilter(v); setPage(1) }}
-            options={STATUS_OPTIONS}
+            options={statusOptions(t)}
             style={{ width: 120 }}
           />
           <Input
-            placeholder="搜索名称或 ID..."
+            placeholder={t('list.search.placeholder')}
             prefix={<SearchOutlined />}
             allowClear
             value={keyword}
@@ -235,7 +243,7 @@ export default function AppBotsPage({ spaceId }: Props) {
             icon={<PlusOutlined />}
             onClick={() => setCreateOpen(true)}
           >
-            创建
+            {t('list.create')}
           </Button>
         </Space>
       </div>
@@ -250,7 +258,7 @@ export default function AppBotsPage({ spaceId }: Props) {
           pageSize: PAGE_SIZE,
           total,
           onChange: setPage,
-          showTotal: (t) => `共 ${t} 个`,
+          showTotal: (count) => t('list.total', { count }),
           showSizeChanger: false,
         }}
         size="middle"
