@@ -5,6 +5,7 @@ import { UserOutlined, LockOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { login } from '../../api/auth'
 import { useAuthStore } from '../../store/auth'
+import LanguageSwitcher from '../../components/LanguageSwitcher'
 
 interface LoginForm {
   username: string
@@ -43,6 +44,9 @@ export default function Login() {
         background: 'var(--a-bg-canvas)',
       }}
     >
+      <div style={{ position: 'absolute', top: 16, right: 16 }}>
+        <LanguageSwitcher />
+      </div>
       <Card
         style={{ width: 400 }}
         bordered={false}

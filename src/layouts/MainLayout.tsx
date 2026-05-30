@@ -21,6 +21,7 @@ import {
 } from '@ant-design/icons'
 import { useAuthStore } from '../store/auth'
 import { useFeatureStore } from '../store/feature'
+import LanguageSwitcher from '../components/LanguageSwitcher'
 import { useTheme } from '../hooks/useTheme'
 import type { Theme } from '../hooks/useTheme'
 
@@ -181,6 +182,7 @@ const MainLayout: React.FC = () => {
           />
           <div style={{ flex: 1 }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <LanguageSwitcher />
             <Dropdown
               menu={{ items: themeMenu, selectedKeys: [theme] }}
               trigger={['click']}
