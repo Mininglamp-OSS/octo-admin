@@ -3,6 +3,8 @@ import { Modal, Form, Input, Avatar, Upload, message } from 'antd'
 import { CameraOutlined, LoadingOutlined, RobotOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import {
+  getAppBot,
+  getSpaceAppBot,
   updateAppBot,
   updateSpaceAppBot,
   uploadAppBotAvatar,
@@ -24,19 +26,45 @@ export default function EditModal({ bot, spaceId, open, onClose, onSuccess, onAv
   const { t } = useTranslation('appBots')
   const [form] = Form.useForm<AppBotUpdateReq>()
   const [loading, setLoading] = useState(false)
+  const [fetching, setFetching] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [avatarVersion, setAvatarVersion] = useState(Date.now)
 
+  // On open, fetch the latest detail so the form reflects the current value
+  // rather than a (possibly stale) list-row snapshot.
   useEffect(() => {
-    if (open && bot) {
+    if (!open || !bot) return
+
+    setAvatarVersion(Date.now())
+
+    const fill = (data: Pick<AppBot, 'display_name' | 'description' | 'welcome_msg'>) => {
       form.setFieldsValue({
-        display_name: bot.display_name,
-        description: bot.description,
-        welcome_msg: bot.welcome_msg,
+        display_name: data.display_name,
+        description: data.description,
+        welcome_msg: data.welcome_msg,
       })
-      setAvatarVersion(Date.now())
     }
-  }, [open, bot, form])
+
+    // Pre-fill from the row data immediately to avoid a blank flash, then
+    // overwrite with the freshly fetched detail.
+    fill(bot)
+
+    let stale = false
+    setFetching(true)
+    const fetchBot = spaceId ? getSpaceAppBot(spaceId, bot.id) : getAppBot(bot.id)
+    fetchBot
+      .then((data) => {
+        if (!stale) fill(data)
+      })
+      .catch((err: Error) => {
+        if (!stale) message.error(err.message)
+      })
+      .finally(() => {
+        if (!stale) setFetching(false)
+      })
+
+    return () => { stale = true }
+  }, [open, bot, spaceId, form])
 
   const handleOk = async () => {
     if (!bot) return
@@ -78,6 +106,8 @@ export default function EditModal({ bot, spaceId, open, onClose, onSuccess, onAv
       onOk={handleOk}
       onCancel={onClose}
       confirmLoading={loading}
+      loading={fetching}
+      okButtonProps={{ disabled: fetching }}
       destroyOnClose
     >
       {/* Avatar upload */}
