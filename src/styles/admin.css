@@ -1089,3 +1089,140 @@
   flex: 1;
   min-width: 0;
 }
+
+/* =========== System Setting masonry =========== */
+/* 用 CSS 多列做瀑布流：卡片按列从上往下紧贴排列，
+   避免 Row/Col 两两配对时高度不齐留下的大片空白。 */
+.admin-shell .setting-masonry {
+  column-count: 2;
+  column-gap: 16px;
+}
+
+.admin-shell .setting-masonry .setting-card {
+  break-inside: avoid;
+  display: inline-block;
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+/* 对齐原来的 lg 断点：窄屏单列 */
+@media (max-width: 991.98px) {
+  .admin-shell .setting-masonry {
+    column-count: 1;
+  }
+}
+
+/* =========== System Setting rows（三层信息分级） =========== */
+/* 卡片标题 + 计数徽标 */
+.admin-shell .setting-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.admin-shell .setting-card-count {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--a-text-tertiary);
+  background: var(--a-bg-muted);
+  border-radius: var(--a-radius-pill);
+  padding: 1px 8px;
+}
+
+/* 行容器：行与行之间用细分隔线，弱化为背景结构 */
+.admin-shell .setting-rows {
+  display: flex;
+  flex-direction: column;
+}
+.admin-shell .setting-row {
+  padding: 14px 0;
+  border-top: 1px solid var(--a-border-default);
+}
+.admin-shell .setting-rows .setting-row:first-child {
+  padding-top: 2px;
+  border-top: 0;
+}
+
+/* inline：标签在左、紧凑控件在右；block：标签在上、宽控件整行 */
+.admin-shell .setting-row--inline {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.admin-shell .setting-row--inline .setting-row-text {
+  flex: 1;
+  min-width: 0;
+}
+.admin-shell .setting-row--inline .setting-row-control {
+  flex-shrink: 0;
+}
+.admin-shell .setting-row--block .setting-row-control {
+  margin-top: 8px;
+}
+.admin-shell .setting-row--block .setting-row-control .ant-input,
+.admin-shell .setting-row--block .setting-row-control .ant-input-affix-wrapper,
+.admin-shell .setting-row--block .setting-row-control .ant-input-password {
+  width: 100%;
+}
+
+/* 第一层：标签（主，最强权重） */
+.admin-shell .setting-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.admin-shell .setting-row-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--a-text-primary);
+  line-height: 1.4;
+}
+
+/* 第三层：key（末，极淡，仅供排查定位） */
+.admin-shell .setting-row-key {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  color: var(--a-text-quaternary);
+  letter-spacing: 0.01em;
+}
+
+/* 来源徽标：DB（已配置，品牌色）/ 默认（跟随默认，中性灰） */
+.admin-shell .setting-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  padding: 0 6px;
+  border-radius: var(--a-radius-sm);
+}
+.admin-shell .setting-badge--db {
+  color: var(--a-brand-subtle-fg);
+  background: var(--a-brand-subtle-bg);
+}
+.admin-shell .setting-badge--default {
+  color: var(--a-text-tertiary);
+  background: var(--a-bg-muted);
+}
+
+/* 第二层：控件 */
+.admin-shell .setting-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.admin-shell .setting-switch-reset {
+  padding: 0;
+  height: auto;
+  font-size: 12px;
+}
+.admin-shell .setting-number {
+  width: 130px;
+}
+
+/* 工具栏已保存提示 */
+.admin-shell .setting-saved-hint {
+  font-size: 13px;
+  color: var(--a-text-tertiary);
+  margin-right: 4px;
+}

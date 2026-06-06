@@ -1,16 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { TFunction } from 'i18next'
+import dayjs from 'dayjs'
 import {
   Alert,
   Button,
   Card,
-  Col,
   Form,
   Input,
   Modal,
-  Row,
-  Select,
   Tooltip,
   message,
 } from 'antd'
@@ -20,130 +18,21 @@ import {
   SendOutlined,
 } from '@ant-design/icons'
 import {
-  SECRET_MASK,
   getSystemSettings,
   testSystemSettingEmail,
   updateSystemSettings,
   type SystemSettingItem,
-  type SystemSettingUpdateItem,
 } from '../../api/system-setting'
-
-type BoolFormValue = '' | '0' | '1'
-type SettingFormValue = string | number | null | undefined
-
-type SystemSettingFormValues = Record<string, SettingFormValue>
+import SettingRow from './SettingRow'
+import {
+  categoryTitle,
+  valuesFromSettings,
+  valuesToPayload,
+  type SystemSettingFormValues,
+} from './helpers'
 
 interface TestEmailFormValues {
   to: string
-}
-
-const settingMapKey = (category: string, key: string) => `${category}.${key}`
-const settingFormName = (category: string, key: string) => settingMapKey(category, key)
-
-const categoryTitleKeys: Record<string, string> = {
-  login: 'category.login',
-  register: 'category.register',
-  support: 'category.support',
-}
-
-function normaliseBoolValue(value: string): BoolFormValue {
-  if (value === '1' || value === 'true' || value === 'TRUE') return '1'
-  if (value === '0' || value === 'false' || value === 'FALSE') return '0'
-  return ''
-}
-
-function boolText(t: TFunction, value: string | undefined) {
-  const normalised = normaliseBoolValue(value ?? '')
-  if (normalised === '1') return t('bool.yes')
-  if (normalised === '0') return t('bool.no')
-  return t('bool.unset')
-}
-
-function formValueToString(value: SettingFormValue) {
-  if (value === null || value === undefined) return ''
-  return String(value)
-}
-
-function valuesToPayload(values: SystemSettingFormValues, items: SystemSettingItem[]): SystemSettingUpdateItem[] {
-  return items.map((item) => {
-    const value = formValueToString(values[settingFormName(item.category, item.key)])
-    const keepEncryptedValue = item.value_type === 'encrypted' && !value && (item.configured || item.value === SECRET_MASK)
-
-    return {
-      category: item.category,
-      key: item.key,
-      value: keepEncryptedValue ? SECRET_MASK : value,
-    }
-  })
-}
-
-function valuesFromSettings(items: SystemSettingItem[]): SystemSettingFormValues {
-  return items.reduce<SystemSettingFormValues>((values, item) => {
-    const fieldName = settingFormName(item.category, item.key)
-    values[fieldName] = item.value_type === 'encrypted' ? '' : item.value ?? ''
-    if (item.value_type === 'bool') {
-      values[fieldName] = normaliseBoolValue(formValueToString(values[fieldName]))
-    }
-    return values
-  }, {})
-}
-
-function categoryTitle(t: TFunction, category: string) {
-  const titleKey = categoryTitleKeys[category]
-  return titleKey ? t(titleKey) : t('category.generic', { category })
-}
-
-function settingSource(t: TFunction, item: SystemSettingItem) {
-  return item.configured ? t('source.db') : t('source.default')
-}
-
-function genericSettingExtra(t: TFunction, item: SystemSettingItem) {
-  const identity = settingMapKey(item.category, item.key)
-  if (!item.effective_value) return identity
-  const source = settingSource(t, item)
-  if (item.value_type === 'encrypted') {
-    return t('extra.effectiveEncrypted', { identity, source })
-  }
-  if (item.value_type === 'bool') {
-    return t('extra.effectiveValue', { identity, value: boolText(t, item.effective_value), source })
-  }
-  return t('extra.effectiveValue', { identity, value: item.effective_value, source })
-}
-
-function genericBoolDefaultLabel(t: TFunction, item: SystemSettingItem) {
-  return item.effective_value
-    ? t('input.boolDefaultWithCurrent', { value: boolText(t, item.effective_value) })
-    : t('input.boolDefault')
-}
-
-function settingLabel(item: SystemSettingItem) {
-  return item.description || item.key
-}
-
-function renderSettingInput(t: TFunction, item: SystemSettingItem) {
-  if (item.value_type === 'bool') {
-    return (
-      <Select
-        options={[
-          { value: '', label: genericBoolDefaultLabel(t, item) },
-          { value: '1', label: t('bool.yes') },
-          { value: '0', label: t('bool.no') },
-        ]}
-      />
-    )
-  }
-
-  if (item.value_type === 'encrypted') {
-    return (
-      <Input.Password
-        allowClear
-        autoComplete="new-password"
-        placeholder={item.configured ? t('input.encryptedKeep') : t('input.encryptedDefault')}
-      />
-    )
-  }
-
-  return <Input allowClear type={item.value_type === 'int' ? 'number' : undefined} />
 }
 
 export default function SystemSetting() {
@@ -156,6 +45,7 @@ export default function SystemSetting() {
   const [testModalOpen, setTestModalOpen] = useState(false)
   const [settings, setSettings] = useState<SystemSettingItem[]>([])
   const [dirty, setDirty] = useState(false)
+  const [savedAt, setSavedAt] = useState<string | null>(null)
 
   const settingGroups = useMemo(() => {
     const groups = new Map<string, SystemSettingItem[]>()
@@ -193,6 +83,7 @@ export default function SystemSetting() {
     try {
       await updateSystemSettings(valuesToPayload(values, settings))
       message.success(t('toast.saved'))
+      setSavedAt(dayjs().format('HH:mm'))
       await fetchSettings()
     } catch (error) {
       message.error(t('toast.saveFailed', { message: (error as Error).message }))
@@ -216,6 +107,24 @@ export default function SystemSetting() {
     }
   }
 
+  const testEmailButton = (
+    <Tooltip title={dirty ? t('tooltip.saveBeforeTest') : ''}>
+      <Button
+        size="small"
+        icon={<SendOutlined />}
+        onClick={() => setTestModalOpen(true)}
+        disabled={dirty}
+      >
+        {t('action.testEmail')}
+      </Button>
+    </Tooltip>
+  )
+
+  // 各分类卡片头部的关联操作；后续其他分类需要专属动作时在此扩展即可
+  const categoryActions: Record<string, ReactNode> = {
+    support: testEmailButton,
+  }
+
   return (
     <div>
       <h1 className="page-title">{t('title')}</h1>
@@ -226,15 +135,9 @@ export default function SystemSetting() {
           {t('common:action.refresh')}
         </Button>
         <div className="toolbar-spacer" />
-        <Tooltip title={dirty ? t('tooltip.saveBeforeTest') : ''}>
-          <Button
-            icon={<SendOutlined />}
-            onClick={() => setTestModalOpen(true)}
-            disabled={dirty}
-          >
-            {t('action.testEmail')}
-          </Button>
-        </Tooltip>
+        {savedAt && !dirty && (
+          <span className="setting-saved-hint">{t('savedAt', { time: savedAt })}</span>
+        )}
         <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={saving}>
           {t('action.save')}
         </Button>
@@ -246,24 +149,28 @@ export default function SystemSetting() {
         initialValues={{}}
         onValuesChange={() => setDirty(true)}
       >
-        <Row gutter={[16, 16]}>
+        <div className="setting-masonry">
           {settingGroups.map(([category, items]) => (
-            <Col xs={24} lg={12} key={category}>
-              <Card title={categoryTitle(t, category)} loading={loading}>
+            <Card
+              className="setting-card"
+              key={category}
+              title={
+                <span className="setting-card-title">
+                  {categoryTitle(t, category)}
+                  <span className="setting-card-count">{t('countItems', { count: items.length })}</span>
+                </span>
+              }
+              extra={categoryActions[category]}
+              loading={loading}
+            >
+              <div className="setting-rows">
                 {items.map((item) => (
-                  <Form.Item
-                    key={settingMapKey(item.category, item.key)}
-                    name={settingFormName(item.category, item.key)}
-                    label={settingLabel(item)}
-                    extra={genericSettingExtra(t, item)}
-                  >
-                    {renderSettingInput(t, item)}
-                  </Form.Item>
+                  <SettingRow key={`${item.category}.${item.key}`} item={item} t={t} />
                 ))}
-              </Card>
-            </Col>
+              </div>
+            </Card>
           ))}
-        </Row>
+        </div>
       </Form>
 
       <Modal
