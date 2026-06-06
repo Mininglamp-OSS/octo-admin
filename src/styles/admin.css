@@ -1091,8 +1091,8 @@
 }
 
 /* =========== System Setting masonry =========== */
-/* 用 CSS 多列做瀑布流：卡片按列从上往下紧贴排列，
-   避免 Row/Col 两两配对时高度不齐留下的大片空白。 */
+/* CSS multi-column masonry: cards pack column by column, top to bottom,
+   avoiding the large gaps the old paired Row/Col grid left between rows. */
 .admin-shell .setting-masonry {
   column-count: 2;
   column-gap: 16px;
@@ -1100,20 +1100,22 @@
 
 .admin-shell .setting-masonry .setting-card {
   break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  page-break-inside: avoid;
   display: inline-block;
   width: 100%;
   margin-bottom: 16px;
 }
 
-/* 对齐原来的 lg 断点：窄屏单列 */
+/* Match the previous lg breakpoint: single column on narrow screens */
 @media (max-width: 991.98px) {
   .admin-shell .setting-masonry {
     column-count: 1;
   }
 }
 
-/* =========== System Setting rows（三层信息分级） =========== */
-/* 卡片标题 + 计数徽标 */
+/* =========== System Setting rows (label / control / meta hierarchy) =========== */
+/* Card title + item-count badge */
 .admin-shell .setting-card-title {
   display: inline-flex;
   align-items: center;
@@ -1128,7 +1130,7 @@
   padding: 1px 8px;
 }
 
-/* 行容器：行与行之间用细分隔线，弱化为背景结构 */
+/* Row container: thin dividers between rows act as quiet background structure */
 .admin-shell .setting-rows {
   display: flex;
   flex-direction: column;
@@ -1142,7 +1144,7 @@
   border-top: 0;
 }
 
-/* inline：标签在左、紧凑控件在右；block：标签在上、宽控件整行 */
+/* inline: label left, compact control right; block: label on top, full-width control */
 .admin-shell .setting-row--inline {
   display: flex;
   align-items: center;
@@ -1164,7 +1166,7 @@
   width: 100%;
 }
 
-/* 第一层：标签（主，最强权重） */
+/* Layer 1: label (primary, strongest weight) */
 .admin-shell .setting-row-head {
   display: flex;
   align-items: center;
@@ -1177,7 +1179,7 @@
   line-height: 1.4;
 }
 
-/* 第三层：key（末，极淡，仅供排查定位） */
+/* Layer 3: key (tertiary, very faint, for troubleshooting/locating only) */
 .admin-shell .setting-row-key {
   display: block;
   margin-top: 3px;
@@ -1187,7 +1189,7 @@
   letter-spacing: 0.01em;
 }
 
-/* 来源徽标：DB（已配置，品牌色）/ 默认（跟随默认，中性灰） */
+/* Source badge: DB (configured, brand color) / Default (following default, neutral gray) */
 .admin-shell .setting-badge {
   flex-shrink: 0;
   font-size: 11px;
@@ -1205,7 +1207,7 @@
   background: var(--a-bg-muted);
 }
 
-/* 第二层：控件 */
+/* Layer 2: controls */
 .admin-shell .setting-switch {
   display: inline-flex;
   align-items: center;
@@ -1216,11 +1218,18 @@
   height: auto;
   font-size: 12px;
 }
+/* Following-default state: muted so it reads differently from an explicit value */
+.admin-shell .setting-switch-toggle--default {
+  opacity: 0.55;
+}
+.admin-shell .setting-switch-toggle--default:hover {
+  opacity: 0.8;
+}
 .admin-shell .setting-number {
   width: 130px;
 }
 
-/* 工具栏已保存提示 */
+/* Toolbar "saved at" hint */
 .admin-shell .setting-saved-hint {
   font-size: 13px;
   color: var(--a-text-tertiary);

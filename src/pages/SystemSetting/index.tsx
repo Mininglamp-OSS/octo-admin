@@ -58,7 +58,9 @@ export default function SystemSetting() {
     return Array.from(groups.entries())
   }, [settings])
 
-  const fetchSettings = async () => {
+  // keepSavedHint is set by the post-save reload so the "saved at" hint stays;
+  // a manual refresh clears it to avoid implying the page was just saved.
+  const fetchSettings = async (options?: { keepSavedHint?: boolean }) => {
     setLoading(true)
     try {
       const data = await getSystemSettings()
@@ -66,6 +68,7 @@ export default function SystemSetting() {
       setSettings(items)
       form.setFieldsValue(valuesFromSettings(items))
       setDirty(false)
+      if (!options?.keepSavedHint) setSavedAt(null)
     } catch (error) {
       message.error(t('toast.fetchFailed', { message: (error as Error).message }))
     } finally {
@@ -84,7 +87,7 @@ export default function SystemSetting() {
       await updateSystemSettings(valuesToPayload(values, settings))
       message.success(t('toast.saved'))
       setSavedAt(dayjs().format('HH:mm'))
-      await fetchSettings()
+      await fetchSettings({ keepSavedHint: true })
     } catch (error) {
       message.error(t('toast.saveFailed', { message: (error as Error).message }))
     } finally {
@@ -120,7 +123,7 @@ export default function SystemSetting() {
     </Tooltip>
   )
 
-  // 各分类卡片头部的关联操作；后续其他分类需要专属动作时在此扩展即可
+  // Per-category card-header actions; extend here when another category needs one.
   const categoryActions: Record<string, ReactNode> = {
     support: testEmailButton,
   }
@@ -131,7 +134,7 @@ export default function SystemSetting() {
       <p className="page-subtitle">{t('subtitle')}</p>
 
       <div className="toolbar">
-        <Button icon={<ReloadOutlined />} onClick={fetchSettings} loading={loading}>
+        <Button icon={<ReloadOutlined />} onClick={() => fetchSettings()} loading={loading}>
           {t('common:action.refresh')}
         </Button>
         <div className="toolbar-spacer" />
