@@ -185,9 +185,13 @@ export interface Contributor {
   avatar: string
 }
 
-const CONTRIBUTOR_COLORS = ['b6e3f4', 'ffdfbf', 'c0aede', 'd1f4e0', 'ffd5dc', 'ffe4c4', 'c4e0ff', 'f4d1e0']
-
 const CONTRIBUTORS_PATTERN = /^@contributors:\s*(.+)/i
+const GITHUB_AVATAR_SIZE = 48
+
+function githubAvatarUrl(name: string): string {
+  const login = name.replace(/^@+/, '')
+  return `https://github.com/${encodeURIComponent(login)}.png?size=${GITHUB_AVATAR_SIZE}`
+}
 
 export function parseContributors(desc: string): Contributor[] {
   if (!desc) return []
@@ -200,9 +204,9 @@ export function parseContributors(desc: string): Contributor[] {
         .split(/[,，、]\s*/)
         .map((name) => name.trim())
         .filter(Boolean)
-        .map((name, i) => ({
+        .map((name) => ({
           name,
-          avatar: `https://api.dicebear.com/9.x/identicon/svg?seed=${encodeURIComponent(name)}&backgroundColor=${CONTRIBUTOR_COLORS[i % CONTRIBUTOR_COLORS.length]}`,
+          avatar: githubAvatarUrl(name),
         }))
     }
   }
