@@ -405,6 +405,10 @@ function ContributorAvatars({ contributors, showLabel }: { contributors: Contrib
             <img
               src={c.avatar}
               alt={c.name}
+              onError={(event) => {
+                event.currentTarget.onerror = null
+                event.currentTarget.src = c.fallbackAvatar
+              }}
               style={{
                 width: 24,
                 height: 24,

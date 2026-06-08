@@ -183,14 +183,20 @@ export function getVersionSeverity(version: string, prevVersion?: string): Versi
 export interface Contributor {
   name: string
   avatar: string
+  fallbackAvatar: string
 }
 
 const CONTRIBUTORS_PATTERN = /^@contributors:\s*(.+)/i
 const GITHUB_AVATAR_SIZE = 48
+const CONTRIBUTOR_COLORS = ['b6e3f4', 'ffdfbf', 'c0aede', 'd1f4e0', 'ffd5dc', 'ffe4c4', 'c4e0ff', 'f4d1e0']
 
 function githubAvatarUrl(name: string): string {
   const login = name.replace(/^@+/, '')
   return `https://github.com/${encodeURIComponent(login)}.png?size=${GITHUB_AVATAR_SIZE}`
+}
+
+function fallbackAvatarUrl(name: string, index: number): string {
+  return `https://api.dicebear.com/9.x/identicon/svg?seed=${encodeURIComponent(name)}&backgroundColor=${CONTRIBUTOR_COLORS[index % CONTRIBUTOR_COLORS.length]}`
 }
 
 export function parseContributors(desc: string): Contributor[] {
@@ -204,9 +210,10 @@ export function parseContributors(desc: string): Contributor[] {
         .split(/[,，、]\s*/)
         .map((name) => name.trim())
         .filter(Boolean)
-        .map((name) => ({
+        .map((name, index) => ({
           name,
           avatar: githubAvatarUrl(name),
+          fallbackAvatar: fallbackAvatarUrl(name, index),
         }))
     }
   }
