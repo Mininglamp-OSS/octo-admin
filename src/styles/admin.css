@@ -611,7 +611,7 @@
 
 /* =========== Dashboard analytics =========== */
 .admin-shell .dashboard-page {
-  min-width: 760px;
+  min-width: 0;
 }
 
 .admin-shell .dashboard-heading-row {
@@ -953,6 +953,14 @@
   min-height: 360px;
 }
 
+.admin-shell .dashboard-table-link.ant-btn-link {
+  height: auto;
+  padding: 0;
+  line-height: inherit;
+  font-weight: 600;
+  text-align: left;
+}
+
 .admin-shell .dashboard-lazy-card {
   min-height: 240px;
 }
@@ -978,6 +986,36 @@
 @media (max-width: 720px) {
   .admin-shell .dashboard-heading-row {
     flex-direction: column;
+  }
+
+  .admin-shell .dashboard-heading-row .ant-btn {
+    width: 100%;
+  }
+
+  .admin-shell .dashboard-page .toolbar {
+    padding: 12px;
+  }
+
+  .admin-shell .dashboard-page .toolbar > .ant-picker,
+  .admin-shell .dashboard-page .toolbar > .ant-select,
+  .admin-shell .dashboard-page .toolbar > .ant-input-affix-wrapper,
+  .admin-shell .dashboard-page .toolbar > .ant-btn {
+    width: 100% !important;
+    min-width: 0 !important;
+    flex: 1 1 100% !important;
+  }
+
+  .admin-shell .dashboard-chart-body {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .admin-shell .dashboard-donut-wrap {
+    align-self: center;
+  }
+
+  .admin-shell .dashboard-trend-legend {
+    flex-wrap: wrap;
   }
 }
 

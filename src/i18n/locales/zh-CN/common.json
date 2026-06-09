@@ -9,7 +9,12 @@
   },
   "action": {
     "search": "搜索",
-    "refresh": "刷新"
+    "refresh": "刷新",
+    "confirm": "确认",
+    "cancel": "取消"
+  },
+  "column": {
+    "id": "ID"
   },
   "table": {
     "total": "共 {{count}} 条"

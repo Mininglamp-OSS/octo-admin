@@ -8,6 +8,7 @@ import {
   DatePicker,
   Drawer,
   Input,
+  Popconfirm,
   Row,
   Segmented,
   Select,
@@ -92,8 +93,27 @@ const CHANNEL_SORT_VALUES: DashboardChannelSortBy[] = [
 ]
 
 const DIRECT_SORT_VALUES: DashboardDirectChatSortBy[] = ['last_active', 'msg_count']
+// The dashboard API schema defines conv_type as fixed values 1-4.
+const CONV_TYPE_VALUES = [1, 2, 3, 4] as const
 
 const numberFormat = new Intl.NumberFormat()
+
+function dashboardErrorKey(error: unknown) {
+  if (!(error instanceof ApiError)) return 'error.fallback'
+  const code = error.code?.toLowerCase() || ''
+  if (code.includes('not_found') || error.status === 404) return 'error.notFound'
+  if (code.includes('forbidden') || code.includes('unauthorized') || error.status === 403) return 'error.forbidden'
+  if (
+    code.includes('request_invalid') ||
+    code.includes('invalid_request') ||
+    code.includes('bad_request') ||
+    error.status === 400
+  ) return 'error.requestInvalid'
+  if (code.includes('query_failed')) return 'error.queryFailed'
+  if (code.includes('etl_already_running') || error.status === 409) return 'error.etlAlreadyRunning'
+  if (code.includes('etl_trigger_failed')) return 'error.etlTriggerFailed'
+  return 'error.fallback'
+}
 
 function useLazySection<T extends HTMLElement>(enabled = true) {
   const ref = useRef<T | null>(null)
@@ -163,8 +183,8 @@ function antOrder(order?: string): DashboardOrder {
 }
 
 function sorterKey<T extends string>(sorter: SorterResult<unknown>, fallback: T) {
-  if (typeof sorter.field === 'string') return sorter.field
   if (typeof sorter.columnKey === 'string') return sorter.columnKey
+  if (typeof sorter.field === 'string') return sorter.field
   return fallback
 }
 
@@ -225,11 +245,13 @@ function DonutChart({
   centerLabel,
   emptyHint,
   items,
+  ariaLabel,
 }: {
   title: string
   centerLabel: string
   emptyHint: string
   items: { label: string; value: number; color: string }[]
+  ariaLabel: string
 }) {
   const total = items.reduce((sum, item) => sum + item.value, 0)
   if (total <= 0) return <EmptyChart title={title} hint={emptyHint} />
@@ -243,7 +265,7 @@ function DonutChart({
   return (
     <div className="dashboard-chart-body">
       <div className="dashboard-donut-wrap">
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={ariaLabel}>
           <circle cx={center} cy={center} r={radius} fill="none" stroke="var(--a-bg-muted)" strokeWidth="20" />
           {items.map((item) => {
             const length = (item.value / total) * circumference
@@ -292,50 +314,57 @@ function HorizontalBars({
   primaryLabel,
   secondaryLabel,
   rows,
+  ariaLabel,
 }: {
   title: string
   hint: string
   primaryLabel?: string
   secondaryLabel?: string
-  rows: { label: string; value: number; secondary?: number }[]
+  rows: { label: string; value: number; primary?: number; secondary?: number }[]
+  ariaLabel: string
 }) {
   const max = Math.max(...rows.map((row) => row.value), 0)
   if (max <= 0) return <EmptyChart title={title} hint={hint} />
 
   return (
-    <div className="dashboard-bars" aria-label={title}>
+    <div className="dashboard-bars" aria-label={ariaLabel}>
       {primaryLabel && secondaryLabel ? (
         <div className="dashboard-bar-legend">
           <span className="dashboard-bar-legend-primary">{primaryLabel}</span>
           <span className="dashboard-bar-legend-secondary">{secondaryLabel}</span>
         </div>
       ) : null}
-      {rows.map((row) => (
-        <div key={row.label} className="dashboard-bar-row">
-          <div className="dashboard-bar-label">
-            <span>{truncateLabel(row.label)}</span>
-            <strong>{formatNumber(row.value)}</strong>
-          </div>
-          <div className="dashboard-bar-track">
-            <span className="dashboard-bar-fill" style={{ width: `${Math.max(4, (row.value / max) * 100)}%` }}>
-              <span
-                className="dashboard-bar-primary"
-                style={{
-                  width: row.secondary !== undefined && row.value > 0
-                    ? `${Math.max(0, Math.min(100, ((row.value - row.secondary) / row.value) * 100))}%`
-                    : '100%',
-                }}
-              />
-              {row.secondary !== undefined && row.value > 0 ? (
+      {rows.map((row) => {
+        const secondary = row.secondary ?? 0
+        const primary = row.primary ?? (row.secondary !== undefined ? Math.max(row.value - secondary, 0) : row.value)
+        const segmentTotal = Math.max(row.value, primary + secondary, 1)
+        return (
+          <div key={row.label} className="dashboard-bar-row">
+            <div className="dashboard-bar-label">
+              <span>{truncateLabel(row.label)}</span>
+              <strong>{formatNumber(row.value)}</strong>
+            </div>
+            <div className="dashboard-bar-track">
+              <span className="dashboard-bar-fill" style={{ width: `${Math.max(4, (row.value / max) * 100)}%` }}>
                 <span
-                  className="dashboard-bar-secondary"
-                  style={{ width: `${Math.max(0, Math.min(100, (row.secondary / row.value) * 100))}%` }}
+                  className="dashboard-bar-primary"
+                  style={{
+                    width: row.secondary !== undefined && row.value > 0
+                      ? `${Math.max(0, Math.min(100, (primary / segmentTotal) * 100))}%`
+                      : '100%',
+                  }}
                 />
-              ) : null}
-            </span>
+                {row.secondary !== undefined && row.value > 0 ? (
+                  <span
+                    className="dashboard-bar-secondary"
+                    style={{ width: `${Math.max(0, Math.min(100, (secondary / segmentTotal) * 100))}%` }}
+                  />
+                ) : null}
+              </span>
+            </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -354,6 +383,8 @@ function TrendLineChart({
   emptyHint,
   humanLabel,
   agentLabel,
+  loadingHint,
+  ariaLabel,
 }: {
   rows: DashboardTrendItem[]
   granularity: DashboardTrendGranularity
@@ -362,6 +393,8 @@ function TrendLineChart({
   emptyHint: string
   humanLabel: string
   agentLabel: string
+  loadingHint: string
+  ariaLabel: string
 }) {
   const maxValue = Math.max(
     ...rows.map((row) => Math.max(row.total_msg_count || 0, row.human_msg_count || 0, row.agent_msg_count || 0)),
@@ -369,7 +402,7 @@ function TrendLineChart({
   )
 
   if (maxValue <= 0) {
-    return <EmptyChart title={emptyTitle} hint={loading ? emptyHint : emptyHint} />
+    return <EmptyChart title={emptyTitle} hint={loading ? loadingHint : emptyHint} />
   }
 
   const width = 720
@@ -405,7 +438,7 @@ function TrendLineChart({
 
   return (
     <div className="dashboard-trend-chart">
-      <svg className="dashboard-trend-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={emptyTitle}>
+      <svg className="dashboard-trend-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={ariaLabel}>
         {[0, 0.5, 1].map((ratio) => {
           const y = padding.top + plotHeight * ratio
           const value = Math.round(maxValue * (1 - ratio))
@@ -501,6 +534,7 @@ export default function Dashboard() {
   const trendSeq = useRef(0)
   const directSeq = useRef(0)
   const channelsSeq = useRef(0)
+  const spaceOptionsSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [spacesSectionRef, spacesSectionReady] = useLazySection<HTMLDivElement>()
   const [directSectionRef, directSectionReady] = useLazySection<HTMLDivElement>(spacesLoadedOnce)
 
@@ -520,6 +554,19 @@ export default function Dashboard() {
   const currentOverview = overview ?? EMPTY_OVERVIEW
   const trendFeatureReady = Array.isArray(overview?.message_composition)
   const trendFeatureChecked = overview !== null
+  const clearSpaceOptionsSearchTimer = useCallback(() => {
+    if (spaceOptionsSearchTimer.current) {
+      clearTimeout(spaceOptionsSearchTimer.current)
+      spaceOptionsSearchTimer.current = null
+    }
+  }, [])
+  const dashboardErrorMessage = useCallback(
+    (error: unknown) => {
+      const fallback = error instanceof Error ? error.message : t('error.fallback')
+      return t(dashboardErrorKey(error), { defaultValue: fallback })
+    },
+    [t],
+  )
 
   const mergeSpaceOptions = useCallback((items: DashboardSpaceItem[]) => {
     setSpaceOptions((prev) => {
@@ -545,12 +592,12 @@ export default function Dashboard() {
         })
         if (seq === spaceOptionsSeq.current) mergeSpaceOptions(res.list || [])
       } catch (error) {
-        if (seq === spaceOptionsSeq.current) message.error((error as Error).message)
+        if (seq === spaceOptionsSeq.current) message.error(dashboardErrorMessage(error))
       } finally {
         if (seq === spaceOptionsSeq.current) setSpaceOptionsLoading(false)
       }
     },
-    [mergeSpaceOptions, rangeParams],
+    [dashboardErrorMessage, mergeSpaceOptions, rangeParams],
   )
 
   const fetchOverview = useCallback(async () => {
@@ -563,11 +610,11 @@ export default function Dashboard() {
       })
       if (seq === overviewSeq.current) setOverview(data)
     } catch (error) {
-      if (seq === overviewSeq.current) message.error((error as Error).message)
+      if (seq === overviewSeq.current) message.error(dashboardErrorMessage(error))
     } finally {
       if (seq === overviewSeq.current) setOverviewLoading(false)
     }
-  }, [rangeParams, selectedSpaceIds])
+  }, [dashboardErrorMessage, rangeParams, selectedSpaceIds])
 
   const fetchSpaces = useCallback(async () => {
     const seq = ++spacesSeq.current
@@ -587,7 +634,7 @@ export default function Dashboard() {
       setSpacesTotal(res.count || 0)
       mergeSpaceOptions(res.list || [])
     } catch (error) {
-      if (seq === spacesSeq.current) message.error((error as Error).message)
+      if (seq === spacesSeq.current) message.error(dashboardErrorMessage(error))
     } finally {
       if (seq === spacesSeq.current) {
         setSpacesLoading(false)
@@ -596,6 +643,7 @@ export default function Dashboard() {
     }
   }, [
     mergeSpaceOptions,
+    dashboardErrorMessage,
     rangeParams,
     spaceActive,
     spaceKeyword,
@@ -615,17 +663,17 @@ export default function Dashboard() {
         sort_by: 'total_msg',
         order: 'desc',
         page_index: 1,
-        page_size: 6,
+        page_size: selectedSpaceIds.length > 0 ? 200 : 6,
       })
       if (seq !== chartSpacesSeq.current) return
       setChartSpaces(res.list || [])
       mergeSpaceOptions(res.list || [])
     } catch (error) {
-      if (seq === chartSpacesSeq.current) message.error((error as Error).message)
+      if (seq === chartSpacesSeq.current) message.error(dashboardErrorMessage(error))
     } finally {
       if (seq === chartSpacesSeq.current) setChartSpacesLoading(false)
     }
-  }, [mergeSpaceOptions, rangeParams])
+  }, [dashboardErrorMessage, mergeSpaceOptions, rangeParams, selectedSpaceIds.length])
 
   const fetchTrend = useCallback(async () => {
     const seq = ++trendSeq.current
@@ -645,12 +693,12 @@ export default function Dashboard() {
       if (error instanceof ApiError && error.status === 404) {
         setTrendUnavailable(true)
       } else {
-        message.error((error as Error).message)
+        message.error(dashboardErrorMessage(error))
       }
     } finally {
       if (seq === trendSeq.current) setTrendLoading(false)
     }
-  }, [rangeParams, selectedSpaceIds, trendGranularity])
+  }, [dashboardErrorMessage, rangeParams, selectedSpaceIds, trendGranularity])
 
   const fetchDirectChats = useCallback(async () => {
     const seq = ++directSeq.current
@@ -667,11 +715,11 @@ export default function Dashboard() {
       setDirectChats(res.list || [])
       setDirectTotal(res.count || 0)
     } catch (error) {
-      if (seq === directSeq.current) message.error((error as Error).message)
+      if (seq === directSeq.current) message.error(dashboardErrorMessage(error))
     } finally {
       if (seq === directSeq.current) setDirectLoading(false)
     }
-  }, [directOrder, directPage, directPageSize, directSortBy, rangeParams])
+  }, [dashboardErrorMessage, directOrder, directPage, directPageSize, directSortBy, rangeParams])
 
   const fetchChannels = useCallback(async () => {
     if (!drawerSpace) return
@@ -690,7 +738,7 @@ export default function Dashboard() {
       setChannels(res.list || [])
       setChannelsTotal(res.count || 0)
     } catch (error) {
-      if (seq === channelsSeq.current) message.error((error as Error).message)
+      if (seq === channelsSeq.current) message.error(dashboardErrorMessage(error))
     } finally {
       if (seq === channelsSeq.current) setChannelsLoading(false)
     }
@@ -700,13 +748,28 @@ export default function Dashboard() {
     channelPage,
     channelPageSize,
     channelSortBy,
+    dashboardErrorMessage,
     drawerSpace,
     rangeParams,
   ])
 
+  const handleSpaceOptionSearch = useCallback(
+    (value: string) => {
+      clearSpaceOptionsSearchTimer()
+      spaceOptionsSearchTimer.current = setTimeout(() => {
+        void fetchSpaceOptions(value)
+      }, 300)
+    },
+    [clearSpaceOptionsSearchTimer, fetchSpaceOptions],
+  )
+
   useEffect(() => {
     void fetchOverview()
   }, [fetchOverview])
+
+  useEffect(() => {
+    void fetchSpaceOptions()
+  }, [fetchSpaceOptions])
 
   useEffect(() => {
     void fetchChartSpaces()
@@ -727,16 +790,20 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (selectedSpaceIds.length > 0) {
+      directSeq.current += 1
       setDirectChats([])
       setDirectTotal(0)
+      setDirectLoading(false)
       return
     }
     if (directSectionReady) void fetchDirectChats()
-  }, [directSectionReady, fetchDirectChats, selectedSpaceIds.length])
+  }, [directSectionReady, fetchDirectChats, selectedSpaceIds])
 
   useEffect(() => {
     if (drawerOpen) void fetchChannels()
   }, [drawerOpen, fetchChannels])
+
+  useEffect(() => () => clearSpaceOptionsSearchTimer(), [clearSpaceOptionsSearchTimer])
 
   const metricCards = useMemo(
     () => [
@@ -842,16 +909,19 @@ export default function Dashboard() {
   )
 
   const topSpaceMessageRows = useMemo(
-    () =>
-      [...chartSpaces]
+    () => {
+      const selectedSet = new Set(selectedSpaceIds)
+      return [...chartSpaces]
+        .filter((space) => selectedSet.size === 0 || selectedSet.has(space.space_id))
         .map((space) => ({
           label: space.name || space.space_id,
           value: totalMessages(space),
           secondary: space.agent_msg_count,
         }))
         .sort((a, b) => b.value - a.value)
-        .slice(0, 6),
-    [chartSpaces],
+        .slice(0, 6)
+    },
+    [chartSpaces, selectedSpaceIds],
   )
 
   const openChannelDrawer = useCallback((space: DashboardSpaceItem) => {
@@ -861,23 +931,39 @@ export default function Dashboard() {
     setChannelPage(1)
     setChannelSortBy('last_active')
     setChannelOrder('desc')
+    channelsSeq.current += 1
+    setChannels([])
+    setChannelsTotal(0)
+    setChannelsLoading(false)
   }, [])
 
-  const applySpaceSearch = () => {
+  const applySpaceSearch = useCallback(() => {
     setSpacePage(1)
     setSpaceKeyword(spaceSearch.trim())
-  }
+  }, [spaceSearch])
 
-  const refreshAll = () => {
+  const refreshAll = useCallback(() => {
     void fetchOverview()
     void fetchChartSpaces()
     if (trendFeatureReady) void fetchTrend()
     if (spacesSectionReady) void fetchSpaces()
     if (selectedSpaceIds.length === 0 && directSectionReady) void fetchDirectChats()
     if (drawerOpen) void fetchChannels()
-  }
+  }, [
+    directSectionReady,
+    drawerOpen,
+    fetchChannels,
+    fetchChartSpaces,
+    fetchDirectChats,
+    fetchOverview,
+    fetchSpaces,
+    fetchTrend,
+    selectedSpaceIds.length,
+    spacesSectionReady,
+    trendFeatureReady,
+  ])
 
-  const handleRunEtl = async () => {
+  const handleRunEtl = useCallback(async () => {
     setEtlLoading(true)
     try {
       await runDashboardEtl()
@@ -885,14 +971,14 @@ export default function Dashboard() {
       refreshAll()
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
-        message.warning(error.message)
+        message.warning(dashboardErrorMessage(error))
       } else {
-        message.error((error as Error).message)
+        message.error(dashboardErrorMessage(error))
       }
     } finally {
       setEtlLoading(false)
     }
-  }
+  }, [dashboardErrorMessage, refreshAll, t])
 
   const handleSpaceTableChange = (
     pagination: TablePaginationConfig,
@@ -963,11 +1049,12 @@ export default function Dashboard() {
     const items = currentOverview.message_composition || []
     const byType = new Map(items.map((item) => [item.conv_type, item]))
 
-    return [1, 2, 3, 4].map((convType) => {
+    return CONV_TYPE_VALUES.map((convType) => {
       const item = byType.get(convType)
       return {
         label: convTypeLabel(convType),
         value: item?.total_msg_count || 0,
+        primary: item?.human_msg_count || 0,
         secondary: item?.agent_msg_count || 0,
       }
     })
@@ -993,9 +1080,9 @@ export default function Dashboard() {
         fixed: 'left',
         width: 220,
         render: (name: string, record) => (
-          <a className="cell-primary" onClick={() => openChannelDrawer(record)}>
+          <Button type="link" className="dashboard-table-link cell-primary" onClick={() => openChannelDrawer(record)}>
             {name || '-'}
-          </a>
+          </Button>
         ),
       },
       {
@@ -1112,7 +1199,7 @@ export default function Dashboard() {
         render: (value: number) => <span style={{ color: 'var(--a-text-tertiary)' }}>{formatTime(value)}</span>,
       },
       {
-        title: 'ID',
+        title: t('common:column.id'),
         dataIndex: 'channel_id',
         key: 'channel_id',
         width: 220,
@@ -1211,7 +1298,7 @@ export default function Dashboard() {
         render: (value: number) => <span style={{ color: 'var(--a-text-tertiary)' }}>{formatTime(value)}</span>,
       },
       {
-        title: 'ID',
+        title: t('common:column.id'),
         dataIndex: 'channel_id',
         key: 'channel_id',
         width: 220,
@@ -1234,14 +1321,22 @@ export default function Dashboard() {
           <h1 className="page-title">{t('title')}</h1>
           <p className="page-subtitle">{t('subtitle')}</p>
         </div>
-        <Button
-          type="primary"
-          icon={<SyncOutlined />}
-          loading={etlLoading}
-          onClick={handleRunEtl}
+        <Popconfirm
+          title={t('action.runEtlConfirmTitle')}
+          description={t('action.runEtlConfirmDesc')}
+          okText={t('common:action.confirm')}
+          cancelText={t('common:action.cancel')}
+          onConfirm={handleRunEtl}
+          disabled={etlLoading}
         >
-          {t('action.runEtl')}
-        </Button>
+          <Button
+            type="primary"
+            icon={<SyncOutlined />}
+            loading={etlLoading}
+          >
+            {t('action.runEtl')}
+          </Button>
+        </Popconfirm>
       </div>
 
       <div className="toolbar">
@@ -1255,6 +1350,8 @@ export default function Dashboard() {
               setSpacePage(1)
               setDirectPage(1)
               setChannelPage(1)
+              clearSpaceOptionsSearchTimer()
+              setSpaceOptions((prev) => prev.filter((space) => selectedSpaceIds.includes(space.space_id)))
             }
           }}
         />
@@ -1268,7 +1365,7 @@ export default function Dashboard() {
           onOpenChange={(open) => {
             if (open && spaceOptions.length === 0) void fetchSpaceOptions()
           }}
-          onSearch={(value) => void fetchSpaceOptions(value)}
+          onSearch={handleSpaceOptionSearch}
           onChange={(value) => {
             setSelectedSpaceIds(value)
             setDirectPage(1)
@@ -1318,6 +1415,7 @@ export default function Dashboard() {
           <Card title={t('charts.messageComposition.title')} className="dashboard-chart-card">
             <DonutChart
               title={t('charts.empty.title')}
+              ariaLabel={t('charts.messageComposition.title')}
               centerLabel={t('charts.messageComposition.center')}
               emptyHint={t('charts.messageComposition.empty')}
               items={messageComposition}
@@ -1328,6 +1426,7 @@ export default function Dashboard() {
           <Card title={t('charts.memberComposition.title')} className="dashboard-chart-card">
             <DonutChart
               title={t('charts.empty.title')}
+              ariaLabel={t('charts.memberComposition.title')}
               centerLabel={t('charts.memberComposition.center')}
               emptyHint={t('charts.memberComposition.empty')}
               items={memberComposition}
@@ -1338,6 +1437,7 @@ export default function Dashboard() {
           <Card title={t('charts.topSpaces.title')} className="dashboard-chart-card">
             <HorizontalBars
               title={t('charts.empty.title')}
+              ariaLabel={t('charts.topSpaces.title')}
               hint={chartSpacesLoading ? t('charts.loading') : t('charts.topSpaces.empty')}
               primaryLabel={t('charts.messageComposition.human')}
               secondaryLabel={t('charts.messageComposition.agent')}
@@ -1370,6 +1470,8 @@ export default function Dashboard() {
               loading={trendLoading}
               emptyTitle={t('charts.empty.title')}
               emptyHint={trendUnavailable ? t('charts.trend.unavailable') : t('charts.trend.empty')}
+              loadingHint={t('charts.trend.loading')}
+              ariaLabel={t('charts.trend.title')}
               humanLabel={t('charts.messageComposition.human')}
               agentLabel={t('charts.messageComposition.agent')}
             />
@@ -1379,6 +1481,7 @@ export default function Dashboard() {
           <Card title={t('charts.convType.title')} className="dashboard-chart-card">
             <HorizontalBars
               title={t('charts.empty.title')}
+              ariaLabel={t('charts.convType.title')}
               hint={t('charts.convType.empty')}
               primaryLabel={t('charts.messageComposition.human')}
               secondaryLabel={t('charts.messageComposition.agent')}
@@ -1523,7 +1626,7 @@ export default function Dashboard() {
           rowKey="channel_id"
           loading={channelsLoading}
           size="middle"
-          scroll={{ x: 1380 }}
+          scroll={{ x: 1580 }}
           onChange={handleChannelTableChange}
           pagination={{
             current: channelPage,

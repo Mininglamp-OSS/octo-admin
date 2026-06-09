@@ -9,7 +9,12 @@
   },
   "action": {
     "search": "Search",
-    "refresh": "Refresh"
+    "refresh": "Refresh",
+    "confirm": "Confirm",
+    "cancel": "Cancel"
+  },
+  "column": {
+    "id": "ID"
   },
   "table": {
     "total": "{{count}} total"
