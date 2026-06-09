@@ -4,10 +4,12 @@ import { useAuthStore } from '../store/auth'
 
 export class ApiError extends Error {
   status?: number
-  constructor(message: string, status?: number) {
+  code?: string
+  constructor(message: string, status?: number, code?: string) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.code = code
   }
 }
 
@@ -29,13 +31,15 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use(
   (response) => response,
-  (error: AxiosError<{ msg?: string }>) => {
+  (error: AxiosError<{ msg?: string; error?: { code?: string; http_status?: number; message?: string } }>) => {
     if (error.response?.status === 401) {
       useAuthStore.getState().logout()
       window.location.href = '/admin/login'
     }
-    const message = error.response?.data?.msg || error.message
-    return Promise.reject(new ApiError(message, error.response?.status))
+    const errorEnvelope = error.response?.data?.error
+    const message = errorEnvelope?.message || error.response?.data?.msg || error.message
+    const status = errorEnvelope?.http_status || error.response?.status
+    return Promise.reject(new ApiError(message, status, errorEnvelope?.code))
   }
 )
 
