@@ -38,7 +38,7 @@ api.interceptors.response.use(
     }
     const errorEnvelope = error.response?.data?.error
     const message = errorEnvelope?.message || error.response?.data?.msg || error.message
-    const status = errorEnvelope?.http_status || error.response?.status
+    const status = errorEnvelope?.http_status ?? error.response?.status
     return Promise.reject(new ApiError(message, status, errorEnvelope?.code))
   }
 )

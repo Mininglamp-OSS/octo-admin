@@ -327,7 +327,7 @@ function HorizontalBars({
   if (max <= 0) return <EmptyChart title={title} hint={hint} />
 
   return (
-    <div className="dashboard-bars" aria-label={ariaLabel}>
+    <div className="dashboard-bars" role="img" aria-label={ariaLabel}>
       {primaryLabel && secondaryLabel ? (
         <div className="dashboard-bar-legend">
           <span className="dashboard-bar-legend-primary">{primaryLabel}</span>
@@ -536,6 +536,7 @@ export default function Dashboard() {
   const channelsSeq = useRef(0)
   const spaceOptionsSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [spacesSectionRef, spacesSectionReady] = useLazySection<HTMLDivElement>()
+  // Direct chats sit below Spaces, so attach its observer after the Spaces section has loaded once.
   const [directSectionRef, directSectionReady] = useLazySection<HTMLDivElement>(spacesLoadedOnce)
 
   const rangeParams = useMemo(
@@ -552,8 +553,6 @@ export default function Dashboard() {
   )
 
   const currentOverview = overview ?? EMPTY_OVERVIEW
-  const trendFeatureReady = Array.isArray(overview?.message_composition)
-  const trendFeatureChecked = overview !== null
   const clearSpaceOptionsSearchTimer = useCallback(() => {
     if (spaceOptionsSearchTimer.current) {
       clearTimeout(spaceOptionsSearchTimer.current)
@@ -673,7 +672,7 @@ export default function Dashboard() {
     } finally {
       if (seq === chartSpacesSeq.current) setChartSpacesLoading(false)
     }
-  }, [dashboardErrorMessage, mergeSpaceOptions, rangeParams, selectedSpaceIds.length])
+  }, [dashboardErrorMessage, mergeSpaceOptions, rangeParams, selectedSpaceIds])
 
   const fetchTrend = useCallback(async () => {
     const seq = ++trendSeq.current
@@ -776,13 +775,8 @@ export default function Dashboard() {
   }, [fetchChartSpaces])
 
   useEffect(() => {
-    if (trendFeatureReady) {
-      void fetchTrend()
-      return
-    }
-    setTrendRows([])
-    setTrendUnavailable(trendFeatureChecked)
-  }, [fetchTrend, trendFeatureChecked, trendFeatureReady])
+    void fetchTrend()
+  }, [fetchTrend])
 
   useEffect(() => {
     if (spacesSectionReady) void fetchSpaces()
@@ -945,7 +939,7 @@ export default function Dashboard() {
   const refreshAll = useCallback(() => {
     void fetchOverview()
     void fetchChartSpaces()
-    if (trendFeatureReady) void fetchTrend()
+    void fetchTrend()
     if (spacesSectionReady) void fetchSpaces()
     if (selectedSpaceIds.length === 0 && directSectionReady) void fetchDirectChats()
     if (drawerOpen) void fetchChannels()
@@ -960,7 +954,6 @@ export default function Dashboard() {
     fetchTrend,
     selectedSpaceIds.length,
     spacesSectionReady,
-    trendFeatureReady,
   ])
 
   const handleRunEtl = useCallback(async () => {
