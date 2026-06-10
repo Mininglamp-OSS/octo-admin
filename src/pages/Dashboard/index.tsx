@@ -80,8 +80,6 @@ const EMPTY_OVERVIEW: DashboardOverview = {
 
 const SPACE_SORT_VALUES: DashboardSpaceSortBy[] = [
   'last_active',
-  'human_msg_count',
-  'agent_msg_count',
   'total_msg',
   'group_total',
   'human_member_total',
@@ -358,7 +356,7 @@ function DonutChart({
       <div className="dashboard-donut-wrap">
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={ariaLabel}>
           <circle cx={center} cy={center} r={radius} fill="none" stroke="var(--a-bg-muted)" strokeWidth={strokeWidth} />
-          {items.map((item) => {
+          {items.map((item, index) => {
             const length = (item.value / total) * circumference
             const percent = formatPercent(item.value, total)
             const tooltip = (
@@ -371,7 +369,7 @@ function DonutChart({
               />
             )
             const segment = (
-              <Tooltip key={item.label} title={tooltip} mouseEnterDelay={0.12}>
+              <Tooltip key={`${item.label}-${index}`} title={tooltip} mouseEnterDelay={0.12}>
                 <g className="dashboard-donut-segment" tabIndex={0} aria-label={`${item.label}: ${formatNumber(item.value)} · ${percent}`}>
                   <circle
                     cx={center}
@@ -398,9 +396,9 @@ function DonutChart({
         </div>
       </div>
       <div className="dashboard-chart-legend">
-        {items.map((item) => (
+        {items.map((item, index) => (
           <Tooltip
-            key={item.label}
+            key={`${item.label}-${index}`}
             title={
               <ChartTooltipContent
                 title={item.label}
@@ -586,10 +584,10 @@ function TrendLineChart({
   const pointsFor = (selector: (row: DashboardTrendItem) => number) =>
     rows.map((row, index) => ({ x: xFor(index), y: yFor(selector(row) || 0) }))
 
-  const totalPoints = pointsFor((row) => row.total_msg_count)
+  const totalPoints = displayMode === 'absolute' ? pointsFor((row) => row.total_msg_count) : []
   const humanPoints = pointsFor(valueForHuman)
   const agentPoints = pointsFor(valueForAgent)
-  const totalPath = buildTrendPath(totalPoints)
+  const totalPath = displayMode === 'absolute' ? buildTrendPath(totalPoints) : ''
   const humanPath = buildTrendPath(humanPoints)
   const agentPath = buildTrendPath(agentPoints)
   const areaPath = displayMode === 'absolute'
@@ -1030,7 +1028,9 @@ export default function Dashboard() {
       .map((id) => document.getElementById(id))
       .filter((node): node is HTMLElement => Boolean(node))
     if (nodes.length === 0) return
+    if (!('IntersectionObserver' in window)) return
 
+    // Section ids are on always-rendered wrappers; lazy table content stays nested inside them.
     const observer = new IntersectionObserver(
       (entries) => {
         const visible = entries
