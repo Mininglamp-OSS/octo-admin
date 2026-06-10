@@ -567,8 +567,11 @@ function TrendLineChart({
       ...rows.map((row) => Math.max(row.total_msg_count || 0, row.human_msg_count || 0, row.agent_msg_count || 0)),
       0,
     )
+  const hasTrendData = rows.some((row) =>
+    (row.total_msg_count || 0) > 0 || (row.human_msg_count || 0) > 0 || (row.agent_msg_count || 0) > 0,
+  )
 
-  if (maxValue <= 0) {
+  if (!hasTrendData || maxValue <= 0) {
     return <EmptyChart title={emptyTitle} hint={loading ? loadingHint : emptyHint} />
   }
 
@@ -589,7 +592,9 @@ function TrendLineChart({
   const totalPath = buildTrendPath(totalPoints)
   const humanPath = buildTrendPath(humanPoints)
   const agentPath = buildTrendPath(agentPoints)
-  const areaPath = `${totalPath} L${totalPoints[totalPoints.length - 1].x.toFixed(1)},${bottom} L${totalPoints[0].x.toFixed(1)},${bottom} Z`
+  const areaPath = displayMode === 'absolute'
+    ? `${totalPath} L${totalPoints[totalPoints.length - 1].x.toFixed(1)},${bottom} L${totalPoints[0].x.toFixed(1)},${bottom} Z`
+    : ''
   const humanTotal = rows.reduce((sum, row) => sum + (row.human_msg_count || 0), 0)
   const agentTotal = rows.reduce((sum, row) => sum + (row.agent_msg_count || 0), 0)
   const middleIndex = Math.floor((rows.length - 1) / 2)
@@ -1239,7 +1244,7 @@ export default function Dashboard() {
     sorter: SorterResult<DashboardDirectChatItem> | SorterResult<DashboardDirectChatItem>[],
   ) => {
     setDirectPage(pagination.current || 1)
-      setDirectPageSize(pagination.pageSize || MAIN_LIST_PAGE_SIZE)
+    setDirectPageSize(pagination.pageSize || MAIN_LIST_PAGE_SIZE)
     const firstSorter = Array.isArray(sorter) ? sorter[0] : sorter
     if (!firstSorter?.order) {
       setDirectSortBy('last_active')
@@ -1377,7 +1382,6 @@ export default function Dashboard() {
         key: 'last_active',
         width: 170,
         align: 'right',
-        className: 'dashboard-number-column',
         sorter: true,
         sortOrder: spaceSortBy === 'last_active' ? orderToAntd(spaceOrder) : null,
         render: (value: number) => <span style={{ color: 'var(--a-text-tertiary)' }}>{formatTime(value)}</span>,
@@ -1394,10 +1398,15 @@ export default function Dashboard() {
         width: 380,
         render: (_, record) => (
           <div className="dashboard-direct-members">
-            <span className="cell-primary">
-              {record.member_a_name || record.member_a_uid || '-'} / {record.member_b_name || record.member_b_uid || '-'}
+            <div className="dashboard-direct-members-main">
+              <span className="cell-primary">
+                {record.member_a_name || record.member_a_uid || '-'} / {record.member_b_name || record.member_b_uid || '-'}
+              </span>
+              <span className="pill-outline brand">{convTypeLabel(record.conv_type)}</span>
+            </div>
+            <span className="dashboard-direct-members-uid mono">
+              {record.member_a_uid || '-'} / {record.member_b_uid || '-'}
             </span>
-            <span className="pill-outline brand">{convTypeLabel(record.conv_type)}</span>
           </div>
         ),
       },
@@ -1418,7 +1427,6 @@ export default function Dashboard() {
         key: 'last_active',
         width: 170,
         align: 'right',
-        className: 'dashboard-number-column',
         sorter: true,
         sortOrder: directSortBy === 'last_active' ? orderToAntd(directOrder) : null,
         render: (value: number) => <span style={{ color: 'var(--a-text-tertiary)' }}>{formatTime(value)}</span>,
@@ -1578,7 +1586,7 @@ export default function Dashboard() {
         <a className={activeSection === 'dashboard-direct' ? 'active' : undefined} href="#dashboard-direct">{t('nav.direct')}</a>
       </nav>
 
-      <div className="toolbar dashboard-filter-toolbar">
+      <div className="toolbar">
         <RangePicker
           value={dateRange}
           format={DATE_FORMAT}

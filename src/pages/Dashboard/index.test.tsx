@@ -1,4 +1,4 @@
-import { flushSync } from 'react-dom'
+import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Dashboard from './index'
@@ -19,7 +19,14 @@ vi.mock('antd', async () => {
       value,
     })
   const Select = ({ value, onChange, children }: { value?: unknown; onChange?: (value: unknown) => void; children?: React.ReactNode }) =>
-    React.createElement('select', { value: Array.isArray(value) ? value.join(',') : String(value ?? ''), onChange: (event) => onChange?.(event.target.value) }, children)
+    React.createElement(
+      'select',
+      {
+        value: Array.isArray(value) ? value.join(',') : String(value ?? ''),
+        onChange: (event: React.ChangeEvent<HTMLSelectElement>) => onChange?.(event.currentTarget.value),
+      },
+      children,
+    )
   const Segmented = ({
     options,
     onChange,
@@ -106,26 +113,17 @@ vi.mock('../../api', () => ({
   },
 }))
 
-vi.mock('../../api/dashboard', () => ({
-  getDashboardOverview: vi.fn().mockResolvedValue({
-    space_total: 0,
-    group_total: 0,
-    human_member_total: 0,
-    agent_total: 0,
-    active_groups: 0,
-    active_human_members: 0,
-    active_agent_members: 0,
-    human_msg_count: 0,
-    agent_msg_count: 0,
-    private_active_count: 0,
-    message_composition: [],
-  }),
-  getDashboardTrend: vi.fn().mockResolvedValue({ granularity: 'day', list: [] }),
-  listDashboardSpaces: vi.fn().mockResolvedValue({ count: 0, list: [] }),
-  listDashboardChannels: vi.fn().mockResolvedValue({ count: 0, list: [] }),
-  listDashboardDirectChats: vi.fn().mockResolvedValue({ count: 0, list: [] }),
-  runDashboardEtl: vi.fn().mockResolvedValue({ status: 0, state: 'ok' }),
-}))
+vi.mock('../../api/dashboard', () => {
+  const pending = () => new Promise(() => {})
+  return {
+    getDashboardOverview: vi.fn(pending),
+    getDashboardTrend: vi.fn(pending),
+    listDashboardSpaces: vi.fn(pending),
+    listDashboardChannels: vi.fn(pending),
+    listDashboardDirectChats: vi.fn(pending),
+    runDashboardEtl: vi.fn(pending),
+  }
+})
 
 class ResizeObserverMock {
   observe() {}
@@ -166,13 +164,13 @@ describe('Dashboard trend chart', () => {
   })
 
   afterEach(() => {
-    root.unmount()
+    act(() => root.unmount())
     container.remove()
     vi.restoreAllMocks()
   })
 
   it('keeps the empty trend state renderable when switching to share mode', () => {
-    flushSync(() => {
+    act(() => {
       root.render(<Dashboard />)
     })
 
@@ -182,7 +180,7 @@ describe('Dashboard trend chart', () => {
 
     expect(shareToggle).toBeTruthy()
 
-    flushSync(() => {
+    act(() => {
       shareToggle?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
 

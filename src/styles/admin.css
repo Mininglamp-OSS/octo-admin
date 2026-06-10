@@ -1341,16 +1341,29 @@
 
 .admin-shell .dashboard-direct-members {
   display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.admin-shell .dashboard-direct-members-main {
+  display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
 }
 
-.admin-shell .dashboard-direct-members .cell-primary {
+.admin-shell .dashboard-direct-members .cell-primary,
+.admin-shell .dashboard-direct-members-uid {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.admin-shell .dashboard-direct-members-uid {
+  color: var(--a-text-tertiary);
+  font-size: 12px;
 }
 
 .admin-shell .dashboard-table-link.ant-btn-link {
