@@ -59,7 +59,10 @@ const { RangePicker } = DatePicker
 const { Text } = Typography
 
 const DATE_FORMAT = 'YYYY-MM-DD'
-const PAGE_SIZE = 20
+const MAIN_LIST_PAGE_SIZE = 10
+const DRAWER_PAGE_SIZE = 20
+const MAIN_LIST_PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
+const DRAWER_PAGE_SIZE_OPTIONS = [20, 50, 100, 200]
 
 const EMPTY_OVERVIEW: DashboardOverview = {
   space_total: 0,
@@ -95,8 +98,17 @@ const CHANNEL_SORT_VALUES: DashboardChannelSortBy[] = [
 const DIRECT_SORT_VALUES: DashboardDirectChatSortBy[] = ['last_active', 'msg_count']
 // The dashboard API schema defines conv_type as fixed values 1-4.
 const CONV_TYPE_VALUES = [1, 2, 3, 4] as const
+const DASHBOARD_SECTION_IDS = ['dashboard-kpis', 'dashboard-charts', 'dashboard-spaces', 'dashboard-direct'] as const
 
 const numberFormat = new Intl.NumberFormat()
+
+type ChartTooltipLine = {
+  label: string
+  value: ReactNode
+}
+
+type DashboardSectionId = (typeof DASHBOARD_SECTION_IDS)[number]
+type DashboardTrendDisplayMode = 'absolute' | 'share'
 
 function dashboardErrorKey(error: unknown) {
   if (!(error instanceof ApiError)) return 'error.fallback'
@@ -205,15 +217,15 @@ function MetricCard({
   value,
   icon,
   meta,
+  detail,
   loading,
-  highlight,
 }: {
   title: string
   value: number
   icon: ReactNode
   meta: ReactNode
+  detail?: ReactNode
   loading: boolean
-  highlight?: boolean
 }) {
   return (
     <Card className="dashboard-metric-card" styles={{ body: { padding: 20 } }}>
@@ -224,8 +236,8 @@ function MetricCard({
       <Statistic
         value={value}
         formatter={() => (loading ? '-' : formatNumber(value))}
-        valueStyle={highlight ? { color: 'var(--a-brand)' } : undefined}
       />
+      {detail ? <div className="dashboard-metric-detail">{loading ? '-' : detail}</div> : null}
       <div className="dashboard-metric-meta">{loading ? '-' : meta}</div>
     </Card>
   )
@@ -240,49 +252,141 @@ function EmptyChart({ title, hint }: { title: string; hint: string }) {
   )
 }
 
+function ChartTooltipContent({ title, lines }: { title: string; lines: ChartTooltipLine[] }) {
+  return (
+    <div className="dashboard-chart-tooltip">
+      <strong>{title}</strong>
+      {lines.map((line) => (
+        <span key={line.label}>
+          <em>{line.label}</em>
+          <b>{line.value}</b>
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function segmentedTooltipLines({
+  totalLabel,
+  primaryLabel,
+  primary,
+  secondaryLabel,
+  secondary,
+  segmentTotal,
+  shareLabel,
+}: {
+  totalLabel: string
+  primaryLabel?: string
+  primary: number
+  secondaryLabel?: string
+  secondary: number
+  segmentTotal: number
+  shareLabel: string
+}) {
+  const lines: ChartTooltipLine[] = [{ label: totalLabel, value: formatNumber(primary + secondary) }]
+  if (primaryLabel && secondaryLabel) {
+    lines.push(
+      { label: primaryLabel, value: formatNumber(primary) },
+      { label: `${primaryLabel} ${shareLabel}`, value: formatPercent(primary, segmentTotal) },
+      { label: secondaryLabel, value: formatNumber(secondary) },
+      { label: `${secondaryLabel} ${shareLabel}`, value: formatPercent(secondary, segmentTotal) },
+    )
+  }
+  return lines
+}
+
+function MessageSplitCell({
+  human,
+  agent,
+  humanLabel,
+  agentLabel,
+}: {
+  human: number
+  agent: number
+  humanLabel: string
+  agentLabel: string
+}) {
+  const total = human + agent
+  const humanPercent = total > 0 ? (human / total) * 100 : 0
+  const agentPercent = total > 0 ? (agent / total) * 100 : 0
+
+  return (
+    <div className="dashboard-message-split">
+      <div className="dashboard-message-split-head">
+        <strong>{formatNumber(total)}</strong>
+        <span>{humanLabel} {formatNumber(human)} · {agentLabel} {formatNumber(agent)}</span>
+      </div>
+      <div className="dashboard-message-split-track" aria-label={`${humanLabel} ${formatPercent(human, total)}, ${agentLabel} ${formatPercent(agent, total)}`}>
+        <span className="dashboard-message-split-human" style={{ width: `${humanPercent}%`, minWidth: human > 0 ? 4 : 0 }} />
+        <span className="dashboard-message-split-agent" style={{ width: `${agentPercent}%`, minWidth: agent > 0 ? 4 : 0 }} />
+      </div>
+    </div>
+  )
+}
+
 function DonutChart({
   title,
   centerLabel,
   emptyHint,
   items,
   ariaLabel,
+  valueLabel,
+  shareLabel,
+  compact = false,
 }: {
   title: string
   centerLabel: string
   emptyHint: string
   items: { label: string; value: number; color: string }[]
   ariaLabel: string
+  valueLabel: string
+  shareLabel: string
+  compact?: boolean
 }) {
   const total = items.reduce((sum, item) => sum + item.value, 0)
   if (total <= 0) return <EmptyChart title={title} hint={emptyHint} />
 
-  const size = 168
+  const size = compact ? 152 : 168
   const center = size / 2
-  const radius = 60
+  const radius = compact ? 54 : 60
+  const strokeWidth = compact ? 18 : 20
   const circumference = 2 * Math.PI * radius
   let offset = 0
 
   return (
-    <div className="dashboard-chart-body">
+    <div className={`dashboard-chart-body${compact ? ' compact' : ''}`}>
       <div className="dashboard-donut-wrap">
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={ariaLabel}>
-          <circle cx={center} cy={center} r={radius} fill="none" stroke="var(--a-bg-muted)" strokeWidth="20" />
+          <circle cx={center} cy={center} r={radius} fill="none" stroke="var(--a-bg-muted)" strokeWidth={strokeWidth} />
           {items.map((item) => {
             const length = (item.value / total) * circumference
-            const segment = (
-              <circle
-                key={item.label}
-                cx={center}
-                cy={center}
-                r={radius}
-                fill="none"
-                stroke={item.color}
-                strokeWidth="20"
-                strokeDasharray={`${length} ${circumference - length}`}
-                strokeDashoffset={-offset}
-                strokeLinecap="butt"
-                transform={`rotate(-90 ${center} ${center})`}
+            const percent = formatPercent(item.value, total)
+            const tooltip = (
+              <ChartTooltipContent
+                title={item.label}
+                lines={[
+                  { label: valueLabel, value: formatNumber(item.value) },
+                  { label: shareLabel, value: percent },
+                ]}
               />
+            )
+            const segment = (
+              <Tooltip key={item.label} title={tooltip} mouseEnterDelay={0.12}>
+                <g className="dashboard-donut-segment" tabIndex={0} aria-label={`${item.label}: ${formatNumber(item.value)} · ${percent}`}>
+                  <circle
+                    cx={center}
+                    cy={center}
+                    r={radius}
+                    fill="none"
+                    stroke={item.color}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray={`${length} ${circumference - length}`}
+                    strokeDashoffset={-offset}
+                    strokeLinecap="butt"
+                    transform={`rotate(-90 ${center} ${center})`}
+                  />
+                </g>
+              </Tooltip>
             )
             offset += length
             return segment
@@ -295,13 +399,27 @@ function DonutChart({
       </div>
       <div className="dashboard-chart-legend">
         {items.map((item) => (
-          <div key={item.label} className="dashboard-chart-legend-item">
-            <span style={{ background: item.color }} />
-            <div>
-              <strong>{item.label}</strong>
-              <em>{formatNumber(item.value)} · {formatPercent(item.value, total)}</em>
+          <Tooltip
+            key={item.label}
+            title={
+              <ChartTooltipContent
+                title={item.label}
+                lines={[
+                  { label: valueLabel, value: formatNumber(item.value) },
+                  { label: shareLabel, value: formatPercent(item.value, total) },
+                ]}
+              />
+            }
+            mouseEnterDelay={0.12}
+          >
+            <div className="dashboard-chart-legend-item" tabIndex={0}>
+              <span style={{ background: item.color }} />
+              <div>
+                <strong>{item.label}</strong>
+                <em>{formatNumber(item.value)} · {formatPercent(item.value, total)}</em>
+              </div>
             </div>
-          </div>
+          </Tooltip>
         ))}
       </div>
     </div>
@@ -315,6 +433,10 @@ function HorizontalBars({
   secondaryLabel,
   rows,
   ariaLabel,
+  totalLabel,
+  shareLabel,
+  scale = 'linear',
+  scaleLabel,
 }: {
   title: string
   hint: string
@@ -322,9 +444,17 @@ function HorizontalBars({
   secondaryLabel?: string
   rows: { label: string; value: number; primary?: number; secondary?: number }[]
   ariaLabel: string
+  totalLabel: string
+  shareLabel: string
+  scale?: 'linear' | 'log'
+  scaleLabel?: string
 }) {
   const max = Math.max(...rows.map((row) => row.value), 0)
   if (max <= 0) return <EmptyChart title={title} hint={hint} />
+  const scaledWidth = (value: number) => {
+    if (scale === 'log') return (Math.log1p(value) / Math.log1p(max)) * 100
+    return (value / max) * 100
+  }
 
   return (
     <div className="dashboard-bars" role="img" aria-label={ariaLabel}>
@@ -332,37 +462,56 @@ function HorizontalBars({
         <div className="dashboard-bar-legend">
           <span className="dashboard-bar-legend-primary">{primaryLabel}</span>
           <span className="dashboard-bar-legend-secondary">{secondaryLabel}</span>
+          {scaleLabel ? <em className="dashboard-bar-scale">{scaleLabel}</em> : null}
         </div>
       ) : null}
-      {rows.map((row) => {
+      {rows.map((row, index) => {
         const secondary = row.secondary ?? 0
         const primary = row.primary ?? (row.secondary !== undefined ? Math.max(row.value - secondary, 0) : row.value)
         const segmentTotal = Math.max(row.value, primary + secondary, 1)
+        const tooltipLines = row.secondary !== undefined
+          ? segmentedTooltipLines({
+            totalLabel,
+            primaryLabel,
+            primary,
+            secondaryLabel,
+            secondary,
+            segmentTotal,
+            shareLabel,
+          })
+          : [{ label: totalLabel, value: formatNumber(row.value) }]
+
         return (
-          <div key={row.label} className="dashboard-bar-row">
-            <div className="dashboard-bar-label">
-              <span>{truncateLabel(row.label)}</span>
-              <strong>{formatNumber(row.value)}</strong>
-            </div>
-            <div className="dashboard-bar-track">
-              <span className="dashboard-bar-fill" style={{ width: `${Math.max(4, (row.value / max) * 100)}%` }}>
-                <span
-                  className="dashboard-bar-primary"
-                  style={{
-                    width: row.secondary !== undefined && row.value > 0
-                      ? `${Math.max(0, Math.min(100, (primary / segmentTotal) * 100))}%`
-                      : '100%',
-                  }}
-                />
-                {row.secondary !== undefined && row.value > 0 ? (
+          <Tooltip
+            key={`${row.label}-${index}`}
+            title={<ChartTooltipContent title={row.label} lines={tooltipLines} />}
+            mouseEnterDelay={0.12}
+          >
+            <div className="dashboard-bar-row" tabIndex={0} aria-label={`${row.label}: ${formatNumber(row.value)}`}>
+              <div className="dashboard-bar-label">
+                <span>{truncateLabel(row.label)}</span>
+                <strong>{formatNumber(row.value)}</strong>
+              </div>
+              <div className="dashboard-bar-track">
+                <span className="dashboard-bar-fill" style={{ width: `${Math.max(4, scaledWidth(row.value))}%` }}>
                   <span
-                    className="dashboard-bar-secondary"
-                    style={{ width: `${Math.max(0, Math.min(100, (secondary / segmentTotal) * 100))}%` }}
+                    className="dashboard-bar-primary"
+                    style={{
+                      width: row.secondary !== undefined && row.value > 0
+                        ? `${Math.max(0, Math.min(100, (primary / segmentTotal) * 100))}%`
+                        : '100%',
+                    }}
                   />
-                ) : null}
-              </span>
+                  {row.secondary !== undefined && row.value > 0 ? (
+                    <span
+                      className="dashboard-bar-secondary"
+                      style={{ width: `${Math.max(0, Math.min(100, (secondary / segmentTotal) * 100))}%` }}
+                    />
+                  ) : null}
+                </span>
+              </div>
             </div>
-          </div>
+          </Tooltip>
         )
       })}
     </div>
@@ -378,6 +527,7 @@ function buildTrendPath(points: { x: number; y: number }[]) {
 function TrendLineChart({
   rows,
   granularity,
+  displayMode,
   loading,
   emptyTitle,
   emptyHint,
@@ -385,9 +535,13 @@ function TrendLineChart({
   agentLabel,
   loadingHint,
   ariaLabel,
+  totalLabel,
+  agentShareLabel,
+  agentRatioLabel,
 }: {
   rows: DashboardTrendItem[]
   granularity: DashboardTrendGranularity
+  displayMode: DashboardTrendDisplayMode
   loading: boolean
   emptyTitle: string
   emptyHint: string
@@ -395,11 +549,24 @@ function TrendLineChart({
   agentLabel: string
   loadingHint: string
   ariaLabel: string
+  totalLabel: string
+  agentShareLabel: string
+  agentRatioLabel: string
 }) {
-  const maxValue = Math.max(
-    ...rows.map((row) => Math.max(row.total_msg_count || 0, row.human_msg_count || 0, row.agent_msg_count || 0)),
-    0,
-  )
+  const valueForHuman = (row: DashboardTrendItem) => {
+    const total = row.total_msg_count || 0
+    return displayMode === 'share' ? (total > 0 ? ((row.human_msg_count || 0) / total) * 100 : 0) : row.human_msg_count || 0
+  }
+  const valueForAgent = (row: DashboardTrendItem) => {
+    const total = row.total_msg_count || 0
+    return displayMode === 'share' ? (total > 0 ? ((row.agent_msg_count || 0) / total) * 100 : 0) : row.agent_msg_count || 0
+  }
+  const maxValue = displayMode === 'share'
+    ? 100
+    : Math.max(
+      ...rows.map((row) => Math.max(row.total_msg_count || 0, row.human_msg_count || 0, row.agent_msg_count || 0)),
+      0,
+    )
 
   if (maxValue <= 0) {
     return <EmptyChart title={emptyTitle} hint={loading ? loadingHint : emptyHint} />
@@ -417,8 +584,8 @@ function TrendLineChart({
     rows.map((row, index) => ({ x: xFor(index), y: yFor(selector(row) || 0) }))
 
   const totalPoints = pointsFor((row) => row.total_msg_count)
-  const humanPoints = pointsFor((row) => row.human_msg_count)
-  const agentPoints = pointsFor((row) => row.agent_msg_count)
+  const humanPoints = pointsFor(valueForHuman)
+  const agentPoints = pointsFor(valueForAgent)
   const totalPath = buildTrendPath(totalPoints)
   const humanPath = buildTrendPath(humanPoints)
   const agentPath = buildTrendPath(agentPoints)
@@ -435,6 +602,13 @@ function TrendLineChart({
     }
     return dayjs(row.bucket).format('MM-DD')
   }
+  const trendHotspot = (index: number) => {
+    if (rows.length <= 1) return { x: padding.left, width: plotWidth }
+    const step = plotWidth / (rows.length - 1)
+    if (index === 0) return { x: padding.left, width: step / 2 }
+    if (index === rows.length - 1) return { x: xFor(index) - step / 2, width: step / 2 }
+    return { x: xFor(index) - step / 2, width: step }
+  }
 
   return (
     <div className="dashboard-trend-chart">
@@ -446,14 +620,52 @@ function TrendLineChart({
             <g key={ratio}>
               <line className="dashboard-trend-grid" x1={padding.left} y1={y} x2={width - padding.right} y2={y} />
               <text className="dashboard-trend-axis" x={padding.left - 10} y={y + 4} textAnchor="end">
-                {formatNumber(value)}
+                {displayMode === 'share' ? `${value}%` : formatNumber(value)}
               </text>
             </g>
           )
         })}
-        <path className="dashboard-trend-area" d={areaPath} />
+        {displayMode === 'absolute' ? <path className="dashboard-trend-area" d={areaPath} /> : null}
         <path className="dashboard-trend-line human" d={humanPath} />
         <path className="dashboard-trend-line agent" d={agentPath} />
+        {rows.map((row, index) => {
+          const x = xFor(index)
+          const hotspot = trendHotspot(index)
+          const total = row.total_msg_count || 0
+          const human = row.human_msg_count || 0
+          const agent = row.agent_msg_count || 0
+          const bucketLabel = formatBucket(row)
+          const agentRatio = human > 0 ? `${(agent / human).toFixed(2)}x` : '-'
+          return (
+            <Tooltip
+              key={`${row.bucket}-${index}`}
+              title={
+                <ChartTooltipContent
+                  title={bucketLabel}
+                  lines={[
+                    { label: totalLabel, value: formatNumber(total) },
+                    { label: humanLabel, value: formatNumber(human) },
+                    { label: agentLabel, value: formatNumber(agent) },
+                    { label: agentShareLabel, value: formatPercent(agent, total) },
+                    { label: agentRatioLabel, value: agentRatio },
+                  ]}
+                />
+              }
+              mouseEnterDelay={0.12}
+            >
+              <g
+                className="dashboard-trend-point"
+                tabIndex={0}
+                aria-label={`${bucketLabel}: ${totalLabel} ${formatNumber(total)}, ${humanLabel} ${formatNumber(human)}, ${agentLabel} ${formatNumber(agent)}`}
+              >
+                <line className="dashboard-trend-hover-line" x1={x} y1={padding.top} x2={x} y2={bottom} />
+                <circle className="dashboard-trend-marker human" cx={x} cy={yFor(valueForHuman(row))} r="4" />
+                <circle className="dashboard-trend-marker agent" cx={x} cy={yFor(valueForAgent(row))} r="4" />
+                <rect className="dashboard-trend-hotspot" x={hotspot.x} y={padding.top} width={hotspot.width} height={plotHeight} />
+              </g>
+            </Tooltip>
+          )
+        })}
         {labelIndexes.map((index) => (
           <text key={index} className="dashboard-trend-axis" x={xFor(index)} y={height - 8} textAnchor="middle">
             {formatBucket(rows[index])}
@@ -493,7 +705,7 @@ export default function Dashboard() {
   const [spaceKeyword, setSpaceKeyword] = useState('')
   const [spaceActive, setSpaceActive] = useState<DashboardActiveStatus>('all')
   const [spacePage, setSpacePage] = useState(1)
-  const [spacePageSize, setSpacePageSize] = useState(PAGE_SIZE)
+  const [spacePageSize, setSpacePageSize] = useState(MAIN_LIST_PAGE_SIZE)
   const [spaceSortBy, setSpaceSortBy] = useState<DashboardSpaceSortBy>('last_active')
   const [spaceOrder, setSpaceOrder] = useState<DashboardOrder>('desc')
   const [spaces, setSpaces] = useState<DashboardSpaceItem[]>([])
@@ -503,12 +715,14 @@ export default function Dashboard() {
   const [chartSpaces, setChartSpaces] = useState<DashboardSpaceItem[]>([])
   const [chartSpacesLoading, setChartSpacesLoading] = useState(false)
   const [trendGranularity, setTrendGranularity] = useState<DashboardTrendGranularity>('day')
+  const [trendDisplayMode, setTrendDisplayMode] = useState<DashboardTrendDisplayMode>('absolute')
   const [trendRows, setTrendRows] = useState<DashboardTrendItem[]>([])
   const [trendLoading, setTrendLoading] = useState(false)
   const [trendUnavailable, setTrendUnavailable] = useState(false)
+  const [activeSection, setActiveSection] = useState<DashboardSectionId>('dashboard-kpis')
 
   const [directPage, setDirectPage] = useState(1)
-  const [directPageSize, setDirectPageSize] = useState(PAGE_SIZE)
+  const [directPageSize, setDirectPageSize] = useState(MAIN_LIST_PAGE_SIZE)
   const [directSortBy, setDirectSortBy] = useState<DashboardDirectChatSortBy>('last_active')
   const [directOrder, setDirectOrder] = useState<DashboardOrder>('desc')
   const [directChats, setDirectChats] = useState<DashboardDirectChatItem[]>([])
@@ -519,7 +733,7 @@ export default function Dashboard() {
   const [drawerSpace, setDrawerSpace] = useState<DashboardSpaceItem | null>(null)
   const [channelActive, setChannelActive] = useState<DashboardActiveStatus>('all')
   const [channelPage, setChannelPage] = useState(1)
-  const [channelPageSize, setChannelPageSize] = useState(PAGE_SIZE)
+  const [channelPageSize, setChannelPageSize] = useState(DRAWER_PAGE_SIZE)
   const [channelSortBy, setChannelSortBy] = useState<DashboardChannelSortBy>('last_active')
   const [channelOrder, setChannelOrder] = useState<DashboardOrder>('desc')
   const [channels, setChannels] = useState<DashboardChannelItem[]>([])
@@ -553,6 +767,13 @@ export default function Dashboard() {
   )
 
   const currentOverview = overview ?? EMPTY_OVERVIEW
+  const dashboardScopeLabel = selectedSpaceIds.length > 0
+    ? t('kpi.scope.filtered', { count: selectedSpaceIds.length })
+    : t('kpi.scope.global')
+  const metricMeta = t('kpi.meta.scopeRange', { scope: dashboardScopeLabel, range: rangeLabel })
+  const privateMetricMeta = selectedSpaceIds.length > 0
+    ? t('kpi.meta.scopeRange', { scope: t('kpi.scope.globalPrivate'), range: t('kpi.meta.privateFiltered') })
+    : t('kpi.meta.scopeRange', { scope: t('kpi.scope.globalPrivate'), range: rangeLabel })
   const clearSpaceOptionsSearchTimer = useCallback(() => {
     if (spaceOptionsSearchTimer.current) {
       clearTimeout(spaceOptionsSearchTimer.current)
@@ -799,6 +1020,28 @@ export default function Dashboard() {
 
   useEffect(() => () => clearSpaceOptionsSearchTimer(), [clearSpaceOptionsSearchTimer])
 
+  useEffect(() => {
+    const nodes = DASHBOARD_SECTION_IDS
+      .map((id) => document.getElementById(id))
+      .filter((node): node is HTMLElement => Boolean(node))
+    if (nodes.length === 0) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0]
+        if (visible?.target.id && DASHBOARD_SECTION_IDS.includes(visible.target.id as DashboardSectionId)) {
+          setActiveSection(visible.target.id as DashboardSectionId)
+        }
+      },
+      { rootMargin: '-96px 0px -55% 0px', threshold: [0.05, 0.2, 0.45] },
+    )
+
+    nodes.forEach((node) => observer.observe(node))
+    return () => observer.disconnect()
+  }, [])
+
   const metricCards = useMemo(
     () => [
       {
@@ -806,68 +1049,64 @@ export default function Dashboard() {
         title: t('kpi.spaces'),
         value: currentOverview.space_total,
         icon: <AppstoreOutlined />,
-        meta: selectedSpaceIds.length
-          ? t('kpi.meta.filtered', { count: selectedSpaceIds.length })
-          : t('kpi.meta.range', { range: rangeLabel }),
+        meta: metricMeta,
       },
       {
         key: 'groups',
         title: t('kpi.groups'),
         value: currentOverview.group_total,
         icon: <TeamOutlined />,
-        meta: t('kpi.meta.active', {
+        detail: t('kpi.meta.active', {
           count: formatNumber(currentOverview.active_groups),
           rate: formatPercent(currentOverview.active_groups, currentOverview.group_total),
         }),
+        meta: metricMeta,
       },
       {
         key: 'humanMembers',
         title: t('kpi.humanMembers'),
         value: currentOverview.human_member_total,
         icon: <UserOutlined />,
-        meta: t('kpi.meta.active', {
+        detail: t('kpi.meta.active', {
           count: formatNumber(currentOverview.active_human_members),
           rate: formatPercent(currentOverview.active_human_members, currentOverview.human_member_total),
         }),
+        meta: metricMeta,
       },
       {
         key: 'agents',
         title: t('kpi.agents'),
         value: currentOverview.agent_total,
         icon: <RobotOutlined />,
-        meta: t('kpi.meta.active', {
+        detail: t('kpi.meta.active', {
           count: formatNumber(currentOverview.active_agent_members),
           rate: formatPercent(currentOverview.active_agent_members, currentOverview.agent_total),
         }),
+        meta: metricMeta,
       },
       {
         key: 'humanMessages',
         title: t('kpi.humanMessages'),
         value: currentOverview.human_msg_count,
         icon: <MessageOutlined />,
-        meta: t('kpi.meta.selectedRange'),
-        highlight: true,
+        meta: metricMeta,
       },
       {
         key: 'agentMessages',
         title: t('kpi.agentMessages'),
         value: currentOverview.agent_msg_count,
         icon: <MessageOutlined />,
-        meta: t('kpi.meta.selectedRange'),
-        highlight: true,
+        meta: metricMeta,
       },
       {
         key: 'privateChats',
         title: t('kpi.privateChats'),
         value: currentOverview.private_active_count,
         icon: <CommentOutlined />,
-        meta:
-          selectedSpaceIds.length > 0
-            ? t('kpi.meta.privateFiltered')
-            : t('kpi.meta.globalOnly'),
+        meta: privateMetricMeta,
       },
     ],
-    [currentOverview, rangeLabel, selectedSpaceIds.length, t],
+    [currentOverview, metricMeta, privateMetricMeta, t],
   )
 
   const messageComposition = useMemo(
@@ -910,6 +1149,7 @@ export default function Dashboard() {
         .map((space) => ({
           label: space.name || space.space_id,
           value: totalMessages(space),
+          primary: space.human_msg_count,
           secondary: space.agent_msg_count,
         }))
         .sort((a, b) => b.value - a.value)
@@ -979,7 +1219,7 @@ export default function Dashboard() {
     sorter: SorterResult<DashboardSpaceItem> | SorterResult<DashboardSpaceItem>[],
   ) => {
     setSpacePage(pagination.current || 1)
-    setSpacePageSize(pagination.pageSize || PAGE_SIZE)
+    setSpacePageSize(pagination.pageSize || MAIN_LIST_PAGE_SIZE)
     const firstSorter = Array.isArray(sorter) ? sorter[0] : sorter
     if (!firstSorter?.order) {
       setSpaceSortBy('last_active')
@@ -999,7 +1239,7 @@ export default function Dashboard() {
     sorter: SorterResult<DashboardDirectChatItem> | SorterResult<DashboardDirectChatItem>[],
   ) => {
     setDirectPage(pagination.current || 1)
-    setDirectPageSize(pagination.pageSize || PAGE_SIZE)
+      setDirectPageSize(pagination.pageSize || MAIN_LIST_PAGE_SIZE)
     const firstSorter = Array.isArray(sorter) ? sorter[0] : sorter
     if (!firstSorter?.order) {
       setDirectSortBy('last_active')
@@ -1019,7 +1259,7 @@ export default function Dashboard() {
     sorter: SorterResult<DashboardChannelItem> | SorterResult<DashboardChannelItem>[],
   ) => {
     setChannelPage(pagination.current || 1)
-    setChannelPageSize(pagination.pageSize || PAGE_SIZE)
+    setChannelPageSize(pagination.pageSize || DRAWER_PAGE_SIZE)
     const firstSorter = Array.isArray(sorter) ? sorter[0] : sorter
     if (!firstSorter?.order) {
       setChannelSortBy('last_active')
@@ -1090,6 +1330,8 @@ export default function Dashboard() {
         dataIndex: 'group_total',
         key: 'group_total',
         width: 110,
+        align: 'right',
+        className: 'dashboard-number-column',
         sorter: true,
         sortOrder: spaceSortBy === 'group_total' ? orderToAntd(spaceOrder) : null,
         render: formatNumber,
@@ -1099,6 +1341,8 @@ export default function Dashboard() {
         dataIndex: 'human_member_total',
         key: 'human_member_total',
         width: 130,
+        align: 'right',
+        className: 'dashboard-number-column',
         sorter: true,
         sortOrder: spaceSortBy === 'human_member_total' ? orderToAntd(spaceOrder) : null,
         render: formatNumber,
@@ -1108,39 +1352,32 @@ export default function Dashboard() {
         dataIndex: 'agent_total',
         key: 'agent_total',
         width: 110,
+        align: 'right',
+        className: 'dashboard-number-column',
         render: formatNumber,
       },
       {
-        title: t('spaces.column.humanMessages'),
-        dataIndex: 'human_msg_count',
-        key: 'human_msg_count',
-        width: 130,
-        sorter: true,
-        sortOrder: spaceSortBy === 'human_msg_count' ? orderToAntd(spaceOrder) : null,
-        render: formatNumber,
-      },
-      {
-        title: t('spaces.column.agentMessages'),
-        dataIndex: 'agent_msg_count',
-        key: 'agent_msg_count',
-        width: 130,
-        sorter: true,
-        sortOrder: spaceSortBy === 'agent_msg_count' ? orderToAntd(spaceOrder) : null,
-        render: formatNumber,
-      },
-      {
-        title: t('spaces.column.totalMessages'),
+        title: t('spaces.column.messages'),
         key: 'total_msg',
-        width: 130,
+        width: 240,
         sorter: true,
         sortOrder: spaceSortBy === 'total_msg' ? orderToAntd(spaceOrder) : null,
-        render: (_, record) => <span className="cell-primary">{formatNumber(totalMessages(record))}</span>,
+        render: (_, record) => (
+          <MessageSplitCell
+            human={record.human_msg_count || 0}
+            agent={record.agent_msg_count || 0}
+            humanLabel={t('charts.messageComposition.human')}
+            agentLabel={t('charts.messageComposition.agent')}
+          />
+        ),
       },
       {
         title: t('spaces.column.lastActive'),
         dataIndex: 'last_active',
         key: 'last_active',
         width: 170,
+        align: 'right',
+        className: 'dashboard-number-column',
         sorter: true,
         sortOrder: spaceSortBy === 'last_active' ? orderToAntd(spaceOrder) : null,
         render: (value: number) => <span style={{ color: 'var(--a-text-tertiary)' }}>{formatTime(value)}</span>,
@@ -1154,30 +1391,23 @@ export default function Dashboard() {
       {
         title: t('direct.column.members'),
         key: 'members',
-        width: 320,
+        width: 380,
         render: (_, record) => (
-          <Space direction="vertical" size={2}>
+          <div className="dashboard-direct-members">
             <span className="cell-primary">
               {record.member_a_name || record.member_a_uid || '-'} / {record.member_b_name || record.member_b_uid || '-'}
             </span>
-            <Text className="mono" type="secondary">
-              {record.member_a_uid || '-'} / {record.member_b_uid || '-'}
-            </Text>
-          </Space>
+            <span className="pill-outline brand">{convTypeLabel(record.conv_type)}</span>
+          </div>
         ),
-      },
-      {
-        title: t('direct.column.type'),
-        dataIndex: 'conv_type',
-        key: 'conv_type',
-        width: 120,
-        render: (value: number) => <span className="pill-outline brand">{convTypeLabel(value)}</span>,
       },
       {
         title: t('direct.column.messages'),
         dataIndex: 'msg_count',
         key: 'msg_count',
         width: 130,
+        align: 'right',
+        className: 'dashboard-number-column',
         sorter: true,
         sortOrder: directSortBy === 'msg_count' ? orderToAntd(directOrder) : null,
         render: (value: number) => <span className="cell-primary">{formatNumber(value)}</span>,
@@ -1187,6 +1417,8 @@ export default function Dashboard() {
         dataIndex: 'last_active',
         key: 'last_active',
         width: 170,
+        align: 'right',
+        className: 'dashboard-number-column',
         sorter: true,
         sortOrder: directSortBy === 'last_active' ? orderToAntd(directOrder) : null,
         render: (value: number) => <span style={{ color: 'var(--a-text-tertiary)' }}>{formatTime(value)}</span>,
@@ -1237,6 +1469,7 @@ export default function Dashboard() {
         dataIndex: 'member_count',
         key: 'member_count',
         width: 120,
+        align: 'right',
         sorter: true,
         sortOrder: channelSortBy === 'member_count' ? orderToAntd(channelOrder) : null,
         render: formatNumber,
@@ -1246,6 +1479,7 @@ export default function Dashboard() {
         dataIndex: 'human_member_count',
         key: 'human_member_count',
         width: 120,
+        align: 'right',
         render: formatNumber,
       },
       {
@@ -1253,6 +1487,7 @@ export default function Dashboard() {
         dataIndex: 'agent_member_count',
         key: 'agent_member_count',
         width: 110,
+        align: 'right',
         render: formatNumber,
       },
       {
@@ -1260,6 +1495,7 @@ export default function Dashboard() {
         dataIndex: 'human_msg_count',
         key: 'human_msg_count',
         width: 130,
+        align: 'right',
         sorter: true,
         sortOrder: channelSortBy === 'human_msg_count' ? orderToAntd(channelOrder) : null,
         render: formatNumber,
@@ -1269,6 +1505,7 @@ export default function Dashboard() {
         dataIndex: 'agent_msg_count',
         key: 'agent_msg_count',
         width: 130,
+        align: 'right',
         sorter: true,
         sortOrder: channelSortBy === 'agent_msg_count' ? orderToAntd(channelOrder) : null,
         render: formatNumber,
@@ -1277,6 +1514,7 @@ export default function Dashboard() {
         title: t('channels.column.totalMessages'),
         key: 'total_msg',
         width: 130,
+        align: 'right',
         sorter: true,
         sortOrder: channelSortBy === 'total_msg' ? orderToAntd(channelOrder) : null,
         render: (_, record) => <span className="cell-primary">{formatNumber(totalMessages(record))}</span>,
@@ -1286,6 +1524,7 @@ export default function Dashboard() {
         dataIndex: 'last_active_at',
         key: 'last_active',
         width: 170,
+        align: 'right',
         sorter: true,
         sortOrder: channelSortBy === 'last_active' ? orderToAntd(channelOrder) : null,
         render: (value: number) => <span style={{ color: 'var(--a-text-tertiary)' }}>{formatTime(value)}</span>,
@@ -1332,11 +1571,19 @@ export default function Dashboard() {
         </Popconfirm>
       </div>
 
-      <div className="toolbar">
+      <nav className="dashboard-anchor-nav" aria-label={t('nav.aria')}>
+        <a className={activeSection === 'dashboard-kpis' ? 'active' : undefined} href="#dashboard-kpis">{t('nav.kpis')}</a>
+        <a className={activeSection === 'dashboard-charts' ? 'active' : undefined} href="#dashboard-charts">{t('nav.charts')}</a>
+        <a className={activeSection === 'dashboard-spaces' ? 'active' : undefined} href="#dashboard-spaces">{t('nav.spaces')}</a>
+        <a className={activeSection === 'dashboard-direct' ? 'active' : undefined} href="#dashboard-direct">{t('nav.direct')}</a>
+      </nav>
+
+      <div className="toolbar dashboard-filter-toolbar">
         <RangePicker
           value={dateRange}
           format={DATE_FORMAT}
           allowClear={false}
+          style={{ width: 260 }}
           onChange={(values) => {
             if (values?.[0] && values?.[1]) {
               setDateRange([values[0], values[1]])
@@ -1365,7 +1612,7 @@ export default function Dashboard() {
           }}
           filterOption={false}
           loading={spaceOptionsLoading}
-          style={{ minWidth: 280, flex: '1 1 280px' }}
+          style={{ width: 360 }}
           options={spaceOptions.map((space) => ({
             value: space.space_id,
             label: space.name || space.space_id,
@@ -1387,17 +1634,30 @@ export default function Dashboard() {
         </span>
       </div>
 
-      <div className="dashboard-metric-grid">
-        {metricCards.map(({ key, ...metric }) => {
-          return (
-            <div key={key}>
-              <MetricCard {...metric} loading={overviewLoading} />
-            </div>
-          )
-        })}
+      <div id="dashboard-kpis" className="dashboard-metric-sections">
+        <section className="dashboard-metric-section">
+          <div className="dashboard-metric-section-title">{t('kpi.group.scale')}</div>
+          <div className="dashboard-metric-grid scale">
+            {metricCards.slice(0, 4).map(({ key, ...metric }) => (
+              <div key={key}>
+                <MetricCard {...metric} loading={overviewLoading} />
+              </div>
+            ))}
+          </div>
+        </section>
+        <section className="dashboard-metric-section">
+          <div className="dashboard-metric-section-title">{t('kpi.group.activity')}</div>
+          <div className="dashboard-metric-grid activity">
+            {metricCards.slice(4).map(({ key, ...metric }) => (
+              <div key={key}>
+                <MetricCard {...metric} loading={overviewLoading} />
+              </div>
+            ))}
+          </div>
+        </section>
       </div>
 
-      <div className="dashboard-section-header">
+      <div id="dashboard-charts" className="dashboard-section-header">
         <div>
           <h2>{t('charts.title')}</h2>
           <p>{t('charts.subtitle')}</p>
@@ -1412,6 +1672,8 @@ export default function Dashboard() {
               centerLabel={t('charts.messageComposition.center')}
               emptyHint={t('charts.messageComposition.empty')}
               items={messageComposition}
+              valueLabel={t('charts.tooltip.value')}
+              shareLabel={t('charts.tooltip.share')}
             />
           </Card>
         </Col>
@@ -1423,6 +1685,8 @@ export default function Dashboard() {
               centerLabel={t('charts.memberComposition.center')}
               emptyHint={t('charts.memberComposition.empty')}
               items={memberComposition}
+              valueLabel={t('charts.tooltip.value')}
+              shareLabel={t('charts.tooltip.share')}
             />
           </Card>
         </Col>
@@ -1435,6 +1699,10 @@ export default function Dashboard() {
               primaryLabel={t('charts.messageComposition.human')}
               secondaryLabel={t('charts.messageComposition.agent')}
               rows={topSpaceMessageRows}
+              totalLabel={t('charts.tooltip.total')}
+              shareLabel={t('charts.tooltip.share')}
+              scale="log"
+              scaleLabel={t('charts.topSpaces.scaleLog')}
             />
           </Card>
         </Col>
@@ -1446,20 +1714,33 @@ export default function Dashboard() {
             title={t('charts.trend.title')}
             className="dashboard-chart-card"
             extra={
-              <Segmented
-                size="small"
-                value={trendGranularity}
-                onChange={(value) => setTrendGranularity(value as DashboardTrendGranularity)}
-                options={[
-                  { label: t('charts.trend.day'), value: 'day' },
-                  { label: t('charts.trend.week'), value: 'week' },
-                ]}
-              />
+              <Space className="dashboard-trend-controls" size={10} wrap>
+                <Segmented
+                  size="small"
+                  value={trendDisplayMode}
+                  onChange={(value) => setTrendDisplayMode(value as DashboardTrendDisplayMode)}
+                  options={[
+                    { label: t('charts.trend.absolute'), value: 'absolute' },
+                    { label: t('charts.trend.share'), value: 'share' },
+                  ]}
+                />
+                <span className="dashboard-trend-control-divider" aria-hidden />
+                <Segmented
+                  size="small"
+                  value={trendGranularity}
+                  onChange={(value) => setTrendGranularity(value as DashboardTrendGranularity)}
+                  options={[
+                    { label: t('charts.trend.day'), value: 'day' },
+                    { label: t('charts.trend.week'), value: 'week' },
+                  ]}
+                />
+              </Space>
             }
           >
             <TrendLineChart
               rows={trendRows}
               granularity={trendGranularity}
+              displayMode={trendDisplayMode}
               loading={trendLoading}
               emptyTitle={t('charts.empty.title')}
               emptyHint={trendUnavailable ? t('charts.trend.unavailable') : t('charts.trend.empty')}
@@ -1467,6 +1748,9 @@ export default function Dashboard() {
               ariaLabel={t('charts.trend.title')}
               humanLabel={t('charts.messageComposition.human')}
               agentLabel={t('charts.messageComposition.agent')}
+              totalLabel={t('charts.tooltip.total')}
+              agentShareLabel={t('charts.tooltip.agentShare')}
+              agentRatioLabel={t('charts.tooltip.agentRatio')}
             />
           </Card>
         </Col>
@@ -1479,12 +1763,14 @@ export default function Dashboard() {
               primaryLabel={t('charts.messageComposition.human')}
               secondaryLabel={t('charts.messageComposition.agent')}
               rows={convTypeMessageRows}
+              totalLabel={t('charts.tooltip.total')}
+              shareLabel={t('charts.tooltip.share')}
             />
           </Card>
         </Col>
       </Row>
 
-      <div ref={spacesSectionRef} className="dashboard-lazy-section">
+      <div id="dashboard-spaces" ref={spacesSectionRef} className="dashboard-lazy-section">
         <div className="dashboard-section-header">
           <div>
             <h2>{t('spaces.title')}</h2>
@@ -1493,7 +1779,7 @@ export default function Dashboard() {
         </div>
         {spacesSectionReady ? (
           <>
-            <div className="toolbar">
+            <div className="toolbar dashboard-table-toolbar">
               <Input
                 placeholder={t('spaces.search.placeholder')}
                 prefix={<SearchOutlined />}
@@ -1501,7 +1787,7 @@ export default function Dashboard() {
                 onChange={(event) => setSpaceSearch(event.target.value)}
                 onPressEnter={applySpaceSearch}
                 allowClear
-                style={{ width: 280 }}
+                style={{ width: 260 }}
               />
               <Select
                 value={spaceActive}
@@ -1519,6 +1805,13 @@ export default function Dashboard() {
               <Button type="primary" icon={<SearchOutlined />} onClick={applySpaceSearch}>
                 {t('common:action.search')}
               </Button>
+              <div className="toolbar-spacer" />
+              <span className="dashboard-toolbar-meta">
+                {t('spaces.toolbar.total', { count: formatNumber(spacesTotal) })}
+              </span>
+              <Button icon={<ReloadOutlined />} onClick={() => void fetchSpaces()}>
+                {t('common:action.refresh')}
+              </Button>
             </div>
             <div className="dashboard-table-shell">
               <Table
@@ -1527,13 +1820,14 @@ export default function Dashboard() {
                 rowKey="space_id"
                 loading={spacesLoading}
                 size="middle"
-                scroll={{ x: 1300 }}
+                rowClassName={(record) => (!record.is_active ? 'dashboard-row-inactive' : '')}
+                scroll={{ x: 1080 }}
                 onChange={handleSpaceTableChange}
                 pagination={{
                   current: spacePage,
                   total: spacesTotal,
                   pageSize: spacePageSize,
-                  pageSizeOptions: [20, 50, 100, 200],
+                  pageSizeOptions: MAIN_LIST_PAGE_SIZE_OPTIONS,
                   showSizeChanger: true,
                   showTotal: (count) => t('common:table.total', { count }),
                 }}
@@ -1545,7 +1839,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      <div ref={directSectionRef} className="dashboard-lazy-section">
+      <div id="dashboard-direct" ref={directSectionRef} className="dashboard-lazy-section">
         <div className="dashboard-section-header">
           <div>
             <h2>{t('direct.title')}</h2>
@@ -1570,13 +1864,13 @@ export default function Dashboard() {
               rowKey="channel_id"
               loading={directLoading}
               size="middle"
-              scroll={{ x: 960 }}
+              scroll={{ x: 900 }}
               onChange={handleDirectTableChange}
               pagination={{
                 current: directPage,
                 total: directTotal,
                 pageSize: directPageSize,
-                pageSizeOptions: [20, 50, 100, 200],
+                pageSizeOptions: MAIN_LIST_PAGE_SIZE_OPTIONS,
                 showSizeChanger: true,
                 showTotal: (count) => t('common:table.total', { count }),
               }}
@@ -1588,7 +1882,7 @@ export default function Dashboard() {
       </div>
 
       <Drawer
-        className="admin-drawer"
+        className="admin-drawer dashboard-drawer"
         width={960}
         title={drawerSpace ? t('channels.title', { name: drawerSpace.name || drawerSpace.space_id }) : t('channels.titleFallback')}
         open={drawerOpen}
@@ -1625,7 +1919,7 @@ export default function Dashboard() {
             current: channelPage,
             total: channelsTotal,
             pageSize: channelPageSize,
-            pageSizeOptions: [20, 50, 100, 200],
+            pageSizeOptions: DRAWER_PAGE_SIZE_OPTIONS,
             showSizeChanger: true,
             showTotal: (count) => t('common:table.total', { count }),
           }}
