@@ -8,18 +8,25 @@ import AppBotsPage from '../AppBots'
 
 interface Ctx {
   detail: SpaceUserDetail
+  refreshDetail: () => void
 }
 
 function useSpaceCtx() {
   const { spaceId } = useParams<{ spaceId: string }>()
-  const { detail } = useOutletContext<Ctx>()
+  const { detail, refreshDetail } = useOutletContext<Ctx>()
   const scope = useSpaceScope(detail.role)
-  return { spaceId: spaceId!, detail, scope }
+  return { spaceId: spaceId!, detail, scope, refreshDetail }
 }
 
 export function MembersTab() {
-  const { spaceId, scope } = useSpaceCtx()
-  return <SpaceMembersPanel spaceId={spaceId} scope={scope} />
+  const { spaceId, scope, refreshDetail } = useSpaceCtx()
+  return (
+    <SpaceMembersPanel
+      spaceId={spaceId}
+      scope={scope}
+      onRoleChanged={refreshDetail}
+    />
+  )
 }
 
 export function InvitesTab() {

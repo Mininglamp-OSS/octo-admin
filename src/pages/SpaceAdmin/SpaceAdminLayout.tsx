@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Outlet, useNavigate, useParams, useLocation } from 'react-router-dom'
 import {
@@ -155,6 +155,27 @@ export default function SpaceAdminLayout() {
       cancelled = true
     }
   }, [spaceId, currentSpaceId, setCurrentSpaceId, setMySpaces, navigate])
+
+  // 角色变更等操作后重新校验当前用户在本空间的角色,避免 scope.role 过期
+  // (例如 owner 转让所有权后被降级为 admin,角色操作应及时消失)。
+  const refreshDetail = useCallback(async () => {
+    if (!spaceId) return
+    try {
+      const [list, d] = await Promise.all([
+        getMySpaces().catch(() => [] as MySpace[]),
+        getSpaceUserDetail(spaceId),
+      ])
+      const managed = (list || []).filter((s) => s.role >= 1)
+      setMySpaces(managed)
+      if (!managed.some((s) => s.space_id === spaceId)) {
+        navigate('/space', { replace: true })
+        return
+      }
+      setDetail(d)
+    } catch (error) {
+      message.error((error as Error).message)
+    }
+  }, [spaceId, setMySpaces, navigate])
 
   const handleLogout = () => {
     logout()
@@ -465,7 +486,7 @@ export default function SpaceAdminLayout() {
               destroyInactiveTabPane
               tabBarStyle={{ marginBottom: 16 }}
             />
-            <Outlet context={{ detail }} />
+            <Outlet context={{ detail, refreshDetail }} />
           </>
         )}
       </Content>

@@ -100,7 +100,7 @@ export const removeSpaceUserMembers = (spaceId: string, uids: string[]) =>
 export const updateSpaceUserMemberRole = (
   spaceId: string,
   uid: string,
-  role: 0 | 1 | 2,
+  role: SpaceUserMember['role'],
 ) => api.put(`/v1/space/${spaceId}/members/${uid}/role`, { role })
 
 export const createSpaceUserInvite = (

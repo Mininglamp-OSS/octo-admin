@@ -14,14 +14,18 @@ import type { ColumnsType } from 'antd/es/table'
 import { useTranslation } from 'react-i18next'
 
 const { Text } = Typography
-import type { MemberItem, SpaceScope } from '../../hooks/useSpaceScope'
-
-type SpaceMemberRole = 0 | 1 | 2
+import { useAuthStore } from '../../store/auth'
+import type {
+  MemberItem,
+  SpaceScope,
+  SpaceMemberRole,
+} from '../../hooks/useSpaceScope'
 
 interface Props {
   spaceId: string
   scope: SpaceScope
   readOnly?: boolean
+  onRoleChanged?: () => void
 }
 
 const ROLE_LABEL: Record<SpaceMemberRole, { textKey: string; tone: 'neutral' | 'warning' | 'brand' }> = {
@@ -32,8 +36,9 @@ const ROLE_LABEL: Record<SpaceMemberRole, { textKey: string; tone: 'neutral' | '
 
 const PAGE_SIZE = 20
 
-export default function SpaceMembersPanel({ spaceId, scope, readOnly = false }: Props) {
+export default function SpaceMembersPanel({ spaceId, scope, readOnly = false, onRoleChanged }: Props) {
   const { t } = useTranslation(['spaces', 'common'])
+  const viewerUid = useAuthStore((s) => s.uid)
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<MemberItem[]>([])
   const [total, setTotal] = useState(0)
@@ -88,6 +93,9 @@ export default function SpaceMembersPanel({ spaceId, scope, readOnly = false }: 
           await scope.api.updateMemberRole(spaceId, uid, role)
           message.success(t('members.changeRole.success'))
           fetchData()
+          // 角色变更可能改变当前用户自身权限(如转让所有权后被降级),
+          // 通知上层重新校验 scope,避免操作入口残留到刷新前。
+          onRoleChanged?.()
         } catch (error) {
           message.error((error as Error).message)
         }
@@ -149,7 +157,9 @@ export default function SpaceMembersPanel({ spaceId, scope, readOnly = false }: 
             if (record.status !== undefined && record.status !== 1)
               return <span style={{ color: 'var(--a-text-quaternary)' }}>—</span>
             const items: MenuProps['items'] = []
-            if (canChangeRole) {
+            // 不对当前登录用户自己的行展示角色操作:owner 无法自降级、
+            // 也无需对自己做转让/升降级,这些请求注定被后端拒绝。
+            if (canChangeRole && record.uid !== viewerUid) {
               if (record.role !== 2) {
                 items.push({
                   key: 'owner',
