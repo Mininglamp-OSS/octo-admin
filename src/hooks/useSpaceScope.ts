@@ -85,6 +85,7 @@ export interface SpaceScope {
     listMembers: (spaceId: string, params: ScopedMemberParams) => Promise<MemberListResp>
     addMembers?: (spaceId: string, uids: string[]) => Promise<unknown>
     removeMembers: (spaceId: string, uids: string[]) => Promise<unknown>
+    updateMemberRole: (spaceId: string, uid: string, role: 0 | 1 | 2) => Promise<unknown>
     listInvites: (spaceId: string, params: ScopedInviteParams) => Promise<InviteListResp>
     createInvite: (
       spaceId: string,
@@ -123,6 +124,8 @@ function buildSuperScope(): SpaceScope {
       },
       addMembers: (spaceId, uids) => manager.addSpaceMembers(spaceId, uids),
       removeMembers: (spaceId, uids) => manager.removeSpaceMembers(spaceId, uids),
+      updateMemberRole: (spaceId, uid, role) =>
+        manager.updateSpaceMemberRole(spaceId, uid, role),
       listInvites: async (spaceId, params) => {
         const res = await manager.listSpaceInvites(spaceId, {
           page_index: params.page_index,
@@ -192,6 +195,8 @@ function buildUserScope(role: 0 | 1 | 2): SpaceScope {
         }
       },
       removeMembers: (spaceId, uids) => user.removeSpaceUserMembers(spaceId, uids),
+      updateMemberRole: (spaceId, uid, role) =>
+        user.updateSpaceUserMemberRole(spaceId, uid, role),
       listInvites: async (spaceId, params) => {
         const resp = await user.listSpaceUserInvites(spaceId, params)
         return { count: resp.count, list: resp.list }

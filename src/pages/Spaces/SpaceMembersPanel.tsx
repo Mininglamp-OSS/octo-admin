@@ -14,8 +14,9 @@ import type { ColumnsType } from 'antd/es/table'
 import { useTranslation } from 'react-i18next'
 
 const { Text } = Typography
-import { updateSpaceMemberRole, type SpaceMemberRole } from '../../api/space'
 import type { MemberItem, SpaceScope } from '../../hooks/useSpaceScope'
+
+type SpaceMemberRole = 0 | 1 | 2
 
 interface Props {
   spaceId: string
@@ -44,7 +45,7 @@ export default function SpaceMembersPanel({ spaceId, scope, readOnly = false }: 
 
   const canAdd = !readOnly && scope.canAddMembers
   const canRemove = !readOnly && scope.canRemoveMembers
-  const canChangeRole = !readOnly && scope.kind === 'super'
+  const canChangeRole = !readOnly && (scope.kind === 'super' || scope.role === 2)
 
   const fetchData = async (nextPage = page, kw = keyword) => {
     setLoading(true)
@@ -84,7 +85,7 @@ export default function SpaceMembersPanel({ spaceId, scope, readOnly = false }: 
           : undefined,
       onOk: async () => {
         try {
-          await updateSpaceMemberRole(spaceId, uid, role)
+          await scope.api.updateMemberRole(spaceId, uid, role)
           message.success(t('members.changeRole.success'))
           fetchData()
         } catch (error) {

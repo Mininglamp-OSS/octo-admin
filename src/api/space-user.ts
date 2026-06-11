@@ -97,6 +97,12 @@ export const listSpaceUserMembers = (
 export const removeSpaceUserMembers = (spaceId: string, uids: string[]) =>
   api.post(`/v1/space/${spaceId}/members/remove`, { uids })
 
+export const updateSpaceUserMemberRole = (
+  spaceId: string,
+  uid: string,
+  role: 0 | 1 | 2,
+) => api.put(`/v1/space/${spaceId}/members/${uid}/role`, { role })
+
 export const createSpaceUserInvite = (
   spaceId: string,
   data: { max_uses?: number; expires_at?: string } = {},
