@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useAuthStore } from './store/auth'
 import { useFeatureStore } from './store/feature'
 import {
@@ -48,6 +49,16 @@ function CapabilityRoute({
   return <>{children}</>
 }
 
+function ManagerIndexRoute() {
+  const { managerCapabilities, managerProfileStatus } = useAuthStore()
+  if (
+    managerProfileStatus === 'idle' ||
+    managerProfileStatus === 'loading' ||
+    managerCapabilities === null
+  ) return null
+  return <Navigate to={firstManagerPath(managerCapabilities)} replace />
+}
+
 function SpaceOnlyRoute({ children }: { children: React.ReactNode }) {
   const { isLoggedIn, scope } = useAuthStore()
   if (!isLoggedIn || scope !== 'space') return <Navigate to="/space" replace />
@@ -66,6 +77,25 @@ function AppBotsGate({ fallback, children }: { fallback: string; children: React
 function SpaceAppBotsGate({ children }: { children: React.ReactNode }) {
   const { spaceId } = useParams<{ spaceId: string }>()
   return <AppBotsGate fallback={`/space/${spaceId}/members`}>{children}</AppBotsGate>
+}
+
+function ManagerAppBotsGate({ children }: { children: React.ReactNode }) {
+  const managerCapabilities = useAuthStore((s) => s.managerCapabilities)
+  return <AppBotsGate fallback={firstManagerPath(managerCapabilities)}>{children}</AppBotsGate>
+}
+
+function NoAccess() {
+  const { t } = useTranslation('layout')
+  return (
+    <div style={{ minHeight: 320, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
+      <div>
+        <h1 className="page-title">{t('noAccess.title')}</h1>
+        <p className="page-subtitle" style={{ marginBottom: 0 }}>
+          {t('noAccess.subtitle')}
+        </p>
+      </div>
+    </div>
+  )
 }
 
 /**
@@ -131,7 +161,7 @@ function AdminRoutes() {
           </SuperOnlyRoute>
         }
       >
-        <Route index element={<Navigate to="/dashboard" replace />} />
+        <Route index element={<ManagerIndexRoute />} />
         <Route
           path="dashboard"
           element={
@@ -191,11 +221,12 @@ function AdminRoutes() {
         <Route
           path="app-bots"
           element={
-            <AppBotsGate fallback="/dashboard">
+            <ManagerAppBotsGate>
               <AppBots />
-            </AppBotsGate>
+            </ManagerAppBotsGate>
           }
         />
+        <Route path="no-access" element={<NoAccess />} />
       </Route>
     </Routes>
   )

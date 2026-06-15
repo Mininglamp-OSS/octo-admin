@@ -45,7 +45,8 @@ export default function SpaceDetailDrawer({
       .finally(() => setLoading(false))
   }, [open, spaceId, defaultTab])
 
-  const readOnly = !!space && (space.status !== 1 || !scope.canUpdateSpaceProfile)
+  const inactiveSpace = !!space && space.status !== 1
+  const profileReadOnly = inactiveSpace || !scope.canUpdateSpaceProfile
 
   return (
     <Drawer
@@ -62,7 +63,7 @@ export default function SpaceDetailDrawer({
         <>
           <SpaceInfoPanel
             space={space}
-            readOnly={readOnly}
+            readOnly={profileReadOnly}
             onSpaceChange={setSpace}
             onUpdated={onUpdated}
           />
@@ -79,7 +80,7 @@ export default function SpaceDetailDrawer({
                   <SpaceMembersPanel
                     spaceId={space.space_id}
                     scope={scope}
-                    readOnly={readOnly}
+                    readOnly={inactiveSpace}
                   />
                 ),
               },
@@ -90,7 +91,7 @@ export default function SpaceDetailDrawer({
                   <SpaceInvitesPanel
                     spaceId={space.space_id}
                     scope={scope}
-                    readOnly={readOnly}
+                    readOnly={inactiveSpace}
                   />
                 ),
               },
@@ -101,7 +102,7 @@ export default function SpaceDetailDrawer({
                   <SpaceJoinAppliesPanel
                     spaceId={space.space_id}
                     scope={scope}
-                    readOnly={readOnly}
+                    readOnly={inactiveSpace}
                   />
                 ),
               },

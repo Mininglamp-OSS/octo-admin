@@ -9,5 +9,7 @@
   "theme.dark": "Dark",
   "theme.auto": "Auto",
   "managerProfile.loadFailed": "Failed to load manager permissions",
-  "managerProfile.retry": "Retry"
+  "managerProfile.retry": "Retry",
+  "noAccess.title": "No Available Access",
+  "noAccess.subtitle": "This manager account does not have access to any admin console sections."
 }

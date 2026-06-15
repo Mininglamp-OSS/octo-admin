@@ -7,6 +7,7 @@ export const MANAGER_CAPABILITY_KEYS = [
   'dashboard.trigger',
   'users.read',
   'users.write',
+  // Reserved for administrator-account management UI when that surface is added.
   'users.manage_admin',
   'groups.read',
   'groups.write',
@@ -14,6 +15,8 @@ export const MANAGER_CAPABILITY_KEYS = [
   'space.write',
   'space.destructive',
 ] as const
+
+export const MANAGER_NO_ACCESS_PATH = '/no-access'
 
 export type ManagerCapabilityKey = (typeof MANAGER_CAPABILITY_KEYS)[number]
 
@@ -50,5 +53,5 @@ export function firstManagerPath(capabilities: ManagerCapabilities | null | unde
   if (hasManagerCapability(capabilities, 'system_setting')) return '/system-setting'
   if (hasManagerCapability(capabilities, 'backup')) return '/backup'
   if (hasManagerCapability(capabilities, 'appversion.read')) return '/download'
-  return '/dashboard'
+  return MANAGER_NO_ACCESS_PATH
 }

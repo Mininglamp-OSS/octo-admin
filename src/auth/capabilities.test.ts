@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   firstManagerPath,
   hasManagerCapability,
+  MANAGER_NO_ACCESS_PATH,
   normalizeManagerCapabilities,
 } from './capabilities'
 
@@ -34,5 +35,15 @@ describe('manager capabilities', () => {
     })
 
     expect(firstManagerPath(capabilities)).toBe('/spaces')
+  })
+
+  it('falls back to no-access when no readable manager path exists', () => {
+    const capabilities = normalizeManagerCapabilities({
+      'users.write': true,
+      'space.destructive': true,
+    })
+
+    expect(firstManagerPath(capabilities)).toBe(MANAGER_NO_ACCESS_PATH)
+    expect(firstManagerPath(null)).toBe(MANAGER_NO_ACCESS_PATH)
   })
 })

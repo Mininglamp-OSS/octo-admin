@@ -9,5 +9,7 @@
   "theme.dark": "深色",
   "theme.auto": "跟随系统",
   "managerProfile.loadFailed": "管理员权限加载失败",
-  "managerProfile.retry": "重试"
+  "managerProfile.retry": "重试",
+  "noAccess.title": "暂无可访问功能",
+  "noAccess.subtitle": "当前管理员账号没有可进入的管理台能力。"
 }
