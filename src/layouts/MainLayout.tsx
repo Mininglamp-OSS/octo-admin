@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { Layout, Menu, Avatar, Dropdown, Tooltip, Breadcrumb } from 'antd'
+import { Layout, Menu, Avatar, Dropdown, Tooltip, Breadcrumb, message, Spin, Button } from 'antd'
 import type { MenuProps } from 'antd'
 import { useTranslation } from 'react-i18next'
 import {
@@ -21,6 +21,8 @@ import {
 } from '@ant-design/icons'
 import { useAuthStore } from '../store/auth'
 import { useFeatureStore } from '../store/feature'
+import { getManagerMe } from '../api/auth'
+import { firstManagerPath, hasManagerCapability } from '../auth/capabilities'
 import LanguageSwitcher from '../components/LanguageSwitcher'
 import { useTheme } from '../hooks/useTheme'
 import type { Theme } from '../hooks/useTheme'
@@ -39,7 +41,17 @@ const MainLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
-  const { name, logout } = useAuthStore()
+  const {
+    name,
+    token,
+    scope,
+    managerCapabilities,
+    managerProfileStatus,
+    setManagerProfileLoading,
+    setManagerMe,
+    setManagerProfileError,
+    logout,
+  } = useAuthStore()
   const { theme, effective, setTheme } = useTheme()
   const appBotsAvailable = useFeatureStore((s) => s.appBotsAvailable)
   const probeAppBots = useFeatureStore((s) => s.probeAppBots)
@@ -48,6 +60,35 @@ const MainLayout: React.FC = () => {
   useEffect(() => {
     void probeAppBots()
   }, [probeAppBots])
+
+  const loadManagerProfile = useCallback(async () => {
+    if (scope !== 'super' || !token) return
+    setManagerProfileLoading()
+    try {
+      setManagerMe(await getManagerMe())
+    } catch (error) {
+      setManagerProfileError()
+      message.error((error as Error).message)
+    }
+  }, [
+    scope,
+    setManagerMe,
+    setManagerProfileError,
+    setManagerProfileLoading,
+    token,
+  ])
+
+  useEffect(() => {
+    if (scope !== 'super' || !token) return
+    if (managerCapabilities !== null || managerProfileStatus !== 'idle') return
+    void loadManagerProfile()
+  }, [
+    loadManagerProfile,
+    managerCapabilities,
+    managerProfileStatus,
+    scope,
+    token,
+  ])
 
   const themeLabel = useMemo<Record<Theme, string>>(
     () => ({
@@ -59,21 +100,36 @@ const MainLayout: React.FC = () => {
   )
 
   const menuItems = useMemo<MenuItem[]>(() => {
-    const base: MenuItem[] = [
-      { key: '/dashboard', icon: <DashboardOutlined />, label: t('nav:dashboard') },
-      { key: '/users', icon: <UserOutlined />, label: t('nav:users') },
-      { key: '/groups', icon: <TeamOutlined />, label: t('nav:groups') },
-      { key: '/spaces', icon: <AppstoreOutlined />, label: t('nav:spaces') },
-    ]
-    const tail: MenuItem[] = [
-      { key: '/system-setting', icon: <SettingOutlined />, label: t('nav:systemSetting') },
-      { key: '/backup', icon: <CloudUploadOutlined />, label: t('nav:backup') },
-      { key: '/download', icon: <DownloadOutlined />, label: t('nav:download') },
-    ]
+    if (managerCapabilities === null) return []
+
+    const base: MenuItem[] = []
+    if (hasManagerCapability(managerCapabilities, 'dashboard.read')) {
+      base.push({ key: '/dashboard', icon: <DashboardOutlined />, label: t('nav:dashboard') })
+    }
+    if (hasManagerCapability(managerCapabilities, 'users.read')) {
+      base.push({ key: '/users', icon: <UserOutlined />, label: t('nav:users') })
+    }
+    if (hasManagerCapability(managerCapabilities, 'groups.read')) {
+      base.push({ key: '/groups', icon: <TeamOutlined />, label: t('nav:groups') })
+    }
+    if (hasManagerCapability(managerCapabilities, 'space.read')) {
+      base.push({ key: '/spaces', icon: <AppstoreOutlined />, label: t('nav:spaces') })
+    }
+
+    const tail: MenuItem[] = []
+    if (hasManagerCapability(managerCapabilities, 'system_setting')) {
+      tail.push({ key: '/system-setting', icon: <SettingOutlined />, label: t('nav:systemSetting') })
+    }
+    if (hasManagerCapability(managerCapabilities, 'backup')) {
+      tail.push({ key: '/backup', icon: <CloudUploadOutlined />, label: t('nav:backup') })
+    }
+    if (hasManagerCapability(managerCapabilities, 'appversion.read')) {
+      tail.push({ key: '/download', icon: <DownloadOutlined />, label: t('nav:download') })
+    }
     return appBotsAvailable === true
       ? [...base, { key: '/app-bots', icon: <RobotOutlined />, label: t('nav:appBots') }, ...tail]
       : [...base, ...tail]
-  }, [appBotsAvailable, t])
+  }, [appBotsAvailable, managerCapabilities, t])
 
   const handleMenuClick = ({ key }: { key: string }) => {
     navigate(key)
@@ -85,6 +141,11 @@ const MainLayout: React.FC = () => {
   }
 
   const activeItem = menuItems.find((item) => item.key === location.pathname)
+  const homePath = firstManagerPath(managerCapabilities)
+  const managerProfilePending =
+    scope === 'super' && managerCapabilities === null && managerProfileStatus !== 'error'
+  const managerProfileFailed =
+    scope === 'super' && managerCapabilities === null && managerProfileStatus === 'error'
 
   const isDark = effective === 'dark'
   const surface = isDark ? '#14171f' : '#ffffff'
@@ -169,9 +230,9 @@ const MainLayout: React.FC = () => {
                   <a
                     onClick={(e) => {
                       e.preventDefault()
-                      navigate('/dashboard')
+                      navigate(homePath)
                     }}
-                    href="/dashboard"
+                    href={homePath}
                   >
                     {t('layout:breadcrumb.admin')}
                   </a>
@@ -264,7 +325,30 @@ const MainLayout: React.FC = () => {
               : '0 1px 2px rgba(16,24,40,0.05)',
           }}
         >
-          <Outlet />
+          {managerProfilePending ? (
+            <div style={{ minHeight: 320, display: 'grid', placeItems: 'center' }}>
+              <Spin />
+            </div>
+          ) : managerProfileFailed ? (
+            <div
+              style={{
+                minHeight: 320,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexDirection: 'column',
+                gap: 12,
+                color: 'var(--a-text-secondary)',
+              }}
+            >
+              <span>{t('layout:managerProfile.loadFailed')}</span>
+              <Button onClick={() => void loadManagerProfile()}>
+                {t('layout:managerProfile.retry')}
+              </Button>
+            </div>
+          ) : (
+            <Outlet />
+          )}
         </Content>
       </Layout>
     </Layout>

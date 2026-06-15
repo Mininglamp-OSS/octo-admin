@@ -7,5 +7,7 @@
   "theme.tooltip": "Theme: {{name}}",
   "theme.light": "Light",
   "theme.dark": "Dark",
-  "theme.auto": "Auto"
+  "theme.auto": "Auto",
+  "managerProfile.loadFailed": "Failed to load manager permissions",
+  "managerProfile.retry": "Retry"
 }

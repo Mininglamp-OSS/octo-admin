@@ -7,5 +7,7 @@
   "theme.tooltip": "主题：{{name}}",
   "theme.light": "浅色",
   "theme.dark": "深色",
-  "theme.auto": "跟随系统"
+  "theme.auto": "跟随系统",
+  "managerProfile.loadFailed": "管理员权限加载失败",
+  "managerProfile.retry": "重试"
 }

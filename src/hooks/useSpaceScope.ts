@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { useAuthStore } from '../store/auth'
+import { hasManagerCapability, type ManagerCapabilities } from '../auth/capabilities'
 import * as manager from '../api/space'
 import * as user from '../api/space-user'
 
@@ -78,6 +79,8 @@ export interface SpaceScope {
   canManageInvites: boolean
   canRemoveMembers: boolean
   canAddMembers: boolean
+  canChangeMemberRoles: boolean
+  canUpdateSpaceProfile: boolean
   canReviewApplies: boolean
   supportsMemberSearch: boolean
   supportsMemberPagination: boolean
@@ -107,14 +110,18 @@ export interface SpaceScope {
   }
 }
 
-function buildSuperScope(): SpaceScope {
+function buildSuperScope(capabilities: ManagerCapabilities | null): SpaceScope {
+  const canWrite = hasManagerCapability(capabilities, 'space.write')
+  const canDestructive = hasManagerCapability(capabilities, 'space.destructive')
   return {
     kind: 'super',
     role: 'super',
-    canManageInvites: true,
-    canRemoveMembers: true,
-    canAddMembers: true,
-    canReviewApplies: true,
+    canManageInvites: canWrite,
+    canRemoveMembers: canDestructive,
+    canAddMembers: canWrite,
+    canChangeMemberRoles: canDestructive,
+    canUpdateSpaceProfile: canWrite,
+    canReviewApplies: canWrite,
     supportsMemberSearch: true,
     supportsMemberPagination: true,
     supportsApplyFilter: true,
@@ -165,6 +172,8 @@ function buildUserScope(role: SpaceMemberRole): SpaceScope {
     canManageInvites: isManager,
     canRemoveMembers: isManager,
     canAddMembers: false,
+    canChangeMemberRoles: role === 2,
+    canUpdateSpaceProfile: isManager,
     canReviewApplies: isManager,
     supportsMemberSearch: false,
     supportsMemberPagination: true,
@@ -238,8 +247,9 @@ function buildUserScope(role: SpaceMemberRole): SpaceScope {
 
 export function useSpaceScope(role?: SpaceMemberRole): SpaceScope {
   const scope = useAuthStore((s) => s.scope)
+  const capabilities = useAuthStore((s) => s.managerCapabilities)
   return useMemo(() => {
-    if (scope === 'super') return buildSuperScope()
+    if (scope === 'super') return buildSuperScope(capabilities)
     return buildUserScope(role ?? 0)
-  }, [scope, role])
+  }, [capabilities, scope, role])
 }

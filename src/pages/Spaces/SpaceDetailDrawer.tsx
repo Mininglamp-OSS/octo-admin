@@ -45,7 +45,7 @@ export default function SpaceDetailDrawer({
       .finally(() => setLoading(false))
   }, [open, spaceId, defaultTab])
 
-  const readOnly = !!space && space.status !== 1
+  const readOnly = !!space && (space.status !== 1 || !scope.canUpdateSpaceProfile)
 
   return (
     <Drawer
@@ -62,6 +62,7 @@ export default function SpaceDetailDrawer({
         <>
           <SpaceInfoPanel
             space={space}
+            readOnly={readOnly}
             onSpaceChange={setSpace}
             onUpdated={onUpdated}
           />

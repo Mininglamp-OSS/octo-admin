@@ -4,6 +4,8 @@ import { SearchOutlined, ReloadOutlined, RobotOutlined, SettingOutlined } from '
 import type { ColumnsType } from 'antd/es/table'
 import { useTranslation } from 'react-i18next'
 import api from '../../api'
+import { hasManagerCapability } from '../../auth/capabilities'
+import { useAuthStore } from '../../store/auth'
 
 const { Text } = Typography
 
@@ -26,6 +28,9 @@ type StatusFilter = 'all' | 'online' | 'offline' | 'banned' | 'destroyed'
 
 export default function Users() {
   const { t } = useTranslation(['users', 'common'])
+  const canWrite = useAuthStore((s) =>
+    hasManagerCapability(s.managerCapabilities, 'users.write'),
+  )
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<User[]>([])
   const [total, setTotal] = useState(0)
@@ -105,6 +110,7 @@ export default function Users() {
   }
 
   const handleBan = async (uid: string, status: number) => {
+    if (!canWrite) return
     Modal.confirm({
       title: status === 0 ? t('confirm.ban') : t('confirm.unban'),
       onOk: async () => {
@@ -115,7 +121,7 @@ export default function Users() {
     })
   }
 
-  const columns: ColumnsType<User> = [
+  const baseColumns: ColumnsType<User> = [
     {
       title: t('column.name'),
       dataIndex: 'name',
@@ -189,23 +195,29 @@ export default function Users() {
       width: 170,
       render: (value) => <span style={{ color: 'var(--a-text-tertiary)' }}>{value}</span>,
     },
-    {
-      title: t('column.action'),
-      key: 'action',
-      width: 100,
-      align: 'right',
-      render: (_, record) => (
-        <div className="row-actions" style={{ display: 'inline-flex', gap: 4 }}>
-          {record.status === 1 && record.is_destroy !== 1 && (
-            <Button size="small" danger onClick={() => handleBan(record.uid, 0)}>{t('action.ban')}</Button>
-          )}
-          {record.status === 0 && record.is_destroy !== 1 && (
-            <Button size="small" type="primary" ghost onClick={() => handleBan(record.uid, 1)}>{t('action.unban')}</Button>
-          )}
-        </div>
-      ),
-    },
   ]
+
+  const columns: ColumnsType<User> = canWrite
+    ? [
+        ...baseColumns,
+        {
+          title: t('column.action'),
+          key: 'action',
+          width: 100,
+          align: 'right',
+          render: (_, record) => (
+            <div className="row-actions" style={{ display: 'inline-flex', gap: 4 }}>
+              {record.status === 1 && record.is_destroy !== 1 && (
+                <Button size="small" danger onClick={() => handleBan(record.uid, 0)}>{t('action.ban')}</Button>
+              )}
+              {record.status === 0 && record.is_destroy !== 1 && (
+                <Button size="small" type="primary" ghost onClick={() => handleBan(record.uid, 1)}>{t('action.unban')}</Button>
+              )}
+            </div>
+          ),
+        },
+      ]
+    : baseColumns
 
   return (
     <div>

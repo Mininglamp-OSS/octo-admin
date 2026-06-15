@@ -4,6 +4,8 @@ import { SearchOutlined, ReloadOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { useTranslation } from 'react-i18next'
 import api from '../../api'
+import { hasManagerCapability } from '../../auth/capabilities'
+import { useAuthStore } from '../../store/auth'
 
 const { Text } = Typography
 
@@ -25,6 +27,9 @@ interface RemoveMemberModal {
 
 export default function Groups() {
   const { t } = useTranslation(['groups', 'common'])
+  const canWrite = useAuthStore((s) =>
+    hasManagerCapability(s.managerCapabilities, 'groups.write'),
+  )
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<Group[]>([])
   const [total, setTotal] = useState(0)
@@ -72,6 +77,7 @@ export default function Groups() {
   }, [data, statusFilter])
 
   const handleBan = async (groupNo: string, status: number) => {
+    if (!canWrite) return
     Modal.confirm({
       title: status === 0 ? t('confirm.ban') : t('confirm.unban'),
       onOk: async () => {
@@ -83,17 +89,20 @@ export default function Groups() {
   }
 
   const handleForbid = async (groupNo: string, on: number) => {
+    if (!canWrite) return
     await api.put(`/v1/manager/groups/${groupNo}/forbidden/${on}`)
     message.success(on === 1 ? t('toast.forbidden') : t('toast.unforbidden'))
     fetchData()
   }
 
   const openRemoveModal = (group: Group) => {
+    if (!canWrite) return
     form.resetFields()
     setRemoveModal({ open: true, groupNo: group.group_no, groupName: group.name })
   }
 
   const handleRemoveMember = async () => {
+    if (!canWrite) return
     const { uid } = await form.validateFields()
     const uids = (uid as string).split(/[,，\s]+/).map((s) => s.trim()).filter(Boolean)
     if (uids.length === 0) return
@@ -110,7 +119,7 @@ export default function Groups() {
     }
   }
 
-  const columns: ColumnsType<Group> = [
+  const baseColumns: ColumnsType<Group> = [
     {
       title: t('column.name'),
       dataIndex: 'name',
@@ -158,28 +167,34 @@ export default function Groups() {
         </span>
       ),
     },
-    {
-      title: t('column.action'),
-      key: 'action',
-      width: 240,
-      align: 'right',
-      render: (_, record) => (
-        <div className="row-actions" style={{ display: 'inline-flex', gap: 4 }}>
-          {record.status === 1 ? (
-            <Button size="small" danger onClick={() => handleBan(record.group_no, 0)}>{t('action.ban')}</Button>
-          ) : (
-            <Button size="small" type="primary" ghost onClick={() => handleBan(record.group_no, 1)}>{t('action.unban')}</Button>
-          )}
-          {record.forbidden !== 1 ? (
-            <Button size="small" className="btn-mute" onClick={() => handleForbid(record.group_no, 1)}>{t('action.forbid')}</Button>
-          ) : (
-            <Button size="small" type="primary" ghost onClick={() => handleForbid(record.group_no, 0)}>{t('action.unforbid')}</Button>
-          )}
-          <Button size="small" danger onClick={() => openRemoveModal(record)}>{t('action.removeMember')}</Button>
-        </div>
-      ),
-    },
   ]
+
+  const columns: ColumnsType<Group> = canWrite
+    ? [
+        ...baseColumns,
+        {
+          title: t('column.action'),
+          key: 'action',
+          width: 240,
+          align: 'right',
+          render: (_, record) => (
+            <div className="row-actions" style={{ display: 'inline-flex', gap: 4 }}>
+              {record.status === 1 ? (
+                <Button size="small" danger onClick={() => handleBan(record.group_no, 0)}>{t('action.ban')}</Button>
+              ) : (
+                <Button size="small" type="primary" ghost onClick={() => handleBan(record.group_no, 1)}>{t('action.unban')}</Button>
+              )}
+              {record.forbidden !== 1 ? (
+                <Button size="small" className="btn-mute" onClick={() => handleForbid(record.group_no, 1)}>{t('action.forbid')}</Button>
+              ) : (
+                <Button size="small" type="primary" ghost onClick={() => handleForbid(record.group_no, 0)}>{t('action.unforbid')}</Button>
+              )}
+              <Button size="small" danger onClick={() => openRemoveModal(record)}>{t('action.removeMember')}</Button>
+            </div>
+          ),
+        },
+      ]
+    : baseColumns
 
   return (
     <div>

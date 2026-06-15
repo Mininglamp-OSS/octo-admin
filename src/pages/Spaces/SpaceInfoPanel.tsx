@@ -27,6 +27,7 @@ function runeCount(s: string): number {
 
 interface Props {
   space: Space
+  readOnly?: boolean
   onSpaceChange: (next: Space) => void
   onUpdated?: () => void
 }
@@ -46,9 +47,9 @@ function Field({ label, children, span = 1 }: FieldProps) {
   )
 }
 
-export default function SpaceInfoPanel({ space, onSpaceChange, onUpdated }: Props) {
+export default function SpaceInfoPanel({ space, readOnly = false, onSpaceChange, onUpdated }: Props) {
   const { t } = useTranslation('spaces')
-  const editable = space.status === 1
+  const editable = space.status === 1 && !readOnly
   const [logoBroken, setLogoBroken] = useState(false)
 
   const save = async <K extends keyof Space>(field: K, value: Space[K]) => {

@@ -50,7 +50,7 @@ export default function SpaceMembersPanel({ spaceId, scope, readOnly = false, on
 
   const canAdd = !readOnly && scope.canAddMembers
   const canRemove = !readOnly && scope.canRemoveMembers
-  const canChangeRole = !readOnly && (scope.kind === 'super' || scope.role === 2)
+  const canChangeRole = !readOnly && scope.canChangeMemberRoles
 
   const fetchData = async (nextPage = page, kw = keyword) => {
     setLoading(true)

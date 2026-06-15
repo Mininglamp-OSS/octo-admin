@@ -18,6 +18,7 @@ import { PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import type { ColumnsType } from 'antd/es/table'
 import api from '../../api'
+import { hasManagerCapability } from '../../auth/capabilities'
 import {
   MAX_USERS_HARD_CAP,
   createSpace,
@@ -29,6 +30,7 @@ import {
   type SpaceJoinMode,
   type SpaceStatus,
 } from '../../api/space'
+import { useAuthStore } from '../../store/auth'
 import SpaceDetailDrawer from './SpaceDetailDrawer'
 
 interface UserOptionRaw {
@@ -55,6 +57,12 @@ const STATUS_META: Record<SpaceStatus, { textKey: string; tone: 'online' | 'dest
 
 export default function Spaces() {
   const { t } = useTranslation(['spaces', 'common'])
+  const canWrite = useAuthStore((s) =>
+    hasManagerCapability(s.managerCapabilities, 'space.write'),
+  )
+  const canDestructive = useAuthStore((s) =>
+    hasManagerCapability(s.managerCapabilities, 'space.destructive'),
+  )
   const [tab, setTab] = useState<TabKey>('active')
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<SpaceItem[]>([])
@@ -147,6 +155,7 @@ export default function Spaces() {
   }
 
   const handleBan = (space: SpaceItem) => {
+    if (!canDestructive) return
     Modal.confirm({
       title: t('ban.title', { name: space.name }),
       content: t('ban.content'),
@@ -164,6 +173,7 @@ export default function Spaces() {
   }
 
   const handleUnban = (space: SpaceItem) => {
+    if (!canDestructive) return
     Modal.confirm({
       title: t('unban.title', { name: space.name }),
       onOk: async () => {
@@ -179,6 +189,7 @@ export default function Spaces() {
   }
 
   const handleDissolve = (space: SpaceItem) => {
+    if (!canDestructive) return
     Modal.confirm({
       title: t('dissolve.title', { name: space.name }),
       content: t('dissolve.content'),
@@ -202,6 +213,7 @@ export default function Spaces() {
   ) => setDrawer({ open: true, spaceId, tab })
 
   const handleCreate = async () => {
+    if (!canWrite) return
     const values = await createForm.validateFields()
     const preset = values.preset_group_ids?.trim()
     if (preset) {
@@ -339,7 +351,7 @@ export default function Spaces() {
           >
             {t('action.inviteCode')}
           </Button>
-          {record.status === 1 && (
+          {canDestructive && record.status === 1 && (
             <>
               <Button size="small" danger onClick={() => handleBan(record)}>
                 {t('action.ban')}
@@ -349,7 +361,7 @@ export default function Spaces() {
               </Button>
             </>
           )}
-          {record.status === 2 && (
+          {canDestructive && record.status === 2 && (
             <Button size="small" type="primary" ghost onClick={() => handleUnban(record)}>
               {t('action.unban')}
             </Button>
@@ -389,17 +401,19 @@ export default function Spaces() {
           {t('common:action.refresh')}
         </Button>
         <div className="toolbar-spacer" />
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            setCreateOpen(true)
-            setUserOptions([])
-            searchUsers('')
-          }}
-        >
-          {t('action.create')}
-        </Button>
+        {canWrite && (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setCreateOpen(true)
+              setUserOptions([])
+              searchUsers('')
+            }}
+          >
+            {t('action.create')}
+          </Button>
+        )}
       </div>
 
       <Table<SpaceItem>

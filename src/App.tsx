@@ -1,6 +1,11 @@
 import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom'
 import { useAuthStore } from './store/auth'
 import { useFeatureStore } from './store/feature'
+import {
+  firstManagerPath,
+  hasManagerCapability,
+  type ManagerCapabilityKey,
+} from './auth/capabilities'
 import MainLayout from './layouts/MainLayout'
 import AdminThemeProvider from './layouts/AdminThemeProvider'
 import Login from './pages/Login'
@@ -21,6 +26,25 @@ function SuperOnlyRoute({ children }: { children: React.ReactNode }) {
   const { isLoggedIn, scope } = useAuthStore()
   if (!isLoggedIn) return <Navigate to="/login" replace />
   if (scope !== 'super') return <Navigate to="/space" replace />
+  return <>{children}</>
+}
+
+function CapabilityRoute({
+  capability,
+  children,
+}: {
+  capability: ManagerCapabilityKey
+  children: React.ReactNode
+}) {
+  const { managerCapabilities, managerProfileStatus } = useAuthStore()
+  if (
+    managerProfileStatus === 'idle' ||
+    managerProfileStatus === 'loading' ||
+    managerCapabilities === null
+  ) return null
+  if (!hasManagerCapability(managerCapabilities, capability)) {
+    return <Navigate to={firstManagerPath(managerCapabilities)} replace />
+  }
   return <>{children}</>
 }
 
@@ -108,13 +132,62 @@ function AdminRoutes() {
         }
       >
         <Route index element={<Navigate to="/dashboard" replace />} />
-        <Route path="dashboard" element={<Dashboard />} />
-        <Route path="users" element={<Users />} />
-        <Route path="groups" element={<Groups />} />
-        <Route path="spaces" element={<Spaces />} />
-        <Route path="system-setting" element={<SystemSetting />} />
-        <Route path="backup" element={<Backup />} />
-        <Route path="download" element={<Download />} />
+        <Route
+          path="dashboard"
+          element={
+            <CapabilityRoute capability="dashboard.read">
+              <Dashboard />
+            </CapabilityRoute>
+          }
+        />
+        <Route
+          path="users"
+          element={
+            <CapabilityRoute capability="users.read">
+              <Users />
+            </CapabilityRoute>
+          }
+        />
+        <Route
+          path="groups"
+          element={
+            <CapabilityRoute capability="groups.read">
+              <Groups />
+            </CapabilityRoute>
+          }
+        />
+        <Route
+          path="spaces"
+          element={
+            <CapabilityRoute capability="space.read">
+              <Spaces />
+            </CapabilityRoute>
+          }
+        />
+        <Route
+          path="system-setting"
+          element={
+            <CapabilityRoute capability="system_setting">
+              <SystemSetting />
+            </CapabilityRoute>
+          }
+        />
+        <Route
+          path="backup"
+          element={
+            <CapabilityRoute capability="backup">
+              <Backup />
+            </CapabilityRoute>
+          }
+        />
+        <Route
+          path="download"
+          element={
+            <CapabilityRoute capability="appversion.read">
+              <Download />
+            </CapabilityRoute>
+          }
+        />
         <Route
           path="app-bots"
           element={

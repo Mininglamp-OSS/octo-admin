@@ -1,7 +1,9 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import type { ManagerCapabilities, ManagerMe } from '../auth/capabilities'
 
 export type AuthScope = 'super' | 'space' | ''
+export type ManagerProfileStatus = 'idle' | 'loading' | 'loaded' | 'error'
 
 export interface MySpace {
   space_id: string
@@ -21,10 +23,15 @@ interface AuthState {
   role: string
   uid: string
   isLoggedIn: boolean
+  managerCapabilities: ManagerCapabilities | null
+  managerProfileStatus: ManagerProfileStatus
   mySpaces: MySpace[]
   currentSpaceId: string
   loginSuper: (token: string, name: string, role: string) => void
   loginSpace: (token: string, uid: string, name: string, mySpaces: MySpace[]) => void
+  setManagerProfileLoading: () => void
+  setManagerMe: (profile: ManagerMe) => void
+  setManagerProfileError: () => void
   setMySpaces: (mySpaces: MySpace[]) => void
   setCurrentSpaceId: (spaceId: string) => void
   logout: () => void
@@ -39,6 +46,8 @@ export const useAuthStore = create<AuthState>()(
       role: '',
       uid: '',
       isLoggedIn: false,
+      managerCapabilities: null,
+      managerProfileStatus: 'idle',
       mySpaces: [],
       currentSpaceId: '',
       loginSuper: (token, name, role) =>
@@ -49,6 +58,8 @@ export const useAuthStore = create<AuthState>()(
           role,
           uid: '',
           isLoggedIn: true,
+          managerCapabilities: null,
+          managerProfileStatus: 'idle',
           mySpaces: [],
           currentSpaceId: '',
         }),
@@ -60,8 +71,24 @@ export const useAuthStore = create<AuthState>()(
           role: '',
           uid,
           isLoggedIn: true,
+          managerCapabilities: null,
+          managerProfileStatus: 'idle',
           mySpaces,
           currentSpaceId: mySpaces[0]?.space_id ?? '',
+        }),
+      setManagerProfileLoading: () => set({ managerProfileStatus: 'loading' }),
+      setManagerMe: (profile) =>
+        set({
+          name: profile.name,
+          role: profile.role,
+          uid: profile.uid,
+          managerCapabilities: profile.capabilities,
+          managerProfileStatus: 'loaded',
+        }),
+      setManagerProfileError: () =>
+        set({
+          managerCapabilities: null,
+          managerProfileStatus: 'error',
         }),
       setMySpaces: (mySpaces) =>
         set((s) => ({
@@ -80,6 +107,8 @@ export const useAuthStore = create<AuthState>()(
           role: '',
           uid: '',
           isLoggedIn: false,
+          managerCapabilities: null,
+          managerProfileStatus: 'idle',
           mySpaces: [],
           currentSpaceId: '',
         }),

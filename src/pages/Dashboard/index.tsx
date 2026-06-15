@@ -54,6 +54,8 @@ import {
   type DashboardTrendItem,
 } from '../../api/dashboard'
 import { ApiError } from '../../api'
+import { hasManagerCapability } from '../../auth/capabilities'
+import { useAuthStore } from '../../store/auth'
 
 const { RangePicker } = DatePicker
 const { Text } = Typography
@@ -697,6 +699,9 @@ function LazyTablePlaceholder({ title, hint }: { title: string; hint: string }) 
 
 export default function Dashboard() {
   const { t } = useTranslation(['dashboard', 'common'])
+  const canRunEtl = useAuthStore((s) =>
+    hasManagerCapability(s.managerCapabilities, 'dashboard.trigger'),
+  )
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>(defaultDateRange)
   const [selectedSpaceIds, setSelectedSpaceIds] = useState<string[]>([])
   const [spaceOptions, setSpaceOptions] = useState<DashboardSpaceItem[]>([])
@@ -1561,22 +1566,24 @@ export default function Dashboard() {
           <h1 className="page-title">{t('title')}</h1>
           <p className="page-subtitle">{t('subtitle')}</p>
         </div>
-        <Popconfirm
-          title={t('action.runEtlConfirmTitle')}
-          description={t('action.runEtlConfirmDesc')}
-          okText={t('common:action.confirm')}
-          cancelText={t('common:action.cancel')}
-          onConfirm={handleRunEtl}
-          disabled={etlLoading}
-        >
-          <Button
-            type="primary"
-            icon={<SyncOutlined />}
-            loading={etlLoading}
+        {canRunEtl && (
+          <Popconfirm
+            title={t('action.runEtlConfirmTitle')}
+            description={t('action.runEtlConfirmDesc')}
+            okText={t('common:action.confirm')}
+            cancelText={t('common:action.cancel')}
+            onConfirm={handleRunEtl}
+            disabled={etlLoading}
           >
-            {t('action.runEtl')}
-          </Button>
-        </Popconfirm>
+            <Button
+              type="primary"
+              icon={<SyncOutlined />}
+              loading={etlLoading}
+            >
+              {t('action.runEtl')}
+            </Button>
+          </Popconfirm>
+        )}
       </div>
 
       <nav className="dashboard-anchor-nav" aria-label={t('nav.aria')}>
