@@ -1905,7 +1905,7 @@ export default function Dashboard() {
       </div>
 
       <Drawer
-        className="admin-shell admin-drawer dashboard-drawer dashboard-drawer-max"
+        className="admin-shell admin-drawer dashboard-drawer"
         width="100%"
         title={drawerSpace ? t('channels.title', { name: drawerSpace.name || drawerSpace.space_id }) : t('channels.titleFallback')}
         open={drawerOpen}

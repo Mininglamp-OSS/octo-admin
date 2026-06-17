@@ -89,8 +89,6 @@ vi.mock('@ant-design/icons', async () => {
   return {
     AppstoreOutlined: Icon,
     CommentOutlined: Icon,
-    FullscreenOutlined: Icon,
-    FullscreenExitOutlined: Icon,
     MessageOutlined: Icon,
     ReloadOutlined: Icon,
     RobotOutlined: Icon,
