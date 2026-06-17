@@ -286,21 +286,21 @@ export default function SpaceMembersPanel({ spaceId, scope, readOnly = false, on
   return (
     <div>
       <div className="toolbar toolbar-plain">
-        <Input
-          placeholder={t(
-            scope.kind === 'super'
-              ? 'members.search.placeholderSuper'
-              : 'members.search.placeholder',
-          )}
-          value={keyword}
-          onChange={(e) => setKeyword(e.target.value)}
-          onPressEnter={handleSearch}
-          style={{ width: 240 }}
-          allowClear
-        />
-        <Button icon={<SearchOutlined />} onClick={handleSearch}>
-          {t('common:action.search')}
-        </Button>
+        {scope.supportsMemberSearch && (
+          <>
+            <Input
+              placeholder={t('members.search.placeholder')}
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              onPressEnter={handleSearch}
+              style={{ width: 240 }}
+              allowClear
+            />
+            <Button icon={<SearchOutlined />} onClick={handleSearch}>
+              {t('common:action.search')}
+            </Button>
+          </>
+        )}
         <Button icon={<ReloadOutlined />} onClick={() => fetchData()}>
           {t('common:action.refresh')}
         </Button>
