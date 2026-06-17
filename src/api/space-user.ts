@@ -86,12 +86,36 @@ export const updateSpaceUserProfile = (
   data: SpaceUserProfileUpdateReq,
 ) => api.put(`/v1/space/${spaceId}`, data)
 
-export const listSpaceUserMembers = (
+export interface SpaceUserMemberSearchItem {
+  uid: string
+  name: string
+  username?: string
+  email?: string
+  phone?: string
+  role: 0 | 1 | 2
+  robot: 0 | 1
+  created_at?: string
+}
+
+export interface SpaceUserMemberSearchResp {
+  count: number
+  list: SpaceUserMemberSearchItem[]
+}
+
+// 空间管理视图的成员分页 / 搜索。后端 GET /v1/space/{id}/members/search 返回带
+// 总数的信封({ count, list }),并支持服务端 keyword 模糊匹配(昵称 / 用户名 /
+// UID / Email,手机号按后 4 位匹配)。需要空间管理员及以上(role >= 1)——空间
+// 管理台入口只对 role >= 1 的空间开放,故此处恒满足权限。旧的 GET /members
+// 接口返回裸数组且无总数,无法分页,已弃用。
+export const searchSpaceUserMembers = (
   spaceId: string,
-  params: { page?: number; limit?: number } = {},
+  params: { keyword?: string; page_index?: number; page_size?: number } = {},
 ) =>
   unwrap(
-    api.get<SpaceUserMember[]>(`/v1/space/${spaceId}/members`, { params }),
+    api.get<SpaceUserMemberSearchResp>(
+      `/v1/space/${spaceId}/members/search`,
+      { params },
+    ),
   )
 
 export const removeSpaceUserMembers = (spaceId: string, uids: string[]) =>

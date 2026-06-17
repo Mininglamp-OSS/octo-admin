@@ -175,26 +175,19 @@ function buildUserScope(role: SpaceMemberRole): SpaceScope {
     canChangeMemberRoles: role === 2,
     canUpdateSpaceProfile: isManager,
     canReviewApplies: isManager,
-    supportsMemberSearch: false,
+    supportsMemberSearch: true,
     supportsMemberPagination: true,
     supportsApplyFilter: false,
     api: {
       listMembers: async (spaceId, params) => {
-        const list = await user.listSpaceUserMembers(spaceId, {
-          page: params.page_index,
-          limit: params.page_size,
+        const res = await user.searchSpaceUserMembers(spaceId, {
+          keyword: params.keyword,
+          page_index: params.page_index,
+          page_size: params.page_size,
         })
-        const keyword = params.keyword?.toLowerCase()
-        const filtered = keyword
-          ? list.filter(
-              (m) =>
-                m.name?.toLowerCase().includes(keyword) ||
-                m.uid?.toLowerCase().includes(keyword),
-            )
-          : list
         return {
-          count: filtered.length,
-          list: filtered.map((m) => ({
+          count: res.count,
+          list: res.list.map((m) => ({
             uid: m.uid,
             name: m.name,
             role: m.role,
