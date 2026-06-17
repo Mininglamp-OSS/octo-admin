@@ -1,4 +1,7 @@
 {
+  "groupOverview": "概览",
+  "groupManagement": "管理",
+  "groupSystem": "系统",
   "dashboard": "仪表盘",
   "users": "用户管理",
   "groups": "群组管理",

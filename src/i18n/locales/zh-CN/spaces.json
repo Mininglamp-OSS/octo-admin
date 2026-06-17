@@ -74,6 +74,7 @@
   "members.add.success": "已添加 {{count}} 个成员",
   "members.column.name": "昵称",
   "members.column.uid": "UID",
+  "members.column.identity": "UID / Email",
   "members.column.role": "角色",
   "members.column.status": "状态",
   "members.column.joinedAt": "加入时间",

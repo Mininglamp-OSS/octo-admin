@@ -99,37 +99,54 @@ const MainLayout: React.FC = () => {
     [t],
   )
 
-  const menuItems = useMemo<MenuItem[]>(() => {
+  // 扁平菜单项(带 group 归属):既用于派生分组菜单,也用于面包屑按路径反查标题。
+  const flatMenuItems = useMemo<Array<MenuItem & { group: string }>>(() => {
     if (managerCapabilities === null) return []
-
-    const base: MenuItem[] = []
+    const list: Array<MenuItem & { group: string }> = []
     if (hasManagerCapability(managerCapabilities, 'dashboard.read')) {
-      base.push({ key: '/dashboard', icon: <DashboardOutlined />, label: t('nav:dashboard') })
+      list.push({ key: '/dashboard', icon: <DashboardOutlined />, label: t('nav:dashboard'), group: 'overview' })
     }
     if (hasManagerCapability(managerCapabilities, 'users.read')) {
-      base.push({ key: '/users', icon: <UserOutlined />, label: t('nav:users') })
+      list.push({ key: '/users', icon: <UserOutlined />, label: t('nav:users'), group: 'management' })
     }
     if (hasManagerCapability(managerCapabilities, 'groups.read')) {
-      base.push({ key: '/groups', icon: <TeamOutlined />, label: t('nav:groups') })
+      list.push({ key: '/groups', icon: <TeamOutlined />, label: t('nav:groups'), group: 'management' })
     }
     if (hasManagerCapability(managerCapabilities, 'space.read')) {
-      base.push({ key: '/spaces', icon: <AppstoreOutlined />, label: t('nav:spaces') })
+      list.push({ key: '/spaces', icon: <AppstoreOutlined />, label: t('nav:spaces'), group: 'management' })
     }
-
-    const tail: MenuItem[] = []
+    if (appBotsAvailable === true) {
+      list.push({ key: '/app-bots', icon: <RobotOutlined />, label: t('nav:appBots'), group: 'management' })
+    }
     if (hasManagerCapability(managerCapabilities, 'system_setting')) {
-      tail.push({ key: '/system-setting', icon: <SettingOutlined />, label: t('nav:systemSetting') })
+      list.push({ key: '/system-setting', icon: <SettingOutlined />, label: t('nav:systemSetting'), group: 'system' })
     }
     if (hasManagerCapability(managerCapabilities, 'backup')) {
-      tail.push({ key: '/backup', icon: <CloudUploadOutlined />, label: t('nav:backup') })
+      list.push({ key: '/backup', icon: <CloudUploadOutlined />, label: t('nav:backup'), group: 'system' })
     }
     if (hasManagerCapability(managerCapabilities, 'appversion.read')) {
-      tail.push({ key: '/download', icon: <DownloadOutlined />, label: t('nav:download') })
+      list.push({ key: '/download', icon: <DownloadOutlined />, label: t('nav:download'), group: 'system' })
     }
-    return appBotsAvailable === true
-      ? [...base, { key: '/app-bots', icon: <RobotOutlined />, label: t('nav:appBots') }, ...tail]
-      : [...base, ...tail]
+    return list
   }, [appBotsAvailable, managerCapabilities, t])
+
+  // 按「概览 / 管理 / 系统」分组渲染;某组无任何有权限的菜单项时整组隐藏(不留空标题)。
+  const menuItems = useMemo<MenuProps['items']>(() => {
+    const groupDefs = [
+      { key: 'overview', label: t('nav:groupOverview') },
+      { key: 'management', label: t('nav:groupManagement') },
+      { key: 'system', label: t('nav:groupSystem') },
+    ]
+    return groupDefs
+      .map((g) => ({
+        g,
+        children: flatMenuItems
+          .filter((i) => i.group === g.key)
+          .map(({ group: _group, ...item }) => item),
+      }))
+      .filter((x) => x.children.length > 0)
+      .map((x) => ({ type: 'group' as const, key: x.g.key, label: x.g.label, children: x.children }))
+  }, [flatMenuItems, t])
 
   const handleMenuClick = ({ key }: { key: string }) => {
     navigate(key)
@@ -140,7 +157,7 @@ const MainLayout: React.FC = () => {
     navigate('/login')
   }
 
-  const activeItem = menuItems.find((item) => item.key === location.pathname)
+  const activeItem = flatMenuItems.find((item) => item.key === location.pathname)
   const homePath = firstManagerPath(managerCapabilities)
   const managerProfilePending =
     scope === 'super' && managerCapabilities === null && managerProfileStatus !== 'error'

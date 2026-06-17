@@ -1,4 +1,7 @@
 {
+  "groupOverview": "Overview",
+  "groupManagement": "Management",
+  "groupSystem": "System",
   "dashboard": "Dashboard",
   "users": "Users",
   "groups": "Groups",

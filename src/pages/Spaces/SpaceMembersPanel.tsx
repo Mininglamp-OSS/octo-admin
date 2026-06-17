@@ -230,22 +230,39 @@ export default function SpaceMembersPanel({ spaceId, scope, readOnly = false, on
       ),
     },
     {
-      title: t('members.column.uid'),
-      dataIndex: 'uid',
-      key: 'uid',
-      width: 220,
-      render: (uid) => (
-        <Tooltip title={uid} mouseEnterDelay={0.2}>
-          <Text
-            copyable={{ text: uid }}
-            style={{ maxWidth: 200, color: 'var(--a-text-tertiary)' }}
-            className="mono"
-            ellipsis
-          >
-            {uid}
-          </Text>
-        </Tooltip>
-      ),
+      title: t('members.column.identity'),
+      key: 'identity',
+      width: 240,
+      render: (_: unknown, record: MemberItem) => {
+        // Bot 的 UID 是有意义的可读标识(如 ml_pipixia_bot),直接展示;
+        // 普通用户的 UID 是无意义随机串,优先展示 Email,UID 作为灰色副标识兜底。
+        const isBot = record.robot === 1
+        const primary = isBot ? record.uid : record.email || record.uid
+        const secondary = !isBot && record.email ? record.uid : undefined
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.3 }}>
+            <Tooltip title={primary} mouseEnterDelay={0.2}>
+              <Text
+                copyable={{ text: primary }}
+                style={{ maxWidth: 220, color: 'var(--a-text-tertiary)' }}
+                className={isBot || !record.email ? 'mono' : undefined}
+                ellipsis
+              >
+                {primary}
+              </Text>
+            </Tooltip>
+            {secondary && (
+              <Text
+                style={{ maxWidth: 220, fontSize: 11, color: 'var(--a-text-quaternary)' }}
+                className="mono"
+                ellipsis
+              >
+                {secondary}
+              </Text>
+            )}
+          </div>
+        )
+      },
     },
     {
       title: t('members.column.role'),
@@ -293,7 +310,7 @@ export default function SpaceMembersPanel({ spaceId, scope, readOnly = false, on
               value={keyword}
               onChange={(e) => setKeyword(e.target.value)}
               onPressEnter={handleSearch}
-              style={{ width: 240 }}
+              style={{ width: 320 }}
               allowClear
             />
             <Button icon={<SearchOutlined />} onClick={handleSearch}>

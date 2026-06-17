@@ -74,6 +74,7 @@
   "members.add.success": "Added {{count}} members",
   "members.column.name": "Nickname",
   "members.column.uid": "UID",
+  "members.column.identity": "UID / Email",
   "members.column.role": "Role",
   "members.column.status": "Status",
   "members.column.joinedAt": "Joined At",

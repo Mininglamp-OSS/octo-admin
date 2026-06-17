@@ -30,6 +30,8 @@ export interface MemberItem {
   role: SpaceMemberRole
   status?: number
   robot?: 0 | 1
+  email?: string
+  username?: string
   created_at?: string
 }
 
@@ -192,6 +194,8 @@ function buildUserScope(role: SpaceMemberRole): SpaceScope {
             name: m.name,
             role: m.role,
             robot: m.robot,
+            email: m.email,
+            username: m.username,
             status: 1,
             created_at: m.created_at,
           })),

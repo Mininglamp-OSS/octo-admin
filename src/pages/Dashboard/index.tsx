@@ -186,6 +186,38 @@ function truncateLabel(label: string, max = 18) {
   return `${label.slice(0, max)}...`
 }
 
+// 消息活跃度的明度梯度(全屏标注稿 §03):用 √ 归一化压缩低值,映射到字号(16→26px)
+// 与明度(opacity 0.5→1 作用于主文字色)。不用色相,避免"多=好/少=坏"误导。
+// 用 opacity 而非硬编码 rgb,以便暗色模式自动适配(深墨字在暗背景不可见)。
+function channelMsgTone(total: number, max: number): { fontSize: number; opacity: number } {
+  if (max <= 0) return { fontSize: 16, opacity: 0.55 }
+  const t = Math.sqrt(total / max)
+  return { fontSize: 16 + Math.round(t * 10), opacity: 0.5 + 0.5 * t }
+}
+
+// 人/Bot 分段热力条(全屏标注稿 §03):总宽 = max(5, 占全量比),内部按人/Bot 切分。
+function channelHeatWidths(total: number, human: number, agent: number, max: number) {
+  if (max <= 0 || total <= 0) return { human: 0, bot: 0 }
+  const span = Math.max(5, Math.round((total / max) * 100))
+  return {
+    human: (human / total) * span,
+    bot: (agent / total) * span,
+  }
+}
+
+// 最后活跃的相对时间(今天/昨天/N 天前);30 天以上不显示,绝对时间已足够。
+function relativeTimeLabel(
+  unix: number | null | undefined,
+  translate: (key: string, opts?: Record<string, unknown>) => string,
+): string {
+  if (!unix) return ''
+  const diffDays = dayjs().startOf('day').diff(dayjs.unix(unix).startOf('day'), 'day')
+  if (diffDays <= 0) return translate('channels.rel.today')
+  if (diffDays === 1) return translate('channels.rel.yesterday')
+  if (diffDays < 30) return translate('channels.rel.daysAgo', { n: diffDays })
+  return ''
+}
+
 function orderToAntd(order: DashboardOrder) {
   return order === 'asc' ? 'ascend' : 'descend'
 }
@@ -704,6 +736,10 @@ export default function Dashboard() {
   )
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>(defaultDateRange)
   const [selectedSpaceIds, setSelectedSpaceIds] = useState<string[]>([])
+  // 最新已选 id 的引用:fetchSpaceOptions 替换下拉选项时,保留已选但不在本次结果里的项,
+  // 避免多选标签丢失 label。
+  const selectedSpaceIdsRef = useRef(selectedSpaceIds)
+  selectedSpaceIdsRef.current = selectedSpaceIds
   const [spaceOptions, setSpaceOptions] = useState<DashboardSpaceItem[]>([])
   const [spaceOptionsLoading, setSpaceOptionsLoading] = useState(false)
   const [overview, setOverview] = useState<DashboardOverview | null>(null)
@@ -796,14 +832,6 @@ export default function Dashboard() {
     [t],
   )
 
-  const mergeSpaceOptions = useCallback((items: DashboardSpaceItem[]) => {
-    setSpaceOptions((prev) => {
-      const map = new Map(prev.map((item) => [item.space_id, item]))
-      items.forEach((item) => map.set(item.space_id, item))
-      return Array.from(map.values())
-    })
-  }, [])
-
   const fetchSpaceOptions = useCallback(
     async (name = '') => {
       const seq = ++spaceOptionsSeq.current
@@ -818,14 +846,25 @@ export default function Dashboard() {
           sort_by: 'last_active',
           order: 'desc',
         })
-        if (seq === spaceOptionsSeq.current) mergeSpaceOptions(res.list || [])
+        if (seq === spaceOptionsSeq.current) {
+          // 搜索/初始结果直接替换下拉选项(而非累积合并),避免被全量列表污染;
+          // 仅保留"已选中但不在本次结果里"的项,防止多选标签丢失 label。
+          const next = res.list || []
+          const nextIds = new Set(next.map((s) => s.space_id))
+          setSpaceOptions((prev) => [
+            ...prev.filter(
+              (s) => selectedSpaceIdsRef.current.includes(s.space_id) && !nextIds.has(s.space_id),
+            ),
+            ...next,
+          ])
+        }
       } catch (error) {
         if (seq === spaceOptionsSeq.current) message.error(dashboardErrorMessage(error))
       } finally {
         if (seq === spaceOptionsSeq.current) setSpaceOptionsLoading(false)
       }
     },
-    [dashboardErrorMessage, mergeSpaceOptions, rangeParams],
+    [dashboardErrorMessage, rangeParams],
   )
 
   const fetchOverview = useCallback(async () => {
@@ -860,7 +899,6 @@ export default function Dashboard() {
       if (seq !== spacesSeq.current) return
       setSpaces(res.list || [])
       setSpacesTotal(res.count || 0)
-      mergeSpaceOptions(res.list || [])
     } catch (error) {
       if (seq === spacesSeq.current) message.error(dashboardErrorMessage(error))
     } finally {
@@ -870,7 +908,6 @@ export default function Dashboard() {
       }
     }
   }, [
-    mergeSpaceOptions,
     dashboardErrorMessage,
     rangeParams,
     spaceActive,
@@ -895,13 +932,12 @@ export default function Dashboard() {
       })
       if (seq !== chartSpacesSeq.current) return
       setChartSpaces(res.list || [])
-      mergeSpaceOptions(res.list || [])
     } catch (error) {
       if (seq === chartSpacesSeq.current) message.error(dashboardErrorMessage(error))
     } finally {
       if (seq === chartSpacesSeq.current) setChartSpacesLoading(false)
     }
-  }, [dashboardErrorMessage, mergeSpaceOptions, rangeParams, selectedSpaceIds])
+  }, [dashboardErrorMessage, rangeParams, selectedSpaceIds])
 
   const fetchTrend = useCallback(async () => {
     const seq = ++trendSeq.current
@@ -1453,110 +1489,128 @@ export default function Dashboard() {
     [convTypeLabel, directOrder, directSortBy, t],
   )
 
+  // 消息 mini bar 的归一化基准:当前页内最大总消息数(分页表格只能按页内相对值着色)。
+  const maxChannelMsg = useMemo(
+    () => channels.reduce((max, c) => Math.max(max, totalMessages(c)), 0),
+    [channels],
+  )
+
+  // 当前列表内重名的群组名集合;重名时在卡片名后挂 ID 尾号 tag 以便区分(开发标注稿 §03/§04)。
+  const duplicateChannelNames = useMemo(() => {
+    const counts = new Map<string, number>()
+    channels.forEach((c) => counts.set(c.name, (counts.get(c.name) || 0) + 1))
+    return new Set([...counts].filter(([, n]) => n > 1).map(([name]) => name))
+  }, [channels])
+
   const channelColumns = useMemo<ColumnsType<DashboardChannelItem>>(
     () => [
       {
         title: t('channels.column.name'),
         dataIndex: 'name',
         key: 'name',
-        fixed: 'left',
-        width: 220,
-        render: (value: string) => <span className="cell-primary">{value || '-'}</span>,
-      },
-      {
-        title: t('channels.column.status'),
-        dataIndex: 'is_active',
-        key: 'is_active',
-        width: 110,
-        render: statusColumn,
-      },
-      {
-        title: t('channels.column.type'),
-        dataIndex: 'conv_type',
-        key: 'conv_type',
-        width: 120,
-        render: (value: number) => <span className="pill-outline brand">{convTypeLabel(value)}</span>,
+        render: (value: string, record) => (
+          <div className="ch-name-cell">
+            <div className="ch-name-row">
+              <Tooltip title={value} mouseEnterDelay={0.3}>
+                <span className="ch-name-text">{value ? truncateLabel(value, 22) : '-'}</span>
+              </Tooltip>
+              {duplicateChannelNames.has(value) && (
+                <span className="ch-name-tag">#{record.channel_id.slice(-4)}</span>
+              )}
+              <Tooltip title={record.channel_id}>
+                <Text className="ch-name-copy mono" copyable={{ text: record.channel_id }} />
+              </Tooltip>
+            </div>
+            <div className="ch-name-type">{convTypeLabel(record.conv_type)}</div>
+          </div>
+        ),
       },
       {
         title: t('channels.column.members'),
         dataIndex: 'member_count',
         key: 'member_count',
-        width: 120,
+        width: 130,
         align: 'right',
         sorter: true,
         sortOrder: channelSortBy === 'member_count' ? orderToAntd(channelOrder) : null,
-        render: formatNumber,
+        render: (_, record) => (
+          <div className="ch-metric">
+            <span className="ch-metric-num">{formatNumber(record.member_count)}</span>
+            <span className="ch-metric-sub">
+              {record.agent_member_count > 0
+                ? t('channels.metric.memberSub', {
+                    human: record.human_member_count,
+                    agent: record.agent_member_count,
+                  })
+                : t('channels.metric.memberHumanOnly', { human: record.human_member_count })}
+            </span>
+          </div>
+        ),
       },
       {
-        title: t('channels.column.humanMembers'),
-        dataIndex: 'human_member_count',
-        key: 'human_member_count',
-        width: 120,
-        align: 'right',
-        render: formatNumber,
-      },
-      {
-        title: t('channels.column.agents'),
-        dataIndex: 'agent_member_count',
-        key: 'agent_member_count',
-        width: 110,
-        align: 'right',
-        render: formatNumber,
-      },
-      {
-        title: t('channels.column.humanMessages'),
-        dataIndex: 'human_msg_count',
-        key: 'human_msg_count',
-        width: 130,
-        align: 'right',
-        sorter: true,
-        sortOrder: channelSortBy === 'human_msg_count' ? orderToAntd(channelOrder) : null,
-        render: formatNumber,
-      },
-      {
-        title: t('channels.column.agentMessages'),
-        dataIndex: 'agent_msg_count',
-        key: 'agent_msg_count',
-        width: 130,
-        align: 'right',
-        sorter: true,
-        sortOrder: channelSortBy === 'agent_msg_count' ? orderToAntd(channelOrder) : null,
-        render: formatNumber,
-      },
-      {
-        title: t('channels.column.totalMessages'),
+        title: t('channels.column.messages'),
         key: 'total_msg',
-        width: 130,
+        width: 280,
         align: 'right',
         sorter: true,
         sortOrder: channelSortBy === 'total_msg' ? orderToAntd(channelOrder) : null,
-        render: (_, record) => <span className="cell-primary">{formatNumber(totalMessages(record))}</span>,
+        render: (_, record) => {
+          const total = totalMessages(record)
+          const tone = channelMsgTone(total, maxChannelMsg)
+          const heat = channelHeatWidths(
+            total,
+            record.human_msg_count,
+            record.agent_msg_count,
+            maxChannelMsg,
+          )
+          return (
+            <div className="ch-msg">
+              <div className="ch-msg-num-row">
+                <span
+                  className="ch-msg-num"
+                  style={{ fontSize: tone.fontSize, opacity: tone.opacity }}
+                >
+                  {formatNumber(total)}
+                </span>
+                <span className="ch-msg-unit">{t('channels.card.unit')}</span>
+              </div>
+              {total > 0 && (
+                <div className="ch-heat">
+                  <span className="ch-heat-human" style={{ width: `${heat.human}%` }} />
+                  <span className="ch-heat-bot" style={{ width: `${heat.bot}%` }} />
+                </div>
+              )}
+              <div className="ch-msg-sub">
+                {record.agent_msg_count > 0
+                  ? t('channels.metric.msgSub', {
+                      human: record.human_msg_count,
+                      agent: record.agent_msg_count,
+                    })
+                  : t('channels.metric.msgHumanOnly', { human: record.human_msg_count })}
+              </div>
+            </div>
+          )
+        },
       },
       {
         title: t('channels.column.lastActive'),
         dataIndex: 'last_active_at',
         key: 'last_active',
-        width: 170,
+        width: 180,
         align: 'right',
+        className: 'ch-col-active',
+        onHeaderCell: () => ({ className: 'ch-col-active' }),
         sorter: true,
         sortOrder: channelSortBy === 'last_active' ? orderToAntd(channelOrder) : null,
-        render: (value: number) => <span style={{ color: 'var(--a-text-tertiary)' }}>{formatTime(value)}</span>,
-      },
-      {
-        title: t('common:column.id'),
-        dataIndex: 'channel_id',
-        key: 'channel_id',
-        width: 220,
-        render: (value: string) => (
-          <Tooltip title={value}>
-            <Text className="mono" copyable={{ text: value }} ellipsis style={{ maxWidth: 190 }}>
-              {value}
-            </Text>
-          </Tooltip>
+        render: (value: number) => (
+          <div className="ch-time">
+            <div className="ch-time-abs">{formatTime(value)}</div>
+            <div className="ch-time-rel">{relativeTimeLabel(value, t)}</div>
+          </div>
         ),
       },
     ],
-    [channelOrder, channelSortBy, convTypeLabel, statusColumn, t],
+    [channelOrder, channelSortBy, convTypeLabel, duplicateChannelNames, maxChannelMsg, t],
   )
 
   return (
@@ -1897,8 +1951,8 @@ export default function Dashboard() {
       </div>
 
       <Drawer
-        className="admin-drawer dashboard-drawer"
-        width={960}
+        className="admin-shell admin-drawer dashboard-drawer dashboard-drawer-max"
+        width="100%"
         title={drawerSpace ? t('channels.title', { name: drawerSpace.name || drawerSpace.space_id }) : t('channels.titleFallback')}
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
@@ -1928,7 +1982,7 @@ export default function Dashboard() {
           rowKey="channel_id"
           loading={channelsLoading}
           size="middle"
-          scroll={{ x: 1580 }}
+          scroll={{ y: 'calc(100vh - 215px)' }}
           onChange={handleChannelTableChange}
           pagination={{
             current: channelPage,

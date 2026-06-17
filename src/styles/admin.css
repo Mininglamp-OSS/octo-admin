@@ -535,20 +535,31 @@
   position: relative;
 }
 
-.admin-shell .ant-menu .ant-menu-item-selected::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 6px;
-  bottom: 6px;
-  width: 2px;
-  border-radius: 2px;
-  background: var(--a-brand);
-}
-
 .admin-shell .ant-menu .ant-menu-item-selected .anticon,
 .admin-shell .ant-menu .ant-menu-item-selected .ant-menu-title-content {
   color: var(--a-brand-subtle-fg) !important;
+}
+
+/* 分组标题(概览 / 管理 / 系统):弱化的小字标签,与菜单项左缘对齐 */
+.admin-shell .ant-menu .ant-menu-item-group-title {
+  padding: 0 22px;
+  margin-top: 14px;
+  margin-bottom: 2px;
+  color: var(--a-text-quaternary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1.8;
+}
+
+/* 首个分组标题贴近顶部,不要多余上间距 */
+.admin-shell .ant-menu > .ant-menu-item-group:first-child > .ant-menu-item-group-title {
+  margin-top: 2px;
+}
+
+/* 侧边栏折叠时菜单变窄,隐藏分组标题避免文字溢出 */
+.admin-shell .ant-menu-inline-collapsed .ant-menu-item-group-title {
+  display: none;
 }
 
 /* =========== Header action buttons =========== */
@@ -994,6 +1005,179 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* 全屏固定表头(scroll.y):tbody 内部滚动,表头与分页固定。table 由 antd 撑满容器宽,
+   不再强制 width(否则 header/body 双 table 会因滚动条错位)。 */
+.dashboard-drawer .ant-table-body {
+  overflow-y: auto !important;
+}
+
+/* 行 hover 底色(drawer 是 body portal,不一定在 .admin-shell 内,显式声明) */
+.dashboard-drawer .ant-table-tbody > tr:hover > td {
+  background: var(--a-bg-subtle);
+}
+
+/* —— 群组列:群名行(名 + 重名尾号 tag + hover 复制) + 类型副行 —— */
+.dashboard-drawer .ch-name-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.dashboard-drawer .ch-name-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.dashboard-drawer .ch-name-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--a-text-primary);
+}
+
+/* 重名尾号 tag:仅当前页存在同名群时出现 */
+.dashboard-drawer .ch-name-tag {
+  flex: none;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--a-text-tertiary);
+  background: var(--a-bg-muted);
+  border-radius: 5px;
+  padding: 1px 6px;
+}
+
+/* 复制按钮:hover 行才浮现,固定占位不挤动文字 */
+.dashboard-drawer .ch-name-copy {
+  flex: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  color: var(--a-brand);
+}
+
+.dashboard-drawer .ant-table-tbody > tr:hover .ch-name-copy {
+  opacity: 1;
+}
+
+.dashboard-drawer .ch-name-type {
+  font-size: 12px;
+  color: var(--a-text-tertiary);
+}
+
+/* —— 成员列:主数 + 副行(人/Bot),右对齐 —— */
+.dashboard-drawer .ch-metric {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+}
+
+.dashboard-drawer .ch-metric-num {
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--a-text-primary);
+}
+
+.dashboard-drawer .ch-metric-sub {
+  font-size: 11px;
+  color: var(--a-text-quaternary);
+}
+
+/* —— 消息列:明度梯度数字 + 人/Bot 分段热力条 + 副行,右对齐 —— */
+.dashboard-drawer .ch-msg {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  width: 100%;
+  gap: 6px;
+}
+
+.dashboard-drawer .ch-msg-num-row {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.dashboard-drawer .ch-msg-num {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--a-text-primary);
+}
+
+.dashboard-drawer .ch-msg-unit {
+  font-size: 11px;
+  color: var(--a-text-quaternary);
+}
+
+/* 分段热力条:占满列宽的轨道(代表全量量级),人类=brand 实色,Bot=brand 淡色 */
+.dashboard-drawer .ch-heat {
+  display: flex;
+  width: 100%;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--a-bg-muted);
+  overflow: hidden;
+}
+
+.dashboard-drawer .ch-heat-human {
+  height: 100%;
+  background: var(--a-brand);
+}
+
+.dashboard-drawer .ch-heat-bot {
+  height: 100%;
+  background: var(--a-brand);
+  opacity: 0.4;
+}
+
+.dashboard-drawer .ch-msg-sub {
+  font-size: 11px;
+  color: var(--a-text-quaternary);
+}
+
+/* —— 最后活跃列:整列浅紫高亮 + 绝对/相对时间 —— */
+.dashboard-drawer td.ch-col-active,
+.dashboard-drawer th.ch-col-active {
+  background: var(--a-brand-subtle-bg);
+}
+
+/* hover 行时高亮列保持高亮(不被行 hover 底色覆盖) */
+.dashboard-drawer .ant-table-tbody > tr:hover > td.ch-col-active {
+  background: var(--a-brand-subtle-bg);
+}
+
+.dashboard-drawer .ch-time {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+}
+
+.dashboard-drawer .ch-time-abs {
+  font-size: 13px;
+  color: var(--a-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-drawer .ch-time-rel {
+  font-size: 11px;
+  color: var(--a-text-disabled);
+}
+
+/* 当前排序列的激活箭头点亮为品牌色,明确当前排序维度 */
+.dashboard-drawer .ant-table-column-sorter-up.active,
+.dashboard-drawer .ant-table-column-sorter-down.active {
+  color: var(--a-brand);
+}
+
 .dashboard-chart-tooltip strong {
   display: block;
   color: inherit;
@@ -1372,6 +1556,13 @@
   line-height: inherit;
   font-weight: 600;
   text-align: left;
+  /* cell-primary 会把文字压成正文深色,这里用品牌色把它还原成可识别的链接 */
+  color: var(--a-brand);
+}
+
+.admin-shell .dashboard-table-link.ant-btn-link:hover {
+  color: var(--a-brand-hover);
+  text-decoration: underline;
 }
 
 .admin-shell .dashboard-lazy-card {
