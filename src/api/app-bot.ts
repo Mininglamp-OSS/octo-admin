@@ -5,6 +5,16 @@ import api from './index'
 export type AppBotScope = 'platform' | 'space'
 export type AppBotStatus = 0 | 1 | 2 // 0=draft 1=published 2=unpublished
 
+/**
+ * Backend-owned facts the frontend needs to assemble the bot connect guide.
+ * The server is the single source of truth so a package rename/canary or a
+ * split admin/bot-api host never requires a frontend redeploy.
+ */
+export interface BotConnectInfo {
+  plugin_package: string
+  api_url: string
+}
+
 export interface AppBot {
   id: string
   uid: string
@@ -16,6 +26,7 @@ export interface AppBot {
   space_id: string | null
   status: AppBotStatus
   token?: string
+  connect?: BotConnectInfo
   created_by: string
   created_at: string
   updated_at: string
@@ -37,6 +48,7 @@ export interface AppBotCreateResp {
   id: string
   uid: string
   token: string
+  connect?: BotConnectInfo
 }
 
 export interface AppBotUpdateReq {

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Button, Form, Input, Modal, Space, Typography, message } from 'antd'
 import { CopyOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
-import { createAppBot, createSpaceAppBot, type AppBotCreateReq } from '../../api/app-bot'
+import { createAppBot, createSpaceAppBot, type AppBotCreateReq, type BotConnectInfo } from '../../api/app-bot'
 import { buildConnectGuide } from './connectGuide'
 
 interface Props {
@@ -16,6 +16,7 @@ interface CreatedBotInfo {
   id: string
   displayName: string
   token: string
+  connect?: BotConnectInfo
 }
 
 /** Copy text to clipboard with fallback */
@@ -59,6 +60,7 @@ export default function CreateModal({ open, spaceId, onClose, onSuccess }: Props
         id: resp.id || values.id,
         displayName: values.display_name,
         token: resp.token,
+        connect: resp.connect,
       })
     } catch (err) {
       if (err instanceof Error) message.error(err.message)
@@ -97,6 +99,7 @@ export default function CreateModal({ open, spaceId, onClose, onSuccess }: Props
             displayName: createdBot.displayName,
             botId: createdBot.id,
             token: createdBot.token,
+            connect: createdBot.connect,
           },
           t,
         ),
@@ -113,6 +116,7 @@ export default function CreateModal({ open, spaceId, onClose, onSuccess }: Props
         displayName: createdBot.displayName,
         botId: createdBot.id,
         token: createdBot.token,
+        connect: createdBot.connect,
       },
       t,
     )

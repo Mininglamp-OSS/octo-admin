@@ -174,6 +174,7 @@ export default function DetailDrawer({ botId, spaceId, open, onClose, onAvatarUp
             displayName: bot.display_name,
             botId: bot.id,
             token,
+            connect: bot.connect,
           },
           t,
         ),
@@ -193,6 +194,7 @@ export default function DetailDrawer({ botId, spaceId, open, onClose, onAvatarUp
         displayName: bot.display_name,
         botId: bot.id,
         token: tokenMasked ? t('detail.guide.tokenPlaceholder') : (bot.token || '<token>'),
+        connect: bot.connect,
       },
       t,
     )
