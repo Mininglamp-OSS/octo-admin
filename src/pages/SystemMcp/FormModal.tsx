@@ -65,6 +65,15 @@ const CATEGORY_KEYS = [
 
 const TRANSPORT_OPTIONS: McpTransport[] = ['streamable-http', 'sse', 'stdio']
 
+// Marketplace-shared sentinel (octo-marketplace/docs/api/mcp-v1.md §0 /
+// §5.1). When bearer auth is declared but the operator hasn't pasted a
+// real token in the Headers block, we persist this placeholder so the
+// wire contract holds: "bearer auth → Authorization present, empty or
+// sentinel means the downstream user should substitute their own token".
+// The ephemeral probe field is deliberately separate and never seeded here.
+const SECRET_PLACEHOLDER_SENTINEL = '__OCTO_SECRET_PLACEHOLDER__'
+const AUTHORIZATION_HEADER_KEYS = ['authorization', 'Authorization']
+
 /**
  * Web frontend's `slugifyServerName` reproduced in-place. Same rules so a
  * user typing an identical name on the two consoles lands on the same slug:
@@ -300,12 +309,22 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
             return Object.keys(kv).length ? kv : undefined
           })()
         : undefined
-    const headers = remote && form.headersRaw
-      ? (() => {
-          const kv = parseKV(form.headersRaw, ':')
-          return Object.keys(kv).length ? kv : undefined
-        })()
-      : undefined
+    const headers = (() => {
+      if (!remote) return undefined
+      const parsed = form.headersRaw ? parseKV(form.headersRaw, ':') : {}
+      // Uphold the documented invariant (mcp-v1.md §5.1): when bearer auth
+      // is declared, the persisted record MUST carry an Authorization
+      // header. If the operator didn't supply one — most likely because
+      // they only pasted a token into the ephemeral "test-only" field for
+      // the probe call, or because the Advanced block was collapsed — we
+      // stamp the shared sentinel so downstream consumers see a slot to
+      // fill in rather than a silent no-auth misconfiguration.
+      if (form.authType === 'bearer') {
+        const hasAuth = AUTHORIZATION_HEADER_KEYS.some((k) => k in parsed)
+        if (!hasAuth) parsed.Authorization = SECRET_PLACEHOLDER_SENTINEL
+      }
+      return Object.keys(parsed).length ? parsed : undefined
+    })()
     return {
       name: form.name.trim(),
       // Auto-derived slug already fills; on manual override we've kept the
@@ -683,7 +702,20 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
                   <Form.Item label={t('form.authType')} style={{ marginBottom: 0 }}>
                     <Radio.Group
                       value={form.authType}
-                      onChange={(e) => update('authType', e.target.value)}
+                      onChange={(e) => {
+                        const next = e.target.value as McpAuthType
+                        update('authType', next)
+                        // Bearer implies a persisted Authorization header
+                        // (defaulted to the sentinel by buildPayload). Auto-
+                        // open the Advanced block so the operator sees that
+                        // slot and can override it with a real shared token
+                        // if they want to. Selecting `none` doesn't collapse
+                        // — anything the operator has already typed stays
+                        // visible.
+                        if (next === 'bearer' && !advancedOpen) {
+                          setAdvancedOpen(true)
+                        }
+                      }}
                       buttonStyle="solid"
                       className="mcp-form-segmented"
                     >
