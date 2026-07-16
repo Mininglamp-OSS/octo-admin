@@ -54,4 +54,17 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
+
+    # Marketplace 反代:/market/api/v1/... 剥掉 /market/ 前缀打到 marketplace,
+    # 到达服务时形如 /api/v1/admin/mcps。与 /api/ 分开走独立后端,因为
+    # octo-marketplace 是独立进程(默认端口 8092),与主 admin API 后端不同。
+    # System MCP 页面(src/api/mcp.ts)通过这个路径调 marketplace admin surface。
+    location /market/api/ {
+        set $market_backend "${MARKETPLACE_BACKEND}";
+        rewrite ^/market/(.*) /$1 break;
+        proxy_pass http://$market_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
 }
