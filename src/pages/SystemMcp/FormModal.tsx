@@ -263,15 +263,26 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
 
   const remote = isRemote(form.transport)
 
-  const firstError = (): string | null => {
-    if (!form.name.trim()) return t('form.nameRequired')
+  // Returns null if the form is submittable. Otherwise returns the first
+  // failing field's localized message + the step index that owns it, so
+  // callers can jump to the offending step without brittle
+  // string-comparison against the localized copy.
+  const firstError = (): { message: string; step: number } | null => {
+    if (!form.name.trim()) return { message: t('form.nameRequired'), step: 0 }
     if (form.slug && !/^[a-z0-9-]{1,64}$/.test(form.slug)) {
-      return t('form.slugInvalid', {
-        defaultValue: '服务标识只能包含小写字母、数字与连字符，且 1-64 位',
-      })
+      return {
+        message: t('form.slugInvalid', {
+          defaultValue: '服务标识只能包含小写字母、数字与连字符，且 1-64 位',
+        }),
+        step: 0,
+      }
     }
-    if (remote && !form.url.trim()) return t('form.urlRequired')
-    if (!remote && !form.command.trim()) return t('form.commandRequired')
+    if (remote && !form.url.trim()) {
+      return { message: t('form.urlRequired'), step: 1 }
+    }
+    if (!remote && !form.command.trim()) {
+      return { message: t('form.commandRequired'), step: 1 }
+    }
     return null
   }
 
@@ -392,13 +403,11 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
   const handleSubmit = async () => {
     const err = firstError()
     if (err) {
-      message.warning(err)
-      // Jump back to the step that owns the failing field so the user sees it.
-      if (err === t('form.nameRequired') || err.startsWith('服务标识')) {
-        setStep(0)
-      } else {
-        setStep(1)
-      }
+      message.warning(err.message)
+      // Jump to the step that owns the failing field. Step is stamped on
+      // the error object at firstError time (never inferred from the
+      // localized string) so en-US / zh-CN behave identically.
+      setStep(err.step)
       return
     }
     const payload = buildPayload()
@@ -536,11 +545,12 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
         onChange={(s) => {
           // Same tab-jump behavior as web: any step is clickable. Forward
           // jumps still gate through firstError so we don't skip past a
-          // required field silently.
+          // required field silently. Uses the error's step index (locale-
+          // safe) instead of comparing the localized message.
           if (s > step) {
             const err = firstError()
-            if (err && step === 0 && err === t('form.nameRequired')) {
-              message.warning(err)
+            if (err && err.step <= step) {
+              message.warning(err.message)
               return
             }
           }
