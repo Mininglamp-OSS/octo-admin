@@ -1,25 +1,29 @@
 /**
  * octo-marketplace admin client.
  *
- * Distinct from the shared `../api` axios instance because marketplace has
- * its own base path (/market/api/v1 per octo-marketplace/docs/api/mcp-v1.md
- * §1) and its own auth header (X-Admin-Token). The primary admin backend's
- * `token` header is not accepted by marketplace and shouldn't leak into
- * these requests.
+ * Distinct from the shared `../api` axios instance for two reasons:
+ *   1. Different origin — marketplace mounts under `/market/api/v1` (per
+ *      octo-marketplace/docs/api/mcp-v1.md §1). Requests are routed via the
+ *      vite `/market/*` proxy in dev and the nginx `/market/*` rewrite in
+ *      prod, then land at marketplace as `/api/v1/*`.
+ *   2. Different error envelope — marketplace ships `{err:{code,message}}`
+ *      (doc §2); the primary admin backend uses
+ *      `{error:{code,http_status,message}}`. The response interceptor here
+ *      normalizes both into the shared `ApiError` type.
  *
- * Error envelope also differs — marketplace ships `{err:{code,message}}`
- * (doc §2) while the admin backend uses `{error:{code,http_status,message}}`.
- * We map the marketplace shape into `ApiError` so callers see one exception
- * type regardless of backend.
+ * Auth: the caller's own Octo login token (same header the shared axios
+ * instance sends). Marketplace resolves it via octo-server /v1/auth/verify
+ * and admits only role=superAdmin on the /admin/* namespace (mcp-v1.md
+ * §9.1). No shared secret in the browser bundle.
  */
 
 import axios, { AxiosError } from 'axios'
 import i18n, { FALLBACK_LANGUAGE } from '../i18n'
 import { ApiError } from './index'
+import { useAuthStore } from '../store/auth'
 
 const MARKETPLACE_BASE =
   import.meta.env.VITE_MARKETPLACE_API_BASE || '/market/api/v1'
-const ADMIN_TOKEN = import.meta.env.VITE_MARKETPLACE_ADMIN_TOKEN || ''
 
 const mcpApi = axios.create({
   baseURL: MARKETPLACE_BASE,
@@ -27,8 +31,9 @@ const mcpApi = axios.create({
 })
 
 mcpApi.interceptors.request.use((config) => {
-  if (ADMIN_TOKEN) {
-    config.headers['X-Admin-Token'] = ADMIN_TOKEN
+  const token = useAuthStore.getState().token
+  if (token) {
+    config.headers.token = token
   }
   config.headers['Accept-Language'] =
     i18n.resolvedLanguage ?? FALLBACK_LANGUAGE
@@ -44,6 +49,14 @@ mcpApi.interceptors.response.use(
   ) => {
     const wire = error.response?.data?.err
     const message = wire?.message || wire?.code || error.message
+    // 401 from marketplace means the admin's Octo token expired or was
+    // revoked at octo-server. Mirror the shared axios interceptor
+    // (../api/index.ts) so the auth store clears and the user is bounced
+    // to /login rather than left on a broken page firing more 401s.
+    if (error.response?.status === 401) {
+      useAuthStore.getState().logout()
+      window.location.href = '/admin/login'
+    }
     return Promise.reject(
       new ApiError(message, error.response?.status, wire?.code)
     )
@@ -266,8 +279,9 @@ export interface McpIconInitResponse {
  *  PUT the file bytes directly to that URL, then hand back the persistent
  *  download URL to store on the MCP record. Marketplace-side handler is
  *  `POST /api/v1/admin/mcps/upload/icon` (added in
- *  handler/mcp_icon.go); admin auth is via the same X-Admin-Token header
- *  that mcpApi already injects. */
+ *  handler/mcp_icon.go); admin auth flows through WrapMarketAdmin — the
+ *  operator's Octo login token + role=superAdmin — same as every other
+ *  mcpApi call. */
 export async function uploadMcpIcon(file: File): Promise<string> {
   const initResp = await mcpApi.post<McpIconInitResponse>(
     '/admin/mcps/upload/icon',
@@ -280,8 +294,8 @@ export async function uploadMcpIcon(file: File): Promise<string> {
   const { presigned_url, download_url, headers } = initResp.data
   // Direct PUT to the presigned URL. Use fetch instead of mcpApi (axios)
   // because the presigned URL points at the local proxy or OSS host — not
-  // the admin base URL, and we don't want the X-Admin-Token or
-  // Accept-Language interceptors leaking into a third-party call.
+  // the admin base URL, and we don't want mcpApi's token / Accept-Language
+  // interceptors leaking into a third-party call.
   const putResp = await fetch(presigned_url, {
     method: 'PUT',
     headers: headers ?? {},
