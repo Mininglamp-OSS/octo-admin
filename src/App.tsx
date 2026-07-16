@@ -17,6 +17,7 @@ import Spaces from './pages/Spaces'
 import Backup from './pages/Backup'
 import Download from './pages/Download'
 import SystemSetting from './pages/SystemSetting'
+import SystemMcp from './pages/SystemMcp'
 import Changelog from './pages/Changelog'
 import AppBots from './pages/AppBots'
 import SpaceEntry from './pages/SpaceAdmin/SpaceEntry'
@@ -199,6 +200,14 @@ function AdminRoutes() {
           element={
             <CapabilityRoute capability="system_setting">
               <SystemSetting />
+            </CapabilityRoute>
+          }
+        />
+        <Route
+          path="system-mcp"
+          element={
+            <CapabilityRoute capability="mcp.read">
+              <SystemMcp />
             </CapabilityRoute>
           }
         />

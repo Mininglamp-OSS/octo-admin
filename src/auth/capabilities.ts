@@ -14,6 +14,11 @@ export const MANAGER_CAPABILITY_KEYS = [
   'space.read',
   'space.write',
   'space.destructive',
+  // System MCP catalog admin surface. Read = list; write = create / edit /
+  // delete platform-provided (visibility=system) MCP records against
+  // octo-marketplace's /admin/api/v1/mcps.
+  'mcp.read',
+  'mcp.write',
 ] as const
 
 export const MANAGER_NO_ACCESS_PATH = '/no-access'
@@ -53,5 +58,6 @@ export function firstManagerPath(capabilities: ManagerCapabilities | null | unde
   if (hasManagerCapability(capabilities, 'system_setting')) return '/system-setting'
   if (hasManagerCapability(capabilities, 'backup')) return '/backup'
   if (hasManagerCapability(capabilities, 'appversion.read')) return '/download'
+  if (hasManagerCapability(capabilities, 'mcp.read')) return '/system-mcp'
   return MANAGER_NO_ACCESS_PATH
 }

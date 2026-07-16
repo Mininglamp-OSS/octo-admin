@@ -18,6 +18,7 @@ import {
   DesktopOutlined,
   RobotOutlined,
   SettingOutlined,
+  ApiOutlined,
 } from '@ant-design/icons'
 import { useAuthStore } from '../store/auth'
 import { useFeatureStore } from '../store/feature'
@@ -120,6 +121,9 @@ const MainLayout: React.FC = () => {
     }
     if (hasManagerCapability(managerCapabilities, 'system_setting')) {
       list.push({ key: '/system-setting', icon: <SettingOutlined />, label: t('nav:systemSetting'), group: 'system' })
+    }
+    if (hasManagerCapability(managerCapabilities, 'mcp.read')) {
+      list.push({ key: '/system-mcp', icon: <ApiOutlined />, label: t('nav:systemMcp'), group: 'system' })
     }
     if (hasManagerCapability(managerCapabilities, 'backup')) {
       list.push({ key: '/backup', icon: <CloudUploadOutlined />, label: t('nav:backup'), group: 'system' })

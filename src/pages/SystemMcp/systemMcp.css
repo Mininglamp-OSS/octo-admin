@@ -1,0 +1,457 @@
+/* System MCP admin — visual add-ons on top of the console's admin.css.
+   Only holds patterns admin.css does not already cover: name-cell layout,
+   the detail drawer body, and the form modal's mini-list rows. Colors and
+   sizing pull from --a-* tokens defined by .admin-shell. */
+
+/* ── Table name cell ─────────────────────────────────────────────────────── */
+.admin-shell .mcp-cell-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.admin-shell .mcp-cell-name__icon {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--a-bg-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  overflow: hidden;
+}
+.admin-shell .mcp-cell-name__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.admin-shell .mcp-cell-name__sub {
+  font-size: 12px;
+  color: var(--a-text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 420px;
+}
+.admin-shell .mcp-more {
+  color: var(--a-text-quaternary);
+  font-size: 12px;
+}
+
+/* ── Detail drawer ───────────────────────────────────────────────────────── */
+.admin-shell .mcp-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.admin-shell .mcp-detail__meta {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--a-border-default);
+}
+.admin-shell .mcp-detail__icon {
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border-radius: 10px;
+  background: var(--a-bg-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  overflow: hidden;
+}
+.admin-shell .mcp-detail__icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.admin-shell .mcp-detail__meta-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.admin-shell .mcp-detail__slogan {
+  color: var(--a-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.admin-shell .mcp-detail__sub {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  color: var(--a-text-tertiary);
+  font-size: 12px;
+}
+.admin-shell .mcp-detail__sub-sep {
+  color: var(--a-text-quaternary);
+}
+.admin-shell .mcp-detail__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+.admin-shell .mcp-detail__section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.admin-shell .mcp-detail__section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--a-text-secondary);
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+
+/* ── Definition list used in the connection section ──────────────────────── */
+.admin-shell .mcp-kv {
+  display: grid;
+  grid-template-columns: 108px 1fr;
+  row-gap: 8px;
+  column-gap: 12px;
+  margin: 0;
+  font-size: 13px;
+}
+.admin-shell .mcp-kv dt {
+  color: var(--a-text-tertiary);
+  font-weight: 400;
+}
+.admin-shell .mcp-kv dd {
+  color: var(--a-text-primary);
+  margin: 0;
+  word-break: break-all;
+}
+.admin-shell .mcp-kv__pre {
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--a-bg-subtle);
+  border-radius: 6px;
+  font-family: 'SF Mono', Monaco, Consolas, monospace;
+  font-size: 12px;
+  color: var(--a-text-primary);
+  white-space: pre-wrap;
+}
+
+/* ── List (tools / examples) ─────────────────────────────────────────────── */
+.admin-shell .mcp-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.admin-shell .mcp-list__item {
+  padding: 10px 12px;
+  background: var(--a-bg-subtle);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--a-text-primary);
+  line-height: 1.5;
+}
+.admin-shell .mcp-list__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--a-text-primary);
+}
+.admin-shell .mcp-list__desc {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--a-text-tertiary);
+  line-height: 1.5;
+}
+.admin-shell .mcp-list--quote .mcp-list__item {
+  border-left: 3px solid var(--a-brand);
+  padding-left: 10px;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ── FAQ + notes ─────────────────────────────────────────────────────────── */
+.admin-shell .mcp-faq {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.admin-shell .mcp-faq dt {
+  font-weight: 600;
+  color: var(--a-text-primary);
+  margin-bottom: 4px;
+}
+.admin-shell .mcp-faq dd {
+  margin: 0;
+  color: var(--a-text-secondary);
+  line-height: 1.6;
+  font-size: 13px;
+}
+.admin-shell .mcp-notes {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.admin-shell .mcp-notes li {
+  position: relative;
+  padding-left: 16px;
+  font-size: 13px;
+  color: var(--a-text-secondary);
+  line-height: 1.6;
+}
+.admin-shell .mcp-notes li::before {
+  content: '•';
+  position: absolute;
+  left: 0;
+  color: var(--a-brand);
+}
+
+/* ── Drawer footer (actions on the right / inline-delete confirm) ───────── */
+.admin-shell .mcp-drawer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.admin-shell .mcp-drawer-footer--confirm > *:first-child {
+  margin-right: auto;
+}
+
+/* ── Form modal ──────────────────────────────────────────────────────────
+   Sections are subtle cards (bg + border + padding), so a ~15-field form
+   scans by group not by wall-of-labels. Two-column pairs use CSS Grid,
+   avoiding antd's `Space.Compact` which drops the child Form.Item labels. */
+
+.admin-shell .mcp-form .mcp-form-section {
+  padding: 16px;
+  margin-bottom: 12px;
+  background: var(--a-bg-subtle);
+  border: 1px solid var(--a-border-default);
+  border-radius: 8px;
+}
+.admin-shell .mcp-form .mcp-form-section:last-child {
+  margin-bottom: 0;
+}
+.admin-shell .mcp-form .mcp-form-section__head {
+  margin-bottom: 14px;
+}
+.admin-shell .mcp-form .mcp-form-section__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--a-text-primary);
+  line-height: 1.4;
+}
+.admin-shell .mcp-form .mcp-form-section__optional {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  height: 18px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--a-text-tertiary);
+  background: var(--a-bg-muted);
+  border-radius: 4px;
+}
+.admin-shell .mcp-form .mcp-form-section__desc {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--a-text-tertiary);
+  line-height: 1.5;
+}
+.admin-shell .mcp-form .mcp-form-section__body {
+  display: block;
+}
+
+/* CSS Grid two-column that keeps antd Form.Item labels intact */
+.admin-shell .mcp-form-grid--2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 16px;
+}
+
+/* Name + icon row — 56px preview tile + fields stacked */
+.admin-shell .mcp-form-row--icon {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+.admin-shell .mcp-form-row__fields {
+  flex: 1;
+  min-width: 0;
+}
+.admin-shell .mcp-form-icon-preview {
+  flex: none;
+  width: 72px;
+  height: 72px;
+  border-radius: 12px;
+  background: var(--a-bg-elevated);
+  border: 1px solid var(--a-border-default);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  overflow: hidden;
+  margin-top: 28px; /* line up with input, past the label */
+}
+.admin-shell .mcp-form-icon-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Interactive variant — the tile becomes a native <button> the user clicks
+   to open the file picker. Border thickens on hover, dashed while empty. */
+.admin-shell button.mcp-form-icon-preview--interactive {
+  cursor: pointer;
+  padding: 0;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.admin-shell button.mcp-form-icon-preview--interactive:hover:not(:disabled) {
+  border-color: var(--a-border-strong, var(--a-border-default));
+  background: var(--a-bg-muted, var(--a-bg-elevated));
+}
+.admin-shell button.mcp-form-icon-preview--interactive:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+.admin-shell .mcp-form-icon-preview__spinner {
+  font-size: 14px;
+  color: var(--a-text-tertiary);
+  letter-spacing: 2px;
+}
+
+/* Dynamic-list rows */
+.admin-shell .mcp-form-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Tool row — 2-line input pair on the left, index + delete on the right */
+.admin-shell .mcp-form-tool {
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+  background: var(--a-bg-elevated);
+  border: 1px solid var(--a-border-default);
+  border-radius: 6px;
+}
+.admin-shell .mcp-form-tool__grow {
+  flex: 1;
+  min-width: 0;
+}
+.admin-shell .mcp-form-tool__aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 6px;
+}
+.admin-shell .mcp-form-tool__idx {
+  font-size: 11px;
+  color: var(--a-text-tertiary);
+  font-family: 'SF Mono', Monaco, Consolas, monospace;
+}
+
+/* FAQ card — mirror of tool row but stacked with the head on top */
+.admin-shell .mcp-form-faq {
+  padding: 12px;
+  background: var(--a-bg-elevated);
+  border: 1px solid var(--a-border-default);
+  border-radius: 6px;
+}
+.admin-shell .mcp-form-faq__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+/* Mini row — single input with an index + delete, used by examples/notes */
+.admin-shell .mcp-form-mini-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Dynamic-list header (used by SimpleTextList / FaqList / tools) ──────
+   Layout is: title+desc on the left, [+新增一条] and optional [试连] button
+   cluster on the right. Sits inside a .mcp-form-section card so we don't
+   duplicate the section's title. */
+.admin-shell .mcp-form-list-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.admin-shell .mcp-form-list-head > div:first-child {
+  min-width: 0;
+}
+.admin-shell .mcp-form-list-head__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--a-text-primary);
+  line-height: 1.4;
+}
+.admin-shell .mcp-form-list-head__desc {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--a-text-tertiary);
+  line-height: 1.5;
+}
+.admin-shell .mcp-form-list-head__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+/* Empty state — dashed rounded box matches web's `wk-mcp-form-empty`. */
+.admin-shell .mcp-form-empty {
+  padding: 20px 12px;
+  border: 1px dashed var(--a-border-default);
+  border-radius: 6px;
+  background: var(--a-bg-elevated);
+  color: var(--a-text-tertiary);
+  font-size: 12px;
+  text-align: center;
+}
+
+/* Segmented Radio.Group for auth type — stretch to full width so the two
+   options split the row 50/50, matching web's `wk-mcp-segments`. */
+.admin-shell .mcp-form-segmented.ant-radio-group {
+  display: flex;
+  width: 100%;
+}
+.admin-shell .mcp-form-segmented.ant-radio-group .ant-radio-button-wrapper {
+  flex: 1;
+  text-align: center;
+}
+
+/* Footer — flex row with prev on the left, next/submit on the right. */
+.admin-shell .mcp-form-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.admin-shell .mcp-form-footer__left,
+.admin-shell .mcp-form-footer__right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
