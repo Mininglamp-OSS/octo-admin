@@ -460,7 +460,7 @@ function ContributorAvatars({ contributors, showLabel }: { contributors: Contrib
       >
         {visible.map((c, index) => (
           <div
-            key={c.name}
+            key={`${c.name}-${index}`}
             className="contributor-avatar"
             style={{ ['--contributor-index' as string]: index } as React.CSSProperties}
           >
@@ -486,7 +486,7 @@ function ContributorAvatars({ contributors, showLabel }: { contributors: Contrib
         ))}
         {overflow.length > 0 && (
           <div
-            className="contributor-avatar contributor-more"
+            className="contributor-avatar"
             style={{ ['--contributor-index' as string]: visible.length } as React.CSSProperties}
             title={overflow.map((c) => c.name).join('、')}
           >
