@@ -90,28 +90,68 @@ const css = `
 .contributor-group {
   display: flex;
   align-items: center;
+  width: var(--reserved-w, auto);
 }
 .contributor-avatar {
   position: relative;
-  transition: transform 0.2s ease, z-index 0s;
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
   z-index: 0;
 }
 .contributor-avatar:not(:first-child) {
   margin-left: -8px;
 }
-.contributor-group:hover .contributor-avatar {
-  margin-left: 4px;
+.contributor-avatar img {
+  transition: transform 0.2s ease;
 }
-.contributor-group:hover .contributor-avatar:first-child {
-  margin-left: 0;
+/* Fan the stack out on hover using transform only — no layout change, so the
+   parent flex row never re-flows/wraps under the cursor (which caused flicker).
+   Each avatar shifts right by index*4px, taking the per-avatar step from 16px to
+   20px. The group already reserves this fanned width (inline), so the fan fills
+   the reserved box exactly and never overflows the card. Avatars still overlap
+   (20 < 24), so there are no gaps for the cursor to fall into. */
+.contributor-group:hover .contributor-avatar {
+  transform: translateX(calc(var(--contributor-index, 0) * 4px));
 }
 .contributor-avatar:hover {
-  transform: translateY(-4px) scale(1.15);
   z-index: 10;
+}
+.contributor-avatar:hover img {
+  transform: translateY(-4px) scale(1.2);
 }
 .contributor-avatar:hover .contributor-name {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
+}
+.contributor-more-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-page);
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: default;
+}
+/* Touch devices have no reliable hover; disable the fan/lift so a sticky
+   tap-triggered :hover can't push avatars around or reveal the tooltip. */
+@media (hover: none) {
+  .contributor-group {
+    width: auto;
+  }
+  .contributor-group:hover .contributor-avatar {
+    transform: none;
+  }
+  .contributor-avatar:hover img {
+    transform: none;
+  }
+  .contributor-avatar:hover .contributor-name {
+    opacity: 0;
+  }
 }
 .contributor-name {
   position: absolute;
@@ -388,8 +428,23 @@ function Heatmap({ data }: { data: AppVersion[] }) {
   )
 }
 
+// Stacked contributor avatars. Collapsed (overlapped) at rest, gently fanned
+// out on hover. The group reserves its *fanned* width up front so the surrounding
+// flex row accounts for it — the fan happens inside that reserved box and can
+// never overflow the card (the whole group wraps to its own line if too wide).
+const MAX_VISIBLE_CONTRIBUTORS = 10
+const AVATAR_SIZE = 24
+// Per-avatar step: 16px at rest (8px overlap, via margin-left:-8px in CSS) →
+// 20px on hover (4px overlap). The group reserves the fanned width below.
+const FAN_STEP = 20
+
 function ContributorAvatars({ contributors, showLabel }: { contributors: Contributor[]; showLabel?: boolean }) {
   if (contributors.length === 0) return null
+
+  const visible = contributors.slice(0, MAX_VISIBLE_CONTRIBUTORS)
+  const overflow = contributors.slice(MAX_VISIBLE_CONTRIBUTORS)
+  const itemCount = visible.length + (overflow.length > 0 ? 1 : 0)
+  const reservedWidth = (itemCount - 1) * FAN_STEP + AVATAR_SIZE
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -399,9 +454,16 @@ function ContributorAvatars({ contributors, showLabel }: { contributors: Contrib
           贡献者
         </span>
       )}
-      <div className="contributor-group">
-        {contributors.map((c) => (
-          <div key={c.name} className="contributor-avatar">
+      <div
+        className="contributor-group"
+        style={{ ['--reserved-w' as string]: `${reservedWidth}px`, flexShrink: 0 } as React.CSSProperties}
+      >
+        {visible.map((c, index) => (
+          <div
+            key={c.name}
+            className="contributor-avatar"
+            style={{ ['--contributor-index' as string]: index } as React.CSSProperties}
+          >
             <img
               src={c.avatar}
               alt={c.name}
@@ -410,8 +472,8 @@ function ContributorAvatars({ contributors, showLabel }: { contributors: Contrib
                 event.currentTarget.src = c.fallbackAvatar
               }}
               style={{
-                width: 24,
-                height: 24,
+                width: AVATAR_SIZE,
+                height: AVATAR_SIZE,
                 borderRadius: '50%',
                 border: `2px solid var(--bg-page)`,
                 background: colors.surface.subtle,
@@ -422,6 +484,15 @@ function ContributorAvatars({ contributors, showLabel }: { contributors: Contrib
             <span className="contributor-name">{c.name}</span>
           </div>
         ))}
+        {overflow.length > 0 && (
+          <div
+            className="contributor-avatar contributor-more"
+            style={{ ['--contributor-index' as string]: visible.length } as React.CSSProperties}
+            title={overflow.map((c) => c.name).join('、')}
+          >
+            <span className="contributor-more-badge">+{overflow.length}</span>
+          </div>
+        )}
       </div>
     </div>
   )
