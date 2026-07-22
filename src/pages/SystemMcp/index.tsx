@@ -141,7 +141,14 @@ export default function SystemMcp() {
         key: 'name',
         render: (name: string, r) => (
           <div className="mcp-cell-name">
-            <span className="mcp-cell-name__icon">{r.icon || '🧩'}</span>
+            <span className="mcp-cell-name__icon">
+              {r.icon &&
+              (r.icon.startsWith('http') || r.icon.startsWith('data:')) ? (
+                <img src={r.icon} alt={name} />
+              ) : (
+                r.icon || '🧩'
+              )}
+            </span>
             <div className="mcp-cell-name__text">
               <span className="cell-primary">{name}</span>
               {r.slogan && <span className="mcp-cell-name__sub">{r.slogan}</span>}
