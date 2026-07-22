@@ -35,7 +35,7 @@ describe('buildProbeRequest', () => {
     const req = buildProbeRequest({
       transport: 'stdio',
       url: '',
-      authType: 'none',
+      auth_type: 'none',
       headersRaw: '',
     })
     expect(req).toBeNull()
@@ -46,7 +46,7 @@ describe('buildProbeRequest', () => {
       buildProbeRequest({
         transport: 'streamable-http',
         url: '',
-        authType: 'none',
+        auth_type: 'none',
         headersRaw: '',
       }),
     ).toBeNull()
@@ -54,7 +54,7 @@ describe('buildProbeRequest', () => {
       buildProbeRequest({
         transport: 'sse',
         url: '   ',
-        authType: 'bearer',
+        auth_type: 'bearer',
         headersRaw: '',
       }),
     ).toBeNull()
@@ -64,7 +64,7 @@ describe('buildProbeRequest', () => {
     const req = buildProbeRequest({
       transport: 'streamable-http',
       url: '  https://mcp.example.com/x  ',
-      authType: 'none',
+      auth_type: 'none',
       headersRaw: '',
     })
     expect(req).toEqual({
@@ -74,19 +74,19 @@ describe('buildProbeRequest', () => {
     })
   })
 
-  it('never puts authType on the wire (backend rejects unknown fields)', () => {
-    // Regression: service.ProbeRequest doesn't declare authType and the
+  it('never puts auth_type on the wire (backend rejects unknown fields)', () => {
+    // Regression: service.ProbeRequest doesn't declare auth_type and the
     // handler decodes with DisallowUnknownFields — so including it makes
     // the request come back 400 "request body is not valid JSON". A Bearer
     // token, when set, rides on headers.Authorization instead.
     const req = buildProbeRequest({
       transport: 'sse',
       url: 'https://example.test/mcp',
-      authType: 'bearer',
+      auth_type: 'bearer',
       headersRaw: 'Authorization: Bearer secret',
     })
     expect(req).not.toBeNull()
-    expect(req).not.toHaveProperty('authType')
+    expect(req).not.toHaveProperty('auth_type')
     expect(req?.headers).toEqual({ Authorization: 'Bearer secret' })
   })
 
@@ -94,7 +94,7 @@ describe('buildProbeRequest', () => {
     const req = buildProbeRequest({
       transport: 'sse',
       url: 'https://mcp.example.com/x',
-      authType: 'bearer',
+      auth_type: 'bearer',
       headersRaw:
         'Authorization: Bearer abc\n  X-Custom : hello world  \n\ninvalid-no-colon-line\n:missing-key',
     })
@@ -111,14 +111,14 @@ describe('buildProbeRequest', () => {
     const req = buildProbeRequest({
       transport: 'sse',
       url: 'https://example.test/mcp',
-      authType: 'none',
+      auth_type: 'none',
       headersRaw: '\n\n  \n', // whitespace only
     })
     expect(req).not.toBeNull()
     expect(req?.headers).toBeUndefined()
   })
 
-  it('injects ephemeral probeBearer as Authorization when authType=bearer', () => {
+  it('injects ephemeral probeBearer as Authorization when auth_type=bearer', () => {
     // The "试连密钥（不保存）" input feeds an ephemeral token used only for
     // this probe call. It overrides whatever Authorization is in headersRaw
     // — typically the SECRET_PLACEHOLDER sentinel — because the operator's
@@ -126,7 +126,7 @@ describe('buildProbeRequest', () => {
     const req = buildProbeRequest({
       transport: 'streamable-http',
       url: 'https://mcp.example.com/x',
-      authType: 'bearer',
+      auth_type: 'bearer',
       headersRaw: 'Authorization: __OCTO_SECRET_PLACEHOLDER__\nX-Custom: v',
       probeBearer: 'real-token',
     })
@@ -136,11 +136,11 @@ describe('buildProbeRequest', () => {
     })
   })
 
-  it('ignores probeBearer when authType is not bearer', () => {
+  it('ignores probeBearer when auth_type is not bearer', () => {
     const req = buildProbeRequest({
       transport: 'streamable-http',
       url: 'https://mcp.example.com/x',
-      authType: 'none',
+      auth_type: 'none',
       headersRaw: '',
       probeBearer: 'real-token',
     })
@@ -151,7 +151,7 @@ describe('buildProbeRequest', () => {
     const req = buildProbeRequest({
       transport: 'sse',
       url: 'https://mcp.example.com/x',
-      authType: 'bearer',
+      auth_type: 'bearer',
       headersRaw: '',
       probeBearer: '   ',
     })
@@ -169,7 +169,7 @@ describe('resolveProbeErrorMessage', () => {
   const respWith = (
     error: Partial<NonNullable<McpProbeResponse['error']>> | undefined,
   ): McpProbeResponse => ({
-    ok: false,
+    is_ok: false,
     tools: [],
     error,
   })

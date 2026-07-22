@@ -1,11 +1,11 @@
 /**
  * octo-marketplace admin Skill management client.
  *
- * Distinct from the shared `../api` axios instance because marketplace mounts
- * under `/market/api/v1` and returns its own response envelope. Auth uses the
- * caller's own Octo login token; marketplace verifies it with octo-server and
- * enforces superAdmin server-side. No marketplace administrator credential is
- * shipped to the browser.
+ * Uses the shared marketplace axios instance from ./marketplace, which
+ * handles baseURL, auth token injection, Accept-Language, and error-envelope
+ * normalization. Marketplace admits only role=superAdmin on the /admin/*
+ * namespace; this file trusts that gate and only adds resource-specific
+ * types + endpoint wrappers.
  *
  * The backend response envelope for lists is:
  *   { data: T[], pagination: { total, page, page_size } }
@@ -13,48 +13,8 @@
  *   { data: T }
  */
 
-import axios, { AxiosError } from 'axios'
-import i18n, { FALLBACK_LANGUAGE } from '../i18n'
+import { marketplaceApi as skillApi, putPresignedFile } from './marketplace'
 import { ApiError } from './index'
-import { useAuthStore } from '../store/auth'
-
-const MARKETPLACE_BASE =
-  import.meta.env.VITE_MARKETPLACE_API_BASE || '/market/api/v1'
-
-const skillApi = axios.create({
-  baseURL: MARKETPLACE_BASE,
-  timeout: 30000,
-})
-
-skillApi.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().token
-  if (token) {
-    config.headers.token = token
-  }
-  config.headers['Accept-Language'] =
-    i18n.resolvedLanguage ?? FALLBACK_LANGUAGE
-  return config
-})
-
-skillApi.interceptors.response.use(
-  (response) => response,
-  (
-    error: AxiosError<{
-      error?: { code?: string; message?: string; details?: Record<string, unknown> }
-      err?: { code?: string; message?: string; details?: Record<string, unknown> }
-    }>
-  ) => {
-    const wire = error.response?.data?.error ?? error.response?.data?.err
-    const message = wire?.message || wire?.code || error.message
-    if (error.response?.status === 401) {
-      useAuthStore.getState().logout()
-      window.location.href = '/admin/login'
-    }
-    return Promise.reject(
-      new ApiError(message, error.response?.status, wire?.code, wire?.details)
-    )
-  }
-)
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -361,44 +321,6 @@ export interface InitUploadResult {
   method: string
   headers: Record<string, string>
   object_key: string
-}
-
-function assertSafeExternalUrl(raw: string): void {
-  let url: URL
-  try {
-    url = new URL(raw)
-  } catch {
-    throw new ApiError('Invalid upload URL', 502, 'invalid_response')
-  }
-
-  if (url.protocol === 'https:') return
-  if (
-    url.protocol === 'http:' &&
-    (url.hostname === 'localhost' || url.hostname === '127.0.0.1')
-  ) {
-    return
-  }
-
-  throw new ApiError('Upload URL scheme is not allowed', 502, 'invalid_response')
-}
-
-async function putPresignedFile(
-  presignedUrl: string,
-  file: File,
-  options: {
-    method?: string
-    headers?: Record<string, string>
-  } = {}
-): Promise<void> {
-  assertSafeExternalUrl(presignedUrl)
-  const putResp = await fetch(presignedUrl, {
-    method: options.method || 'PUT',
-    headers: options.headers ?? {},
-    body: file,
-  })
-  if (!putResp.ok) {
-    throw new ApiError(`Upload failed (${putResp.status})`, putResp.status)
-  }
 }
 
 export async function initAdminSkillUpload(fileName: string, fileSize: number): Promise<InitUploadResult> {

@@ -111,13 +111,13 @@ interface FormValues {
   slogan: string
   transport: McpTransport
   url: string
-  authType: McpAuthType
+  auth_type: McpAuthType
   command: string
   argsRaw: string
   envRaw: string
   headersRaw: string
   tools: McpTool[]
-  usageExamples: string[]
+  usage_examples: string[]
   faqs: McpFaq[]
   notes: string[]
 }
@@ -131,13 +131,13 @@ const EMPTY: FormValues = {
   slogan: '',
   transport: 'streamable-http',
   url: '',
-  authType: 'none',
+  auth_type: 'none',
   command: '',
   argsRaw: '',
   envRaw: '',
   headersRaw: '',
   tools: [],
-  usageExamples: [],
+  usage_examples: [],
   faqs: [],
   notes: [],
 }
@@ -172,7 +172,7 @@ function serializeKV(
 }
 
 function detailToValues(d: McpDetail): FormValues {
-  const q = d.quickStart
+  const q = d.quick_start
   return {
     name: d.name,
     slug: q.slug || '',
@@ -182,13 +182,13 @@ function detailToValues(d: McpDetail): FormValues {
     slogan: d.slogan || '',
     transport: q.transport,
     url: q.url || '',
-    authType: q.authType || 'none',
+    auth_type: q.auth_type || 'none',
     command: q.command || '',
     argsRaw: (q.args || []).join(' '),
     envRaw: serializeKV(q.env, '='),
     headersRaw: serializeKV(q.headers, ': '),
     tools: d.tools?.length ? d.tools : [],
-    usageExamples: d.usageExamples || [],
+    usage_examples: d.usage_examples || [],
     faqs: d.faqs || [],
     notes: d.notes || [],
   }
@@ -198,7 +198,7 @@ interface Props {
   open: boolean
   editing: McpDetail | null
   onClose: () => void
-  onSaved: (updated?: McpDetail) => void
+  onSaved: (updated: McpDetail) => void
 }
 
 export default function McpFormModal({ open, editing, onClose, onSaved }: Props) {
@@ -330,7 +330,7 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
       // the probe call, or because the Advanced block was collapsed — we
       // stamp the shared sentinel so downstream consumers see a slot to
       // fill in rather than a silent no-auth misconfiguration.
-      if (form.authType === 'bearer') {
+      if (form.auth_type === 'bearer') {
         const hasAuth = AUTHORIZATION_HEADER_KEYS.some((k) => k in parsed)
         if (!hasAuth) parsed.Authorization = SECRET_PLACEHOLDER_SENTINEL
       }
@@ -348,13 +348,13 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
       slogan: form.slogan.trim() || undefined,
       transport: form.transport,
       url: remote ? form.url.trim() || undefined : undefined,
-      authType: remote ? form.authType : undefined,
+      auth_type: remote ? form.auth_type : undefined,
       command: !remote ? form.command.trim() || undefined : undefined,
       args,
       env,
       headers,
       tools: form.tools.filter((tt) => tt.name.trim()),
-      usageExamples: form.usageExamples.filter((s) => s.trim()),
+      usage_examples: form.usage_examples.filter((s) => s.trim()),
       faqs: form.faqs.filter((f) => f.question.trim()),
       notes: form.notes.filter((n) => n.trim()),
     }
@@ -365,9 +365,9 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
   // fills tools[] from the returned tool list. Only remote transports are
   // probable — stdio would need a desktop client to spawn the process
   // (mcp-v1.md §4.7). Backend returns HTTP 200 even on probe failure with
-  // ok=false + error.code, so we branch on `resp.ok`. Payload assembly and
-  // error-code → i18n resolution live in probeHelpers so both branches are
-  // unit-testable without the wizard.
+  // is_ok=false + error.code, so we branch on `resp.is_ok`. Payload assembly
+  // and error-code → i18n resolution live in probeHelpers so both branches
+  // are unit-testable without the wizard.
   const handleProbe = async () => {
     if (!remote) return
     if (!form.url.trim()) {
@@ -377,7 +377,7 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
     const req = buildProbeRequest({
       transport: form.transport,
       url: form.url,
-      authType: form.authType,
+      auth_type: form.auth_type,
       headersRaw: form.headersRaw,
       probeBearer,
     })
@@ -385,7 +385,7 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
     setProbing(true)
     try {
       const resp = await probeSystemMcp(req)
-      if (!resp.ok) {
+      if (!resp.is_ok) {
         message.error(resolveProbeErrorMessage(resp, t))
         return
       }
@@ -414,13 +414,13 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
     setSubmitting(true)
     try {
       if (isEdit && editing) {
-        const updated = await updateSystemMcp(editing.id, payload)
+        const updated = await updateSystemMcp(editing.mcp_id, payload)
         message.success(t('modal.updateSuccess'))
         onSaved(updated)
       } else {
-        await createSystemMcp(payload)
+        const created = await createSystemMcp(payload)
         message.success(t('modal.createSuccess'))
-        onSaved()
+        onSaved(created)
       }
       onClose()
     } catch (e) {
@@ -711,10 +711,10 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
                   </Form.Item>
                   <Form.Item label={t('form.authType')} style={{ marginBottom: 0 }}>
                     <Radio.Group
-                      value={form.authType}
+                      value={form.auth_type}
                       onChange={(e) => {
                         const next = e.target.value as McpAuthType
-                        update('authType', next)
+                        update('auth_type', next)
                         // Bearer implies a persisted Authorization header
                         // (defaulted to the sentinel by buildPayload). Auto-
                         // open the Advanced block so the operator sees that
@@ -735,7 +735,7 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
                       </Radio.Button>
                     </Radio.Group>
                   </Form.Item>
-                  {form.authType === 'bearer' && (
+                  {form.auth_type === 'bearer' && (
                     <Form.Item
                       label={t('form.probeBearerLabel')}
                       extra={t('form.probeBearerHint')}
@@ -917,8 +917,8 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
             <SimpleTextList
               title={t('detail.section.examples')}
               desc={t('form.exampleDesc')}
-              values={form.usageExamples}
-              onChange={(next) => update('usageExamples', next)}
+              values={form.usage_examples}
+              onChange={(next) => update('usage_examples', next)}
               placeholder={t('form.examplePlaceholder')}
               addLabel={t('form.exampleAdd')}
             />

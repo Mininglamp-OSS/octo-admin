@@ -92,7 +92,7 @@ export default function SystemMcp() {
   }
 
   const handleDeleted = (id: string) => {
-    setRows((prev) => prev.filter((r) => r.id !== id))
+    setRows((prev) => prev.filter((r) => r.mcp_id !== id))
     setTotal((prev) => Math.max(0, prev - 1))
     // If the last row on this page just disappeared and we're past page 1,
     // reload the previous page so the user isn't left staring at empty state.
@@ -101,11 +101,15 @@ export default function SystemMcp() {
     closeDetail()
   }
 
-  const handleSaved = (updated?: McpDetail) => {
-    if (updated) {
+  const handleSaved = (updated: McpDetail) => {
+    // Edit: patch the row in place. Only project down to McpListItem fields
+    // so `rows` stays a list-projection and doesn't accumulate detail-only
+    // payload (tools / quick_start / faqs / usage_examples / notes / …).
+    const existingIdx = rows.findIndex((r) => r.mcp_id === updated.mcp_id)
+    if (existingIdx !== -1) {
       setRows((prev) =>
         prev.map((r) =>
-          r.id === updated.id
+          r.mcp_id === updated.mcp_id
             ? {
                 ...r,
                 name: updated.name,
@@ -113,15 +117,20 @@ export default function SystemMcp() {
                 category: updated.category,
                 icon: updated.icon,
                 tags: updated.tags,
-                toolCount: updated.toolCount,
-                creatorName: updated.creatorName,
+                tool_count: updated.tool_count,
+                creator_name: updated.creator_name,
+                created_by_type: updated.created_by_type,
               }
             : r
         )
       )
-    } else {
-      load(1, keyword)
+      return
     }
+    // Create: server owns sort order + keyword filter + total, so refetch
+    // page 1 rather than optimistically prepending (which would show rows
+    // that don't match the active keyword, or misplace them under a non-
+    // recency sort key).
+    load(1, keyword)
   }
 
   const columns = useMemo<ColumnsType<McpListItem>>(
@@ -174,16 +183,16 @@ export default function SystemMcp() {
       },
       {
         title: t('table.tools'),
-        dataIndex: 'toolCount',
-        key: 'toolCount',
+        dataIndex: 'tool_count',
+        key: 'tool_count',
         width: 80,
         align: 'right',
         render: (v: number) => <span className="mono">{v}</span>,
       },
       {
         title: t('table.creator'),
-        dataIndex: 'creatorName',
-        key: 'creatorName',
+        dataIndex: 'creator_name',
+        key: 'creator_name',
         width: 140,
         render: (v: string) => v || '—',
       },
@@ -222,13 +231,13 @@ export default function SystemMcp() {
       </div>
 
       <Table<McpListItem>
-        rowKey="id"
+        rowKey="mcp_id"
         loading={loading}
         columns={columns}
         dataSource={rows}
         locale={{ emptyText: t('empty') }}
         onRow={(r) => ({
-          onClick: () => openDetail(r.id),
+          onClick: () => openDetail(r.mcp_id),
           style: { cursor: 'pointer' },
         })}
         pagination={{

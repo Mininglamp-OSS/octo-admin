@@ -77,9 +77,9 @@ export default function McpDetailDrawer({
     if (!detail || deleting) return
     setDeleting(true)
     try {
-      await deleteSystemMcp(detail.id)
+      await deleteSystemMcp(detail.mcp_id)
       message.success(t('delete.success'))
-      onDeleted(detail.id)
+      onDeleted(detail.mcp_id)
     } catch (err) {
       message.error(err instanceof ApiError ? err.message : t('delete.failed'))
     } finally {
@@ -139,7 +139,7 @@ export default function McpDetailDrawer({
 
 function DetailBody({ detail }: { detail: McpDetail }) {
   const { t } = useTranslation(['systemMcp'])
-  const q = detail.quickStart
+  const q = detail.quick_start
   const isRemote =
     q.transport === 'streamable-http' || q.transport === 'sse'
 
@@ -169,13 +169,13 @@ function DetailBody({ detail }: { detail: McpDetail }) {
             <span>
               {t('detail.toolCount', {
                 defaultValue: '{{count}} tools',
-                count: detail.toolCount,
+                count: detail.tool_count,
               })}
             </span>
-            {detail.creatorName && (
+            {detail.creator_name && (
               <>
                 <span className="mcp-detail__sub-sep">·</span>
-                <span>@{detail.creatorName}</span>
+                <span>@{detail.creator_name}</span>
               </>
             )}
           </div>
@@ -202,7 +202,7 @@ function DetailBody({ detail }: { detail: McpDetail }) {
               <dt>{t('form.url')}</dt>
               <dd className="mono">{q.url || '—'}</dd>
               <dt>{t('form.authType')}</dt>
-              <dd>{q.authType || 'none'}</dd>
+              <dd>{q.auth_type || 'none'}</dd>
               {q.headers && Object.keys(q.headers).length > 0 && (
                 <>
                   <dt>{t('form.headers')}</dt>
@@ -260,10 +260,10 @@ function DetailBody({ detail }: { detail: McpDetail }) {
         )}
       </DetailSection>
 
-      {detail.usageExamples?.length > 0 && (
+      {detail.usage_examples?.length > 0 && (
         <DetailSection title={t('detail.section.examples')}>
           <ul className="mcp-list mcp-list--quote">
-            {detail.usageExamples.map((ex, i) => (
+            {detail.usage_examples.map((ex, i) => (
               <li key={i} className="mcp-list__item">
                 {ex}
               </li>

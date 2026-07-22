@@ -36,12 +36,12 @@ export type TFn = (
 export interface ProbeFormFields {
   transport: McpTransport
   url: string
-  authType: McpAuthType
+  auth_type: McpAuthType
   /** Raw `Header-Name: value\n...` textarea contents. Parsed here so the
    *  helper owns the split-and-trim rules (same as FormModal's parseKV). */
   headersRaw: string
   /** Optional ephemeral bearer token supplied via the "试连密钥（不保存）"
-   *  field. When authType=bearer AND this is non-empty, it overrides any
+   *  field. When auth_type=bearer AND this is non-empty, it overrides any
    *  Authorization value coming from `headersRaw` and is written as
    *  `Authorization: Bearer <token>` on the probe wire. Never persisted —
    *  the caller MUST NOT include this in the create/update payload. */
@@ -70,13 +70,13 @@ function parseHeaderBlock(raw: string): Record<string, string> {
  *  probable from the server (mcp-v1.md §4.7). Returns null for non-remote
  *  transports so the caller can noop instead of firing a doomed request.
  *
- *  IMPORTANT: `authType` is intentionally not sent. The backend struct is
+ *  IMPORTANT: `auth_type` is intentionally not sent. The backend struct is
  *  `service.ProbeRequest` (probe.go:57), which only declares transport, url,
  *  command, args, env, headers — and the handler decodes with
  *  DisallowUnknownFields, so any extra field is rejected as
  *  "request body is not valid JSON". The Bearer token, when set, already
  *  reaches the remote MCP via `Authorization` in the headers map, so
- *  dropping authType from the wire has no functional cost. web's
+ *  dropping auth_type from the wire has no functional cost. web's
  *  dmworkmcp/McpCreateModal.handleProbe follows the same rule. */
 export function buildProbeRequest(
   fields: ProbeFormFields,
@@ -90,7 +90,7 @@ export function buildProbeRequest(
     ? parseHeaderBlock(fields.headersRaw)
     : {}
   const ephemeral = (fields.probeBearer ?? '').trim()
-  if (fields.authType === 'bearer' && ephemeral) {
+  if (fields.auth_type === 'bearer' && ephemeral) {
     // The ephemeral bearer wins over any Authorization coming from the
     // persisted headers map (typically the SECRET_PLACEHOLDER sentinel) —
     // the user's just-typed token is the more explicit signal.
