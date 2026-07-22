@@ -1,0 +1,134 @@
+{
+  "title": "Skill Market",
+  "tabs": {
+    "skills": "Skills",
+    "categories": "Categories"
+  },
+  "list": {
+    "search": "Search skills...",
+    "categoryFilter": "All categories",
+    "upload": "Upload Skill",
+    "total": "{{count}} total",
+    "empty": "No skills yet"
+  },
+  "column": {
+    "name": "Name",
+    "category": "Category",
+    "version": "Version",
+    "owner": "Owner",
+    "visibility": "Visibility",
+    "createdAt": "Created",
+    "action": "Actions"
+  },
+  "visibility": {
+    "public": "Public",
+    "space": "Space",
+    "private": "Private"
+  },
+  "action": {
+    "edit": "Edit",
+    "delete": "Delete",
+    "view": "View"
+  },
+  "detail": {
+    "title": "Skill Detail",
+    "field": {
+      "name": "Name",
+      "displayName": "Display Name",
+      "description": "Description",
+      "category": "Category",
+      "tags": "Tags",
+      "version": "Version",
+      "owner": "Owner",
+      "visibility": "Visibility",
+      "file": "File",
+      "fileSize": "File Size",
+      "sha256": "SHA256",
+      "createdAt": "Created",
+      "updatedAt": "Updated"
+    },
+    "readme": "README",
+    "noReadme": "No README available"
+  },
+  "confirm": {
+    "delete": {
+      "title": "Confirm Delete",
+      "desc": "This action cannot be undone. Are you sure you want to delete this skill?",
+      "ok": "Delete",
+      "cancel": "Cancel"
+    }
+  },
+  "upload": {
+    "title": "Upload Skill",
+    "step1": "Upload File",
+    "step2": "Confirm Info",
+    "step3": "Done",
+    "selectFile": "Select Skill Package",
+    "selectFileHint": "Supports .zip / .skill packages up to 20MB",
+    "uploading": "Uploading...",
+    "parsing": "Parsing...",
+    "parseFailed": "Parse failed",
+    "parseTimeout": "Parse timed out. Please try again",
+    "uploadFailed": "Upload failed",
+    "parsedWithName": "Parsed: {{name}}",
+    "currentPackageWithName": "Current package: {{name}}",
+    "newVersionParsedWithName": "New version parsed: {{name}}",
+    "currentVersionChangelog": "Current version",
+    "versionSection": "Version",
+    "basicInfoSection": "Basic Info",
+    "invalidFormat": "Only .zip / .skill files are supported",
+    "fileTooLarge": "File must be 20MB or smaller",
+    "noParsedFile": "Upload and parse a skill package first",
+    "initialChangelog": "Initial release",
+    "form": {
+      "name": "Name",
+      "displayName": "Display Name",
+      "description": "Description",
+      "category": "Category",
+      "tags": "Tags",
+      "tagsPlaceholder": "Type tag and press Enter",
+      "visibility": "Visibility",
+      "version": "Version",
+      "changelog": "Changelog",
+      "changelogPlaceholder": "Describe this release",
+      "icon": "Icon",
+      "uploadIcon": "Upload Icon"
+    },
+    "submit": "Publish",
+    "success": "Skill published successfully",
+    "prev": "Previous",
+    "next": "Next"
+  },
+  "editModal": {
+    "title": "Edit Skill",
+    "success": "Updated successfully"
+  },
+  "category": {
+    "title": "Categories",
+    "create": "New Category",
+    "column": {
+      "icon": "Icon",
+      "name": "Name",
+      "skillCount": "Skills",
+      "action": "Actions"
+    },
+    "form": {
+      "name": "Category Name",
+      "namePlaceholder": "Enter category name",
+      "iconKey": "Icon Key",
+      "iconKeyPlaceholder": "Enter icon key (e.g. code, tool)"
+    },
+    "createTitle": "New Category",
+    "editTitle": "Edit Category",
+    "deleteConfirm": "Are you sure you want to delete this category?",
+    "deleteDisabled": "Cannot delete: skills are associated",
+    "success": {
+      "created": "Created successfully",
+      "updated": "Updated successfully",
+      "deleted": "Deleted successfully"
+    }
+  },
+  "toast": {
+    "deleted": "Deleted successfully"
+  }
+}

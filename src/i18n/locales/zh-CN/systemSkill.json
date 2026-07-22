@@ -1,0 +1,134 @@
+{
+  "title": "Skill 市场",
+  "tabs": {
+    "skills": "Skill 列表",
+    "categories": "分类管理"
+  },
+  "list": {
+    "search": "搜索 Skill...",
+    "categoryFilter": "全部分类",
+    "upload": "上传 Skill",
+    "total": "共 {{count}} 条",
+    "empty": "暂无 Skill"
+  },
+  "column": {
+    "name": "名称",
+    "category": "分类",
+    "version": "版本",
+    "owner": "拥有者",
+    "visibility": "可见性",
+    "createdAt": "创建时间",
+    "action": "操作"
+  },
+  "visibility": {
+    "public": "公开",
+    "space": "空间",
+    "private": "私有"
+  },
+  "action": {
+    "edit": "编辑",
+    "delete": "删除",
+    "view": "查看"
+  },
+  "detail": {
+    "title": "Skill 详情",
+    "field": {
+      "name": "名称",
+      "displayName": "显示名",
+      "description": "描述",
+      "category": "分类",
+      "tags": "标签",
+      "version": "版本",
+      "owner": "拥有者",
+      "visibility": "可见性",
+      "file": "文件",
+      "fileSize": "文件大小",
+      "sha256": "SHA256",
+      "createdAt": "创建时间",
+      "updatedAt": "更新时间"
+    },
+    "readme": "README",
+    "noReadme": "暂无 README"
+  },
+  "confirm": {
+    "delete": {
+      "title": "确认删除",
+      "desc": "删除后不可恢复，确定要删除此 Skill 吗？",
+      "ok": "删除",
+      "cancel": "取消"
+    }
+  },
+  "upload": {
+    "title": "上传 Skill",
+    "step1": "上传文件",
+    "step2": "确认信息",
+    "step3": "完成",
+    "selectFile": "选择 Skill 包",
+    "selectFileHint": "支持 .zip / .skill 格式，最大 20MB",
+    "uploading": "上传中...",
+    "parsing": "解析中...",
+    "parseFailed": "解析失败",
+    "parseTimeout": "解析超时，请重试",
+    "uploadFailed": "上传失败",
+    "parsedWithName": "已解析：{{name}}",
+    "currentPackageWithName": "当前包：{{name}}",
+    "newVersionParsedWithName": "新版本已解析：{{name}}",
+    "currentVersionChangelog": "当前版本",
+    "versionSection": "版本信息",
+    "basicInfoSection": "基础信息",
+    "invalidFormat": "仅支持 .zip / .skill 格式",
+    "fileTooLarge": "文件不能超过 20MB",
+    "noParsedFile": "请先上传并解析 Skill 包",
+    "initialChangelog": "首次发布",
+    "form": {
+      "name": "名称",
+      "displayName": "显示名",
+      "description": "描述",
+      "category": "分类",
+      "tags": "标签",
+      "tagsPlaceholder": "输入标签后按回车",
+      "visibility": "可见性",
+      "version": "版本",
+      "changelog": "变更说明",
+      "changelogPlaceholder": "填写本次发布的变更说明",
+      "icon": "图标",
+      "uploadIcon": "上传图标"
+    },
+    "submit": "发布",
+    "success": "Skill 发布成功",
+    "prev": "上一步",
+    "next": "下一步"
+  },
+  "editModal": {
+    "title": "编辑 Skill",
+    "success": "更新成功"
+  },
+  "category": {
+    "title": "分类管理",
+    "create": "新建分类",
+    "column": {
+      "icon": "图标",
+      "name": "名称",
+      "skillCount": "关联 Skill",
+      "action": "操作"
+    },
+    "form": {
+      "name": "分类名称",
+      "namePlaceholder": "输入分类名称",
+      "iconKey": "图标标识",
+      "iconKeyPlaceholder": "输入图标标识 (如 code, tool)"
+    },
+    "createTitle": "新建分类",
+    "editTitle": "编辑分类",
+    "deleteConfirm": "确定删除此分类？",
+    "deleteDisabled": "存在关联 Skill，无法删除",
+    "success": {
+      "created": "创建成功",
+      "updated": "更新成功",
+      "deleted": "删除成功"
+    }
+  },
+  "toast": {
+    "deleted": "删除成功"
+  }
+}

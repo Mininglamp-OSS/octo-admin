@@ -61,6 +61,12 @@ pnpm build        # emits static assets under ./dist
 # serve ./dist behind an SSO-aware reverse proxy (nginx / envoy / ...)
 ```
 
+Docker deployments proxy the primary admin API through `API_BACKEND` and the
+Marketplace admin API through `MARKETPLACE_BACKEND`. Keep Marketplace admin
+authentication on the user's Octo login token; do not ship marketplace service
+credentials as `VITE_*` variables because Vite compiles them into the browser
+bundle.
+
 ## 📦 Modules / Architecture
 
 Top-level layout:

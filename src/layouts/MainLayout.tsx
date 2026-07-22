@@ -19,6 +19,7 @@ import {
   RobotOutlined,
   SettingOutlined,
   ApiOutlined,
+  ShopOutlined,
 } from '@ant-design/icons'
 import { useAuthStore } from '../store/auth'
 import { useFeatureStore } from '../store/feature'
@@ -124,6 +125,9 @@ const MainLayout: React.FC = () => {
     }
     if (hasManagerCapability(managerCapabilities, 'mcp.read')) {
       list.push({ key: '/system-mcp', icon: <ApiOutlined />, label: t('nav:systemMcp'), group: 'system' })
+    }
+    if (hasManagerCapability(managerCapabilities, 'skill.read')) {
+      list.push({ key: '/skill-market', icon: <ShopOutlined />, label: t('nav:skillMarket'), group: 'system' })
     }
     if (hasManagerCapability(managerCapabilities, 'backup')) {
       list.push({ key: '/backup', icon: <CloudUploadOutlined />, label: t('nav:backup'), group: 'system' })

@@ -1,0 +1,40 @@
+{
+  "pageTitle": "Skill Market",
+  "pageDesc": "Manage Skill categories and system-level public Skills.",
+  "tab": {
+    "categories": "Categories",
+    "skills": "Skills"
+  },
+  "category": {
+    "table": { "name": "Category Name", "sortOrder": "Sort Order", "actions": "Actions" },
+    "create": "New Category",
+    "rename": "Rename",
+    "delete": "Delete",
+    "deleteConfirm": "Are you sure you want to delete this category?",
+    "deleteInUse": "{{count}} Skills use this category. Cannot delete.",
+    "modal": { "createTitle": "New Category", "editTitle": "Rename Category", "name": "Category Name", "nameRequired": "Name is required", "sortOrder": "Sort Order", "sortOrderHint": "Lower numbers appear first, default 0" },
+    "success": { "created": "Created", "updated": "Updated", "deleted": "Deleted" },
+    "error": { "createFailed": "Failed to create", "updateFailed": "Failed to update", "deleteFailed": "Failed to delete", "nameExists": "Category name already exists" },
+    "empty": "No categories yet"
+  },
+  "skill": {
+    "table": { "icon": "Icon", "name": "Name", "description": "Description", "category": "Category", "tags": "Tags", "downloads": "Downloads", "views": "Views", "version": "Version", "createdAt": "Created", "actions": "Actions" },
+    "search": "Search name or description",
+    "categoryFilter": "Filter by category",
+    "categoryAll": "All categories",
+    "sortOptions": { "latest": "Latest", "downloads": "Downloads", "views": "Views", "comprehensive": "Comprehensive" },
+    "upload": "Upload Skill",
+    "edit": "Edit",
+    "delete": "Delete",
+    "detail": "Detail",
+    "download": "Download",
+    "deleteConfirm": "Are you sure you want to delete this Skill? This action cannot be undone.",
+    "empty": "No Skills yet",
+    "loadFailed": "Failed to load",
+    "detailDrawer": { "title": "Skill Detail", "version": "Version", "category": "Category", "tags": "Tags", "views": "Views", "downloads": "Downloads", "createdAt": "Created", "updatedAt": "Updated", "skillMd": "SKILL.md", "download": "Download Skill" },
+    "uploadModal": { "title": "Upload Skill", "name": "Name", "nameRequired": "Name is required", "description": "Description", "category": "Category", "tags": "Tags", "tagsHint": "Press Enter to add", "version": "Version", "versionDefault": "1.0.0", "zipFile": "Skill Package (.zip)", "zipRequired": "Please upload a zip file", "zipHint": "Drag or click to upload a .zip Skill package", "submit": "Submit", "success": "Upload successful", "failed": "Upload failed" },
+    "editModal": { "title": "Edit Skill", "name": "Name", "description": "Description", "category": "Category", "tags": "Tags", "icon": "Icon", "save": "Save", "success": "Updated", "failed": "Failed to update" },
+    "success": { "deleted": "Deleted" },
+    "error": { "deleteFailed": "Failed to delete" }
+  }
+}

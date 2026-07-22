@@ -49,10 +49,6 @@ mcpApi.interceptors.response.use(
   ) => {
     const wire = error.response?.data?.err
     const message = wire?.message || wire?.code || error.message
-    // 401 from marketplace means the admin's Octo token expired or was
-    // revoked at octo-server. Mirror the shared axios interceptor
-    // (../api/index.ts) so the auth store clears and the user is bounced
-    // to /login rather than left on a broken page firing more 401s.
     if (error.response?.status === 401) {
       useAuthStore.getState().logout()
       window.location.href = '/admin/login'

@@ -19,6 +19,10 @@ export const MANAGER_CAPABILITY_KEYS = [
   // octo-marketplace's /admin/api/v1/mcps.
   'mcp.read',
   'mcp.write',
+  // Skill Market admin surface. Read = list; write = create / edit / delete
+  // system-level public Skills and categories.
+  'skill.read',
+  'skill.write',
 ] as const
 
 export const MANAGER_NO_ACCESS_PATH = '/no-access'
@@ -59,5 +63,6 @@ export function firstManagerPath(capabilities: ManagerCapabilities | null | unde
   if (hasManagerCapability(capabilities, 'backup')) return '/backup'
   if (hasManagerCapability(capabilities, 'appversion.read')) return '/download'
   if (hasManagerCapability(capabilities, 'mcp.read')) return '/system-mcp'
+  if (hasManagerCapability(capabilities, 'skill.read')) return '/skill-market'
   return MANAGER_NO_ACCESS_PATH
 }

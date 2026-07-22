@@ -59,6 +59,11 @@ pnpm build        # 产物写入 ./dist
 # 将 ./dist 部署在支持 SSO 的反向代理后（nginx / envoy / ...）
 ```
 
+Docker 部署时，主后台 API 通过 `API_BACKEND` 反代，Marketplace 管理 API
+通过 `MARKETPLACE_BACKEND` 反代。Marketplace 管理鉴权应使用当前用户的
+Octo 登录 token；不要把 marketplace 服务密钥配置成 `VITE_*` 变量，因为 Vite
+会把它编译进浏览器 bundle。
+
 ## 📦 模块与架构
 
 顶层结构：

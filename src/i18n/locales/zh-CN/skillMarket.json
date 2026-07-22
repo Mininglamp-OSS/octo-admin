@@ -1,0 +1,40 @@
+{
+  "pageTitle": "Skill 市场",
+  "pageDesc": "管理 Skill 分类和系统级公共 Skill。",
+  "tab": {
+    "categories": "分类管理",
+    "skills": "Skill 管理"
+  },
+  "category": {
+    "table": { "name": "分类名称", "sortOrder": "排序", "actions": "操作" },
+    "create": "新建分类",
+    "rename": "重命名",
+    "delete": "删除",
+    "deleteConfirm": "确认删除该分类？",
+    "deleteInUse": "有 {{count}} 个 Skill 使用该分类，无法删除",
+    "modal": { "createTitle": "新建分类", "editTitle": "重命名分类", "name": "分类名称", "nameRequired": "请填写分类名称", "sortOrder": "排序", "sortOrderHint": "数字越小越靠前，默认 0" },
+    "success": { "created": "已创建", "updated": "已更新", "deleted": "已删除" },
+    "error": { "createFailed": "创建失败", "updateFailed": "更新失败", "deleteFailed": "删除失败", "nameExists": "分类名已存在" },
+    "empty": "暂无分类"
+  },
+  "skill": {
+    "table": { "icon": "图标", "name": "名称", "description": "描述", "category": "分类", "tags": "标签", "downloads": "下载", "views": "浏览", "version": "版本", "createdAt": "创建时间", "actions": "操作" },
+    "search": "搜索名称或描述",
+    "categoryFilter": "筛选分类",
+    "categoryAll": "全部分类",
+    "sortOptions": { "latest": "最新", "downloads": "下载量", "views": "浏览量", "comprehensive": "综合" },
+    "upload": "上传 Skill",
+    "edit": "编辑",
+    "delete": "删除",
+    "detail": "详情",
+    "download": "下载",
+    "deleteConfirm": "确认删除该 Skill？删除后不可恢复。",
+    "empty": "暂无 Skill",
+    "loadFailed": "加载失败",
+    "detailDrawer": { "title": "Skill 详情", "version": "版本", "category": "分类", "tags": "标签", "views": "浏览", "downloads": "下载", "createdAt": "创建时间", "updatedAt": "更新时间", "skillMd": "SKILL.md", "download": "下载 Skill" },
+    "uploadModal": { "title": "上传 Skill", "name": "名称", "nameRequired": "请填写名称", "description": "描述", "category": "分类", "tags": "标签", "tagsHint": "回车添加", "version": "版本", "versionDefault": "1.0.0", "zipFile": "Skill 包 (.zip)", "zipRequired": "请上传 zip 文件", "zipHint": "拖拽或点击上传 .zip 格式的 Skill 包", "submit": "提交", "success": "上传成功", "failed": "上传失败" },
+    "editModal": { "title": "编辑 Skill", "name": "名称", "description": "描述", "category": "分类", "tags": "标签", "icon": "图标", "save": "保存", "success": "已更新", "failed": "更新失败" },
+    "success": { "deleted": "已删除" },
+    "error": { "deleteFailed": "删除失败" }
+  }
+}

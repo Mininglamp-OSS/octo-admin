@@ -23,7 +23,7 @@ export default defineConfig(({ command, mode }) => {
       include: ['src/**/*.test.{ts,tsx}'],
     },
     server: {
-      port: 3000,
+      port: Number(env.VITE_PORT) || 3000,
       proxy: {
         '/api': {
           target: proxyTarget,

@@ -18,8 +18,10 @@ import Backup from './pages/Backup'
 import Download from './pages/Download'
 import SystemSetting from './pages/SystemSetting'
 import SystemMcp from './pages/SystemMcp'
+import SkillMarket from './pages/SkillMarket'
 import Changelog from './pages/Changelog'
 import AppBots from './pages/AppBots'
+import SystemSkill from './pages/SystemSkill'
 import SpaceEntry from './pages/SpaceAdmin/SpaceEntry'
 import SpaceAdminLayout from './pages/SpaceAdmin/SpaceAdminLayout'
 import { MembersTab, InvitesTab, JoinAppliesTab, AppBotsTab } from './pages/SpaceAdmin/tabs'
@@ -212,6 +214,14 @@ function AdminRoutes() {
           }
         />
         <Route
+          path="skill-market"
+          element={
+            <CapabilityRoute capability="skill.read">
+              <SkillMarket />
+            </CapabilityRoute>
+          }
+        />
+        <Route
           path="backup"
           element={
             <CapabilityRoute capability="backup">
@@ -233,6 +243,14 @@ function AdminRoutes() {
             <ManagerAppBotsGate>
               <AppBots />
             </ManagerAppBotsGate>
+          }
+        />
+        <Route
+          path="system-skill"
+          element={
+            <CapabilityRoute capability="skill.read">
+              <SystemSkill />
+            </CapabilityRoute>
           }
         />
         <Route path="no-access" element={<NoAccess />} />
