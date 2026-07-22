@@ -201,16 +201,17 @@ function DetailBody({ detail }: { detail: McpDetail }) {
             <>
               <dt>{t('form.url')}</dt>
               <dd className="mono">{q.url || '—'}</dd>
-              <dt>{t('form.authType')}</dt>
-              <dd>{q.auth_type || 'none'}</dd>
               {q.headers && Object.keys(q.headers).length > 0 && (
                 <>
                   <dt>{t('form.headers')}</dt>
                   <dd>
                     <pre className="mcp-kv__pre">
-                      {Object.entries(q.headers)
-                        .map(([k, v]) => `${k}: ${v}`)
-                        .join('\n')}
+                      {renderKvBlock(
+                        q.headers,
+                        q.headers_user_supplied,
+                        ': ',
+                        t('form.kvUserSuppliedMarker'),
+                      )}
                     </pre>
                   </dd>
                 </>
@@ -231,9 +232,12 @@ function DetailBody({ detail }: { detail: McpDetail }) {
                   <dt>{t('form.env')}</dt>
                   <dd>
                     <pre className="mcp-kv__pre">
-                      {Object.entries(q.env)
-                        .map(([k, v]) => `${k}=${v}`)
-                        .join('\n')}
+                      {renderKvBlock(
+                        q.env,
+                        q.env_user_supplied,
+                        '=',
+                        t('form.kvUserSuppliedMarker'),
+                      )}
                     </pre>
                   </dd>
                 </>
@@ -311,4 +315,24 @@ function DetailSection({
       {children}
     </section>
   )
+}
+
+/** Render a headers / env map to a `KEY<sep>VALUE` block. Keys listed in
+ *  `userSupplied` are annotated with `marker` (localized "consumer fills
+ *  locally" text passed in by the caller) so the reader can distinguish a
+ *  shared-empty slot from a user-supplied one — the wire looks identical
+ *  for both (empty value) but the copy-paste snippet flow differs. */
+function renderKvBlock(
+  m: Record<string, string>,
+  userSupplied: string[] | undefined,
+  sep: string,
+  marker: string,
+): string {
+  const supplied = new Set(userSupplied ?? [])
+  return Object.entries(m)
+    .map(([k, v]) => {
+      const suffix = supplied.has(k) ? `  (${marker})` : ''
+      return `${k}${sep}${v}${suffix}`
+    })
+    .join('\n')
 }

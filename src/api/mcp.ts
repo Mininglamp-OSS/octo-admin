@@ -40,9 +40,17 @@ export interface McpQuickStart {
   url?: string
   auth_type?: McpAuthType
   headers?: Record<string, string>
+  /** Header keys whose value each consumer must fill locally (mcp-v1.md §5.1
+   *  "toggle model"). The wire persists such keys with an empty value; the
+   *  copy-paste snippet renders a placeholder in their slot. Absent / empty
+   *  → every header is a shared value the author published verbatim. */
+  headers_user_supplied?: string[]
   command?: string
   args?: string[]
   env?: Record<string, string>
+  /** Env keys whose value each consumer must fill locally. Same wire
+   *  contract as headers_user_supplied. */
+  env_user_supplied?: string[]
 }
 
 /** List projection returned by GET /admin/api/v1/mcps (doc §3.2 superset). */
@@ -86,7 +94,11 @@ export interface CreateMcpParams {
   command?: string
   args?: string[]
   env?: Record<string, string>
+  /** Env keys whose value each consumer fills locally (mcp-v1.md §5.1). */
+  env_user_supplied?: string[]
   headers?: Record<string, string>
+  /** Header keys whose value each consumer fills locally. */
+  headers_user_supplied?: string[]
   auth_type?: McpAuthType
   tools: McpTool[]
   usage_examples?: string[]
@@ -124,7 +136,9 @@ export interface PatchMcpParams {
   command?: string
   args?: string[]
   env?: Record<string, string>
+  env_user_supplied?: string[]
   headers?: Record<string, string>
+  headers_user_supplied?: string[]
   auth_type?: McpAuthType
   tools?: McpTool[]
   usage_examples?: string[]

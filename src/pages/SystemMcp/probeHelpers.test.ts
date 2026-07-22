@@ -4,10 +4,10 @@
  *
  * The wizard itself is an antd Modal + form and drags in JSDOM + antd —
  * neither adds signal here. The branches that actually regress live in
- * probeHelpers: payload assembly for stdio vs remote, header block parsing,
- * and error-code → i18n resolution with wire-message fallback. Testing those
- * pure functions is enough to catch every observed shape of failure the
- * button has shipped with so far.
+ * probeHelpers: payload assembly for stdio vs remote, and error-code → i18n
+ * resolution with wire-message fallback. Testing those pure functions is
+ * enough to catch every observed shape of failure the button has shipped
+ * with so far.
  */
 
 import { describe, expect, it } from 'vitest'
@@ -35,8 +35,7 @@ describe('buildProbeRequest', () => {
     const req = buildProbeRequest({
       transport: 'stdio',
       url: '',
-      auth_type: 'none',
-      headersRaw: '',
+      headers: {},
     })
     expect(req).toBeNull()
   })
@@ -46,16 +45,14 @@ describe('buildProbeRequest', () => {
       buildProbeRequest({
         transport: 'streamable-http',
         url: '',
-        auth_type: 'none',
-        headersRaw: '',
+        headers: {},
       }),
     ).toBeNull()
     expect(
       buildProbeRequest({
         transport: 'sse',
         url: '   ',
-        auth_type: 'bearer',
-        headersRaw: '',
+        headers: {},
       }),
     ).toBeNull()
   })
@@ -64,8 +61,7 @@ describe('buildProbeRequest', () => {
     const req = buildProbeRequest({
       transport: 'streamable-http',
       url: '  https://mcp.example.com/x  ',
-      auth_type: 'none',
-      headersRaw: '',
+      headers: {},
     })
     expect(req).toEqual({
       transport: 'streamable-http',
@@ -74,88 +70,45 @@ describe('buildProbeRequest', () => {
     })
   })
 
-  it('never puts auth_type on the wire (backend rejects unknown fields)', () => {
-    // Regression: service.ProbeRequest doesn't declare auth_type and the
-    // handler decodes with DisallowUnknownFields — so including it makes
-    // the request come back 400 "request body is not valid JSON". A Bearer
-    // token, when set, rides on headers.Authorization instead.
+  it('passes the caller-supplied headers map through verbatim', () => {
+    // The wizard resolves KvEditor rows into a plain map before calling
+    // probe — probe is off-record, so real credentials go on the wire even
+    // for user-supplied slots (otherwise the handshake fails auth). No
+    // parsing / no user_supplied classification lives here.
     const req = buildProbeRequest({
       transport: 'sse',
       url: 'https://example.test/mcp',
-      auth_type: 'bearer',
-      headersRaw: 'Authorization: Bearer secret',
+      headers: { Authorization: 'Bearer real', 'X-Custom': 'hello' },
     })
     expect(req).not.toBeNull()
-    expect(req).not.toHaveProperty('auth_type')
-    expect(req?.headers).toEqual({ Authorization: 'Bearer secret' })
-  })
-
-  it('parses the headers textarea (Header-Name: value per line)', () => {
-    const req = buildProbeRequest({
-      transport: 'sse',
-      url: 'https://mcp.example.com/x',
-      auth_type: 'bearer',
-      headersRaw:
-        'Authorization: Bearer abc\n  X-Custom : hello world  \n\ninvalid-no-colon-line\n:missing-key',
-    })
-    // Blank lines, lines without a colon, and lines with an empty key are
-    // dropped. The colon separator is the FIRST occurrence, so values may
-    // themselves contain colons (URLs, etc.).
     expect(req?.headers).toEqual({
-      Authorization: 'Bearer abc',
-      'X-Custom': 'hello world',
+      Authorization: 'Bearer real',
+      'X-Custom': 'hello',
     })
   })
 
-  it('sets headers=undefined when the parsed map is empty', () => {
+  it('sets headers=undefined when the map is empty', () => {
     const req = buildProbeRequest({
       transport: 'sse',
       url: 'https://example.test/mcp',
-      auth_type: 'none',
-      headersRaw: '\n\n  \n', // whitespace only
+      headers: {},
     })
     expect(req).not.toBeNull()
     expect(req?.headers).toBeUndefined()
   })
 
-  it('injects ephemeral probeBearer as Authorization when auth_type=bearer', () => {
-    // The "试连密钥（不保存）" input feeds an ephemeral token used only for
-    // this probe call. It overrides whatever Authorization is in headersRaw
-    // — typically the SECRET_PLACEHOLDER sentinel — because the operator's
-    // just-typed token is the more explicit signal. Never persisted.
-    const req = buildProbeRequest({
-      transport: 'streamable-http',
-      url: 'https://mcp.example.com/x',
-      auth_type: 'bearer',
-      headersRaw: 'Authorization: __OCTO_SECRET_PLACEHOLDER__\nX-Custom: v',
-      probeBearer: 'real-token',
-    })
-    expect(req?.headers).toEqual({
-      Authorization: 'Bearer real-token',
-      'X-Custom': 'v',
-    })
-  })
-
-  it('ignores probeBearer when auth_type is not bearer', () => {
-    const req = buildProbeRequest({
-      transport: 'streamable-http',
-      url: 'https://mcp.example.com/x',
-      auth_type: 'none',
-      headersRaw: '',
-      probeBearer: 'real-token',
-    })
-    expect(req?.headers).toBeUndefined()
-  })
-
-  it('ignores whitespace-only probeBearer', () => {
+  it('never surfaces unknown fields on the wire (DisallowUnknownFields guard)', () => {
+    // Regression: service.ProbeRequest declares only transport/url/command/
+    // args/env/headers, and the handler decodes with DisallowUnknownFields.
+    // Anything else — including the retired auth_type / probeBearer — would
+    // 400 "request body is not valid JSON".
     const req = buildProbeRequest({
       transport: 'sse',
-      url: 'https://mcp.example.com/x',
-      auth_type: 'bearer',
-      headersRaw: '',
-      probeBearer: '   ',
+      url: 'https://example.test/mcp',
+      headers: { Authorization: 'Bearer x' },
     })
-    expect(req?.headers).toBeUndefined()
+    expect(req).not.toBeNull()
+    expect(Object.keys(req ?? {}).sort()).toEqual(['headers', 'transport', 'url'])
   })
 })
 
@@ -181,8 +134,6 @@ describe('resolveProbeErrorMessage', () => {
   })
 
   it('prefers the wire message for an unknown error code (defaultValue path)', () => {
-    // `form.probeError.foo` is not in the table, so t() falls through to the
-    // caller's defaultValue — which is the wire message when present.
     expect(
       resolveProbeErrorMessage(
         respWith({ code: 'foo', message: 'raw wire text' }),
@@ -203,8 +154,6 @@ describe('resolveProbeErrorMessage', () => {
   })
 
   it('unknown code + no wire message → generic fallback', () => {
-    // Guards against surfacing a raw i18n key like "form.probeError.foo" in
-    // the UI when neither translation nor wire message is available.
     expect(
       resolveProbeErrorMessage(respWith({ code: 'foo' }), t),
     ).toBe('探测失败')

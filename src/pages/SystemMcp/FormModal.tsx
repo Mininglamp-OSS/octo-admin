@@ -22,9 +22,9 @@ import {
   Form,
   Input,
   Modal,
-  Radio,
   Select,
   Steps,
+  Switch,
   message,
 } from 'antd'
 import {
@@ -41,7 +41,6 @@ import {
   updateSystemMcp,
   uploadMcpIcon,
   type CreateMcpParams,
-  type McpAuthType,
   type McpDetail,
   type McpFaq,
   type McpTool,
@@ -51,8 +50,6 @@ import {
   buildProbeRequest,
   resolveProbeErrorMessage,
 } from './probeHelpers'
-
-const { TextArea } = Input
 
 const CATEGORY_KEYS = [
   'dev',
@@ -71,8 +68,123 @@ const TRANSPORT_OPTIONS: McpTransport[] = ['streamable-http', 'sse', 'stdio']
 // wire contract holds: "bearer auth → Authorization present, empty or
 // sentinel means the downstream user should substitute their own token".
 // The ephemeral probe field is deliberately separate and never seeded here.
+// Marketplace-shared sentinel (octo-marketplace/docs/api/mcp-v1.md §0 /
+// §5.1). Since the §5.1 relaxation, user-supplied values are stored
+// verbatim for the owner and blanked to non-owners at read time — the
+// admin no longer needs to substitute the sentinel on submit. The
+// constant is kept because `entriesFromWire` still normalizes it back to
+// "" when reading a legacy record that persisted the sentinel literal.
 const SECRET_PLACEHOLDER_SENTINEL = '__OCTO_SECRET_PLACEHOLDER__'
-const AUTHORIZATION_HEADER_KEYS = ['authorization', 'Authorization']
+
+/** One row in the structured Headers / Env editor. Each row carries a
+ *  per-key toggle for the wire's `headers_user_supplied` /
+ *  `env_user_supplied` arrays (mcp-v1.md §5.1). `userSupplied=true` means
+ *  each consumer fills the value locally; the value stored on the wire is
+ *  owner-visible for round-trip but blanked to non-owners by
+ *  `detailForCaller` on read. */
+export interface KvEntry {
+  key: string
+  value: string
+  userSupplied: boolean
+}
+
+/** Rebuild the structured entries list from a wire map + user_supplied
+ *  array. `values` may include the redacted sentinel from a legacy record
+ *  that submitted the sentinel literal before the §5.1 relaxation; we
+ *  strip it back to "" unconditionally so the input renders blank.
+ *
+ *  Defensive against a partial wire response that carries `user_supplied`
+ *  without a matching entry in the values map (e.g. an empty-collapse
+ *  edge case on the server): every user_supplied key surfaces as an empty
+ *  toggle-ON row so the operator can still edit / clear it. */
+export function entriesFromWire(
+  values: Record<string, string> | undefined,
+  userSupplied: string[] | undefined,
+): KvEntry[] {
+  const map = values ?? {}
+  const supplied = new Set(userSupplied ?? [])
+  const rows: KvEntry[] = Object.entries(map).map(([key, raw]) => ({
+    key,
+    value: raw === SECRET_PLACEHOLDER_SENTINEL ? '' : raw,
+    userSupplied: supplied.has(key),
+  }))
+  // Surface any user_supplied key the values map forgot (shouldn't happen
+  // per current backend, but a benign no-op if it does).
+  for (const k of supplied) {
+    if (!(k in map)) {
+      rows.push({ key: k, value: '', userSupplied: true })
+    }
+  }
+  return rows
+}
+
+/** Collapse the structured editor into the wire pair:
+ *   - values map keeps `key → value` (real value even under user_supplied —
+ *     backend stores it verbatim for owner round-trip since §5.1).
+ *   - userSupplied[] is the list of keys the owner flagged as
+ *     "consumer fills locally".
+ *  Rows with an empty key are dropped so a stray "add" click doesn't emit
+ *  `{"": ""}` and confuse validation.
+ *
+ *  Always emits concrete `{}` / `[]` for empty inputs — a caller that
+ *  submits the field with all rows cleared needs the backend to see an
+ *  empty map and clear its persisted value. Returning `undefined` here
+ *  would collide with the PATCH nil-means-untouched rule and silently
+ *  no-op a "delete every row" flow (review finding B1). Callers that want
+ *  the field genuinely omitted should not call this at all. */
+export function entriesToWire(entries: KvEntry[]): {
+  values: Record<string, string>
+  userSupplied: string[]
+} {
+  const values: Record<string, string> = {}
+  const userSupplied: string[] = []
+  for (const e of entries) {
+    const k = e.key.trim()
+    if (!k) continue
+    values[k] = e.value
+    if (e.userSupplied) userSupplied.push(k)
+  }
+  return { values, userSupplied }
+}
+
+/**
+ * Turn a caught error from a marketplace admin call into a user-facing
+ * message. Beyond the plain `.message`, unpack `details.field` /
+ * `details.reason` (single-violation shape from response.go:454) and
+ * `details.violations` (multi-violation shape) so a `secret_leaked` reject
+ * names the offending row instead of the generic "Secret value must not be
+ * submitted". Falls back to the caller's copy when the error isn't an
+ * ApiError.
+ */
+export function describeApiError(e: unknown, fallback: string): string {
+  if (!(e instanceof ApiError)) return fallback
+  const details = e.details
+  const fields: string[] = []
+  if (details && typeof details === 'object') {
+    if (typeof details.field === 'string') {
+      const reason = typeof details.reason === 'string' ? details.reason : ''
+      fields.push(reason ? `${details.field} (${reason})` : details.field)
+    }
+    const violations = (details as { violations?: unknown }).violations
+    if (Array.isArray(violations)) {
+      for (const v of violations) {
+        if (v && typeof v === 'object') {
+          const field = (v as { field?: unknown }).field
+          const reason = (v as { reason?: unknown }).reason
+          if (typeof field === 'string') {
+            fields.push(
+              typeof reason === 'string' && reason
+                ? `${field} (${reason})`
+                : field,
+            )
+          }
+        }
+      }
+    }
+  }
+  if (fields.length === 0) return e.message
+  return `${e.message}: ${fields.join(', ')}`
+}
 
 /**
  * Web frontend's `slugifyServerName` reproduced in-place. Same rules so a
@@ -99,7 +211,7 @@ function slugifyName(input: string): string {
  * Form state shape. Distinguished from the wire shape (CreateMcpParams) by
  * a few "raw" text buffers we parse on submit — same pattern as web:
  *   - argsRaw: whitespace-separated command args
- *   - envRaw / headersRaw: `key=value\n...` and `key: value\n...` blocks
+ *   - env / headers: structured KV rows (see KvEntry)
  *   - tags: comma-separated in the input; kept as an array in state
  */
 interface FormValues {
@@ -111,11 +223,10 @@ interface FormValues {
   slogan: string
   transport: McpTransport
   url: string
-  auth_type: McpAuthType
   command: string
   argsRaw: string
-  envRaw: string
-  headersRaw: string
+  envEntries: KvEntry[]
+  headersEntries: KvEntry[]
   tools: McpTool[]
   usage_examples: string[]
   faqs: McpFaq[]
@@ -131,11 +242,10 @@ const EMPTY: FormValues = {
   slogan: '',
   transport: 'streamable-http',
   url: '',
-  auth_type: 'none',
   command: '',
   argsRaw: '',
-  envRaw: '',
-  headersRaw: '',
+  envEntries: [],
+  headersEntries: [],
   tools: [],
   usage_examples: [],
   faqs: [],
@@ -144,31 +254,6 @@ const EMPTY: FormValues = {
 
 function isRemote(transport: McpTransport): boolean {
   return transport === 'streamable-http' || transport === 'sse'
-}
-
-function parseKV(raw: string, sep: '=' | ':'): Record<string, string> {
-  const out: Record<string, string> = {}
-  for (const line of raw.split(/\r?\n/)) {
-    const trimmed = line.trim()
-    if (!trimmed) continue
-    const idx = trimmed.indexOf(sep)
-    if (idx === -1) continue
-    const k = trimmed.slice(0, idx).trim()
-    const v = trimmed.slice(idx + 1).trim()
-    if (k) out[k] = v
-  }
-  return out
-}
-
-function serializeKV(
-  m: Record<string, string> | undefined,
-  sep: '=' | ': ',
-): string {
-  if (!m) return ''
-  return Object.keys(m)
-    .sort()
-    .map((k) => `${k}${sep}${m[k] ?? ''}`)
-    .join('\n')
 }
 
 function detailToValues(d: McpDetail): FormValues {
@@ -182,11 +267,10 @@ function detailToValues(d: McpDetail): FormValues {
     slogan: d.slogan || '',
     transport: q.transport,
     url: q.url || '',
-    auth_type: q.auth_type || 'none',
     command: q.command || '',
     argsRaw: (q.args || []).join(' '),
-    envRaw: serializeKV(q.env, '='),
-    headersRaw: serializeKV(q.headers, ': '),
+    envEntries: entriesFromWire(q.env, q.env_user_supplied),
+    headersEntries: entriesFromWire(q.headers, q.headers_user_supplied),
     tools: d.tools?.length ? d.tools : [],
     usage_examples: d.usage_examples || [],
     faqs: d.faqs || [],
@@ -212,12 +296,6 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
   const [submitting, setSubmitting] = useState(false)
   const [probing, setProbing] = useState(false)
   const [iconUploading, setIconUploading] = useState(false)
-  // Ephemeral bearer token consumed only by the probe call; NEVER included
-  // in the create/update payload. Lets the operator paste a real token to
-  // fetch the tool list while the saved config keeps the sentinel
-  // placeholder that mcp-v1.md §5.1 requires. Not seeded from `editing` —
-  // real values never round-trip to the client.
-  const [probeBearer, setProbeBearer] = useState('')
 
   // Reset-on-open matches web's behavior (McpCreateModal:364-389). Editing
   // → hydrate from detail; create → start blank; either way step goes back
@@ -230,15 +308,13 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
       // An existing slug counts as user-set so name renames don't clobber it.
       setSlugTouched(!!seed.slug)
       setAdvancedOpen(
-        !!seed.envRaw.trim() || !!seed.headersRaw.trim(),
+        seed.envEntries.length > 0 || seed.headersEntries.length > 0,
       )
     } else {
       setForm(EMPTY)
       setSlugTouched(false)
       setAdvancedOpen(false)
     }
-    // Probe bearer is per-session and never re-used across opens.
-    setProbeBearer('')
     setStep(0)
   }, [open, editing])
 
@@ -313,29 +389,14 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
       !remote && form.argsRaw.trim()
         ? form.argsRaw.trim().split(/\s+/)
         : undefined
-    const env =
-      !remote && form.envRaw
-        ? (() => {
-            const kv = parseKV(form.envRaw, '=')
-            return Object.keys(kv).length ? kv : undefined
-          })()
-        : undefined
-    const headers = (() => {
-      if (!remote) return undefined
-      const parsed = form.headersRaw ? parseKV(form.headersRaw, ':') : {}
-      // Uphold the documented invariant (mcp-v1.md §5.1): when bearer auth
-      // is declared, the persisted record MUST carry an Authorization
-      // header. If the operator didn't supply one — most likely because
-      // they only pasted a token into the ephemeral "test-only" field for
-      // the probe call, or because the Advanced block was collapsed — we
-      // stamp the shared sentinel so downstream consumers see a slot to
-      // fill in rather than a silent no-auth misconfiguration.
-      if (form.auth_type === 'bearer') {
-        const hasAuth = AUTHORIZATION_HEADER_KEYS.some((k) => k in parsed)
-        if (!hasAuth) parsed.Authorization = SECRET_PLACEHOLDER_SENTINEL
-      }
-      return Object.keys(parsed).length ? parsed : undefined
-    })()
+    // Both env and headers ride through entriesToWire regardless of the
+    // active transport. Gating on `remote` here (as an earlier revision
+    // did) drops the OTHER half to `undefined` on a transport-flip PATCH,
+    // and backend's `req.Env != nil` guard then preserves stale wire data
+    // under the wrong transport — see review finding B2. Web made the same
+    // call for identical reasons (McpCreateModal.tsx around L740).
+    const envSplit = entriesToWire(form.envEntries)
+    const headersSplit = entriesToWire(form.headersEntries)
     return {
       name: form.name.trim(),
       // Auto-derived slug already fills; on manual override we've kept the
@@ -348,11 +409,12 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
       slogan: form.slogan.trim() || undefined,
       transport: form.transport,
       url: remote ? form.url.trim() || undefined : undefined,
-      auth_type: remote ? form.auth_type : undefined,
       command: !remote ? form.command.trim() || undefined : undefined,
       args,
-      env,
-      headers,
+      env: envSplit.values,
+      env_user_supplied: envSplit.userSupplied,
+      headers: headersSplit.values,
+      headers_user_supplied: headersSplit.userSupplied,
       tools: form.tools.filter((tt) => tt.name.trim()),
       usage_examples: form.usage_examples.filter((s) => s.trim()),
       faqs: form.faqs.filter((f) => f.question.trim()),
@@ -374,12 +436,19 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
       message.warning(t('form.urlRequired'))
       return
     }
+    // Build probe headers from the KV entries with REAL values (probe is
+    // off-record — the actual credentials need to reach the remote MCP or
+    // auth fails). Rows with an empty key are dropped so a stray blank
+    // slot doesn't send `{"": ""}`.
+    const probeHeaders: Record<string, string> = {}
+    for (const e of form.headersEntries) {
+      const k = e.key.trim()
+      if (k) probeHeaders[k] = e.value
+    }
     const req = buildProbeRequest({
       transport: form.transport,
       url: form.url,
-      auth_type: form.auth_type,
-      headersRaw: form.headersRaw,
-      probeBearer,
+      headers: probeHeaders,
     })
     if (!req) return
     setProbing(true)
@@ -427,7 +496,7 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
       const fallback = isEdit
         ? t('modal.updateFailed')
         : t('modal.createFailed')
-      message.error(e instanceof ApiError ? e.message : fallback)
+      message.error(describeApiError(e, fallback))
     } finally {
       setSubmitting(false)
     }
@@ -709,46 +778,6 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
                       maxLength={2048}
                     />
                   </Form.Item>
-                  <Form.Item label={t('form.authType')} style={{ marginBottom: 0 }}>
-                    <Radio.Group
-                      value={form.auth_type}
-                      onChange={(e) => {
-                        const next = e.target.value as McpAuthType
-                        update('auth_type', next)
-                        // Bearer implies a persisted Authorization header
-                        // (defaulted to the sentinel by buildPayload). Auto-
-                        // open the Advanced block so the operator sees that
-                        // slot and can override it with a real shared token
-                        // if they want to. Selecting `none` doesn't collapse
-                        // — anything the operator has already typed stays
-                        // visible.
-                        if (next === 'bearer' && !advancedOpen) {
-                          setAdvancedOpen(true)
-                        }
-                      }}
-                      buttonStyle="solid"
-                      className="mcp-form-segmented"
-                    >
-                      <Radio.Button value="none">{t('form.authTypeNone')}</Radio.Button>
-                      <Radio.Button value="bearer">
-                        {t('form.authTypeBearer')}
-                      </Radio.Button>
-                    </Radio.Group>
-                  </Form.Item>
-                  {form.auth_type === 'bearer' && (
-                    <Form.Item
-                      label={t('form.probeBearerLabel')}
-                      extra={t('form.probeBearerHint')}
-                      style={{ marginBottom: 0, marginTop: 12 }}
-                    >
-                      <Input.Password
-                        value={probeBearer}
-                        onChange={(e) => setProbeBearer(e.target.value)}
-                        placeholder={t('form.probeBearerPlaceholder')}
-                        autoComplete="off"
-                      />
-                    </Form.Item>
-                  )}
                 </>
               ) : (
                 <>
@@ -792,11 +821,17 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
                   extra={t('form.headersHint')}
                   style={{ marginBottom: 0, marginTop: 8 }}
                 >
-                  <TextArea
-                    rows={3}
-                    value={form.headersRaw}
-                    onChange={(e) => update('headersRaw', e.target.value)}
-                    placeholder={t('form.headersPlaceholder')}
+                  <KvEditor
+                    entries={form.headersEntries}
+                    onChange={(next) => update('headersEntries', next)}
+                    keyPlaceholder={t('form.headerKeyPlaceholder')}
+                    valuePlaceholder={t('form.headerValuePlaceholder')}
+                    valuePlaceholderUserSupplied={t(
+                      'form.kvUserSuppliedPlaceholder',
+                    )}
+                    addLabel={t('form.headerAdd')}
+                    removeLabel={t('form.headerRemove')}
+                    toggleLabel={t('form.kvUserSuppliedToggle')}
                   />
                 </Form.Item>
               )}
@@ -807,11 +842,17 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
                   extra={t('form.envHint')}
                   style={{ marginBottom: 0, marginTop: 8 }}
                 >
-                  <TextArea
-                    rows={3}
-                    value={form.envRaw}
-                    onChange={(e) => update('envRaw', e.target.value)}
-                    placeholder={t('form.envPlaceholder')}
+                  <KvEditor
+                    entries={form.envEntries}
+                    onChange={(next) => update('envEntries', next)}
+                    keyPlaceholder={t('form.envKeyPlaceholder')}
+                    valuePlaceholder={t('form.envValuePlaceholder')}
+                    valuePlaceholderUserSupplied={t(
+                      'form.kvUserSuppliedPlaceholder',
+                    )}
+                    addLabel={t('form.envAdd')}
+                    removeLabel={t('form.envRemove')}
+                    toggleLabel={t('form.kvUserSuppliedToggle')}
                   />
                 </Form.Item>
               )}
@@ -952,6 +993,86 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
 }
 
 // ─── Presentation helpers ─────────────────────────────────────────────────
+
+/** Structured Headers / Env editor. One row per key with a per-key toggle
+ *  that flags "consumer fills locally" — the form's submit path converts
+ *  that flag into the wire's `headers_user_supplied` / `env_user_supplied`
+ *  arrays (mcp-v1.md §5.1). Antd-native counterpart of octo-web's KvEditor. */
+function KvEditor({
+  entries,
+  onChange,
+  keyPlaceholder,
+  valuePlaceholder,
+  valuePlaceholderUserSupplied,
+  addLabel,
+  removeLabel,
+  toggleLabel,
+}: {
+  entries: KvEntry[]
+  onChange: (next: KvEntry[]) => void
+  keyPlaceholder: string
+  valuePlaceholder: string
+  valuePlaceholderUserSupplied: string
+  addLabel: string
+  removeLabel: string
+  toggleLabel: string
+}) {
+  const patch = (idx: number, next: Partial<KvEntry>) =>
+    onChange(entries.map((e, i) => (i === idx ? { ...e, ...next } : e)))
+  const remove = (idx: number) =>
+    onChange(entries.filter((_, i) => i !== idx))
+  const add = () =>
+    onChange([...entries, { key: '', value: '', userSupplied: false }])
+
+  return (
+    <div className="mcp-form-kv">
+      {entries.map((e, idx) => (
+        <div className="mcp-form-kv__row" key={idx}>
+          <Input
+            className="mcp-form-kv__key"
+            value={e.key}
+            onChange={(ev) => patch(idx, { key: ev.target.value })}
+            placeholder={keyPlaceholder}
+            maxLength={128}
+          />
+          <Input
+            className="mcp-form-kv__value"
+            value={e.value}
+            onChange={(ev) => patch(idx, { value: ev.target.value })}
+            placeholder={
+              e.userSupplied ? valuePlaceholderUserSupplied : valuePlaceholder
+            }
+            maxLength={1024}
+          />
+          <label className="mcp-form-kv__toggle">
+            <Switch
+              size="small"
+              checked={e.userSupplied}
+              onChange={(checked) => patch(idx, { userSupplied: checked })}
+            />
+            <span className="mcp-form-kv__toggle-label">{toggleLabel}</span>
+          </label>
+          <Button
+            type="text"
+            size="small"
+            danger
+            icon={<DeleteOutlined />}
+            aria-label={removeLabel}
+            onClick={() => remove(idx)}
+          />
+        </div>
+      ))}
+      <Button
+        size="small"
+        icon={<PlusOutlined />}
+        onClick={add}
+        style={{ marginTop: entries.length ? 4 : 0 }}
+      >
+        {addLabel}
+      </Button>
+    </div>
+  )
+}
 
 function DynamicListHeader({
   title,

@@ -4,8 +4,8 @@
  * the whole 3-step wizard.
  *
  *   1. buildProbeRequest — assembles the wire payload from the form's
- *      remote-connection fields, including the optional headers block which
- *      is a `key: value\n...` textarea in the UI.
+ *      remote-connection fields. Headers come in as a plain map already
+ *      resolved from the KvEditor rows.
  *   2. resolveProbeErrorMessage — turns a backend probe envelope with
  *      ok=false into the final `message.error` string, going through the
  *      error-code i18n table first and only falling back to the raw wire
@@ -17,7 +17,6 @@
  */
 
 import type {
-  McpAuthType,
   McpProbeRequest,
   McpProbeResponse,
   McpTransport,
@@ -36,33 +35,12 @@ export type TFn = (
 export interface ProbeFormFields {
   transport: McpTransport
   url: string
-  auth_type: McpAuthType
-  /** Raw `Header-Name: value\n...` textarea contents. Parsed here so the
-   *  helper owns the split-and-trim rules (same as FormModal's parseKV). */
-  headersRaw: string
-  /** Optional ephemeral bearer token supplied via the "试连密钥（不保存）"
-   *  field. When auth_type=bearer AND this is non-empty, it overrides any
-   *  Authorization value coming from `headersRaw` and is written as
-   *  `Authorization: Bearer <token>` on the probe wire. Never persisted —
-   *  the caller MUST NOT include this in the create/update payload. */
-  probeBearer?: string
-}
-
-/** Parse a `key: value\n...` block into a plain object. Duplicated from
- *  FormModal.parseKV so this file has no cross-module dependency; the two
- *  copies must stay in sync (the FormModal one also handles `=` for env). */
-function parseHeaderBlock(raw: string): Record<string, string> {
-  const out: Record<string, string> = {}
-  for (const line of raw.split(/\r?\n/)) {
-    const trimmed = line.trim()
-    if (!trimmed) continue
-    const idx = trimmed.indexOf(':')
-    if (idx === -1) continue
-    const k = trimmed.slice(0, idx).trim()
-    const v = trimmed.slice(idx + 1).trim()
-    if (k) out[k] = v
-  }
-  return out
+  /** Header map already resolved from the KvEditor rows in the caller.
+   *  Rows whose toggle is ON in the wizard carry whatever value the
+   *  operator typed (probe is off-record, so real credentials go on the
+   *  wire even for user-supplied slots — otherwise the handshake fails
+   *  auth). */
+  headers: Record<string, string>
 }
 
 /** Build the POST /admin/mcps/probe body from the current form fields. Only
@@ -70,14 +48,12 @@ function parseHeaderBlock(raw: string): Record<string, string> {
  *  probable from the server (mcp-v1.md §4.7). Returns null for non-remote
  *  transports so the caller can noop instead of firing a doomed request.
  *
- *  IMPORTANT: `auth_type` is intentionally not sent. The backend struct is
- *  `service.ProbeRequest` (probe.go:57), which only declares transport, url,
- *  command, args, env, headers — and the handler decodes with
- *  DisallowUnknownFields, so any extra field is rejected as
- *  "request body is not valid JSON". The Bearer token, when set, already
- *  reaches the remote MCP via `Authorization` in the headers map, so
- *  dropping auth_type from the wire has no functional cost. web's
- *  dmworkmcp/McpCreateModal.handleProbe follows the same rule. */
+ *  The backend struct is `service.ProbeRequest` (probe.go:57), which only
+ *  declares transport, url, command, args, env, headers — and the handler
+ *  decodes with DisallowUnknownFields, so any extra field is rejected as
+ *  "request body is not valid JSON". `env_user_supplied` /
+ *  `headers_user_supplied` are intentionally NOT sent; probe is off-record
+ *  and needs real values in place. */
 export function buildProbeRequest(
   fields: ProbeFormFields,
 ): McpProbeRequest | null {
@@ -86,17 +62,7 @@ export function buildProbeRequest(
   if (!remote) return null
   const trimmedURL = fields.url.trim()
   if (!trimmedURL) return null
-  const parsed = fields.headersRaw
-    ? parseHeaderBlock(fields.headersRaw)
-    : {}
-  const ephemeral = (fields.probeBearer ?? '').trim()
-  if (fields.auth_type === 'bearer' && ephemeral) {
-    // The ephemeral bearer wins over any Authorization coming from the
-    // persisted headers map (typically the SECRET_PLACEHOLDER sentinel) —
-    // the user's just-typed token is the more explicit signal.
-    parsed.Authorization = `Bearer ${ephemeral}`
-  }
-  const headers = Object.keys(parsed).length ? parsed : undefined
+  const headers = Object.keys(fields.headers).length ? fields.headers : undefined
   return {
     transport: fields.transport,
     url: trimmedURL,
