@@ -77,9 +77,9 @@ export default function McpDetailDrawer({
     if (!detail || deleting) return
     setDeleting(true)
     try {
-      await deleteSystemMcp(detail.id)
+      await deleteSystemMcp(detail.mcp_id)
       message.success(t('delete.success'))
-      onDeleted(detail.id)
+      onDeleted(detail.mcp_id)
     } catch (err) {
       message.error(err instanceof ApiError ? err.message : t('delete.failed'))
     } finally {
@@ -139,7 +139,7 @@ export default function McpDetailDrawer({
 
 function DetailBody({ detail }: { detail: McpDetail }) {
   const { t } = useTranslation(['systemMcp'])
-  const q = detail.quickStart
+  const q = detail.quick_start
   const isRemote =
     q.transport === 'streamable-http' || q.transport === 'sse'
 
@@ -169,13 +169,13 @@ function DetailBody({ detail }: { detail: McpDetail }) {
             <span>
               {t('detail.toolCount', {
                 defaultValue: '{{count}} tools',
-                count: detail.toolCount,
+                count: detail.tool_count,
               })}
             </span>
-            {detail.creatorName && (
+            {detail.creator_name && (
               <>
                 <span className="mcp-detail__sub-sep">·</span>
-                <span>@{detail.creatorName}</span>
+                <span>@{detail.creator_name}</span>
               </>
             )}
           </div>
@@ -201,16 +201,17 @@ function DetailBody({ detail }: { detail: McpDetail }) {
             <>
               <dt>{t('form.url')}</dt>
               <dd className="mono">{q.url || '—'}</dd>
-              <dt>{t('form.authType')}</dt>
-              <dd>{q.authType || 'none'}</dd>
               {q.headers && Object.keys(q.headers).length > 0 && (
                 <>
                   <dt>{t('form.headers')}</dt>
                   <dd>
                     <pre className="mcp-kv__pre">
-                      {Object.entries(q.headers)
-                        .map(([k, v]) => `${k}: ${v}`)
-                        .join('\n')}
+                      {renderKvBlock(
+                        q.headers,
+                        q.headers_user_supplied,
+                        ': ',
+                        t('form.kvUserSuppliedMarker'),
+                      )}
                     </pre>
                   </dd>
                 </>
@@ -231,9 +232,12 @@ function DetailBody({ detail }: { detail: McpDetail }) {
                   <dt>{t('form.env')}</dt>
                   <dd>
                     <pre className="mcp-kv__pre">
-                      {Object.entries(q.env)
-                        .map(([k, v]) => `${k}=${v}`)
-                        .join('\n')}
+                      {renderKvBlock(
+                        q.env,
+                        q.env_user_supplied,
+                        '=',
+                        t('form.kvUserSuppliedMarker'),
+                      )}
                     </pre>
                   </dd>
                 </>
@@ -260,10 +264,10 @@ function DetailBody({ detail }: { detail: McpDetail }) {
         )}
       </DetailSection>
 
-      {detail.usageExamples?.length > 0 && (
+      {detail.usage_examples?.length > 0 && (
         <DetailSection title={t('detail.section.examples')}>
           <ul className="mcp-list mcp-list--quote">
-            {detail.usageExamples.map((ex, i) => (
+            {detail.usage_examples.map((ex, i) => (
               <li key={i} className="mcp-list__item">
                 {ex}
               </li>
@@ -311,4 +315,24 @@ function DetailSection({
       {children}
     </section>
   )
+}
+
+/** Render a headers / env map to a `KEY<sep>VALUE` block. Keys listed in
+ *  `userSupplied` are annotated with `marker` (localized "consumer fills
+ *  locally" text passed in by the caller) so the reader can distinguish a
+ *  shared-empty slot from a user-supplied one — the wire looks identical
+ *  for both (empty value) but the copy-paste snippet flow differs. */
+function renderKvBlock(
+  m: Record<string, string>,
+  userSupplied: string[] | undefined,
+  sep: string,
+  marker: string,
+): string {
+  const supplied = new Set(userSupplied ?? [])
+  return Object.entries(m)
+    .map(([k, v]) => {
+      const suffix = supplied.has(k) ? `  (${marker})` : ''
+      return `${k}${sep}${v}${suffix}`
+    })
+    .join('\n')
 }

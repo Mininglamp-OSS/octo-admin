@@ -1,65 +1,20 @@
 /**
- * octo-marketplace admin client.
+ * octo-marketplace admin client for MCP resources.
  *
- * Distinct from the shared `../api` axios instance for two reasons:
- *   1. Different origin — marketplace mounts under `/market/api/v1` (per
- *      octo-marketplace/docs/api/mcp-v1.md §1). Requests are routed via the
- *      vite `/market/*` proxy in dev and the nginx `/market/*` rewrite in
- *      prod, then land at marketplace as `/api/v1/*`.
- *   2. Different error envelope — marketplace ships `{err:{code,message}}`
- *      (doc §2); the primary admin backend uses
- *      `{error:{code,http_status,message}}`. The response interceptor here
- *      normalizes both into the shared `ApiError` type.
+ * Uses the shared marketplace axios instance from ./marketplace, which
+ * handles baseURL, auth token injection, Accept-Language, and error-envelope
+ * normalization. Marketplace admits only role=superAdmin on the /admin/*
+ * namespace (mcp-v1.md §9.1); this file trusts that gate and only adds
+ * resource-specific types + endpoint wrappers.
  *
- * Auth: the caller's own Octo login token (same header the shared axios
- * instance sends). Marketplace resolves it via octo-server /v1/auth/verify
- * and admits only role=superAdmin on the /admin/* namespace (mcp-v1.md
- * §9.1). No shared secret in the browser bundle.
+ * Wire contract: marketplace wraps every success payload as `{data: T}` and
+ * every field is snake_case. Types in this file mirror the wire exactly —
+ * page code reads snake_case directly. Same pattern as ./skill.ts.
  */
 
-import axios, { AxiosError } from 'axios'
-import i18n, { FALLBACK_LANGUAGE } from '../i18n'
-import { ApiError } from './index'
-import { useAuthStore } from '../store/auth'
+import { marketplaceApi as mcpApi, putPresignedFile } from './marketplace'
 
-const MARKETPLACE_BASE =
-  import.meta.env.VITE_MARKETPLACE_API_BASE || '/market/api/v1'
-
-const mcpApi = axios.create({
-  baseURL: MARKETPLACE_BASE,
-  timeout: 30000,
-})
-
-mcpApi.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().token
-  if (token) {
-    config.headers.token = token
-  }
-  config.headers['Accept-Language'] =
-    i18n.resolvedLanguage ?? FALLBACK_LANGUAGE
-  return config
-})
-
-mcpApi.interceptors.response.use(
-  (response) => response,
-  (
-    error: AxiosError<{
-      err?: { code?: string; message?: string }
-    }>
-  ) => {
-    const wire = error.response?.data?.err
-    const message = wire?.message || wire?.code || error.message
-    if (error.response?.status === 401) {
-      useAuthStore.getState().logout()
-      window.location.href = '/admin/login'
-    }
-    return Promise.reject(
-      new ApiError(message, error.response?.status, wire?.code)
-    )
-  }
-)
-
-// ─── Types (mirrors octo-marketplace/docs/api/mcp-v1.md §3) ───────────────
+// ─── Types (mirrors octo-marketplace/docs/api/mcp-v1.md §3, wire shape) ────
 
 export type McpVisibility = 'public' | 'private' | 'system'
 export type McpTransport = 'stdio' | 'streamable-http' | 'sse'
@@ -77,41 +32,50 @@ export interface McpFaq {
 
 export interface McpQuickStart {
   transport: McpTransport
-  serverName: string
+  server_name: string
   /** ASCII identifier used as the JSON key in the generated mcpServers
    *  snippet (mcp-v1.md §3, "服务标识"). Present on records created after
    *  migration 03; matches `^[a-z0-9-]{1,64}$`. Empty on legacy rows. */
   slug?: string
   url?: string
-  authType?: McpAuthType
+  auth_type?: McpAuthType
   headers?: Record<string, string>
+  /** Header keys whose value each consumer must fill locally (mcp-v1.md §5.1
+   *  "toggle model"). The wire persists such keys with an empty value; the
+   *  copy-paste snippet renders a placeholder in their slot. Absent / empty
+   *  → every header is a shared value the author published verbatim. */
+  headers_user_supplied?: string[]
   command?: string
   args?: string[]
   env?: Record<string, string>
+  /** Env keys whose value each consumer must fill locally. Same wire
+   *  contract as headers_user_supplied. */
+  env_user_supplied?: string[]
 }
 
 /** List projection returned by GET /admin/api/v1/mcps (doc §3.2 superset). */
 export interface McpListItem {
-  id: string
+  mcp_id: string
   name: string
   slogan: string
   category: string
   icon: string
   tags: string[]
-  toolCount: number
+  tool_count: number
   visibility: McpVisibility
-  creatorName: string
+  creator_name: string
+  created_by_type?: string
 }
 
 /** Full record returned by POST/GET/PATCH /admin/api/v1/mcps (doc §3.1). */
 export interface McpDetail extends McpListItem {
-  quickStart: McpQuickStart
+  quick_start: McpQuickStart
   tools: McpTool[]
-  usageExamples: string[]
+  usage_examples: string[]
   faqs: McpFaq[]
   notes: string[]
-  createdAt: string
-  updatedAt: string
+  created_at: string
+  updated_at: string
 }
 
 /** Create body — flat shape per doc §3.3. Visibility is stripped by the
@@ -130,10 +94,14 @@ export interface CreateMcpParams {
   command?: string
   args?: string[]
   env?: Record<string, string>
+  /** Env keys whose value each consumer fills locally (mcp-v1.md §5.1). */
+  env_user_supplied?: string[]
   headers?: Record<string, string>
-  authType?: McpAuthType
+  /** Header keys whose value each consumer fills locally. */
+  headers_user_supplied?: string[]
+  auth_type?: McpAuthType
   tools: McpTool[]
-  usageExamples?: string[]
+  usage_examples?: string[]
   faqs?: McpFaq[]
   notes?: string[]
 }
@@ -145,10 +113,12 @@ export interface ListMcpParams {
   offset?: number
 }
 
+/** Client-side projection of `GET /admin/mcps` wire response. Wire ships
+ *  `{data: McpListItem[], pagination: {total, page, page_size}}` — we
+ *  flatten to `{items, total}` for the page. */
 export interface ListMcpResponse {
   items: McpListItem[]
   total: number
-  categories: { key: string; count: number }[]
 }
 
 /** PATCH body — every field optional (doc §4.5 shape). The marketplace admin
@@ -166,10 +136,12 @@ export interface PatchMcpParams {
   command?: string
   args?: string[]
   env?: Record<string, string>
+  env_user_supplied?: string[]
   headers?: Record<string, string>
-  authType?: McpAuthType
+  headers_user_supplied?: string[]
+  auth_type?: McpAuthType
   tools?: McpTool[]
-  usageExamples?: string[]
+  usage_examples?: string[]
   faqs?: McpFaq[]
   notes?: string[]
 }
@@ -186,24 +158,30 @@ export async function listSystemMcps(
   query.category = params.category ?? 'all'
   if (params.limit && params.limit > 0) query.limit = params.limit
   if (params.offset && params.offset > 0) query.offset = params.offset
-  const resp = await mcpApi.get<ListMcpResponse>('/admin/mcps', {
-    params: query,
-  })
-  return resp.data
+  const resp = await mcpApi.get<{
+    data: McpListItem[]
+    pagination: { total: number; page: number; page_size: number }
+  }>('/admin/mcps', { params: query })
+  return {
+    items: resp.data.data ?? [],
+    total: resp.data.pagination?.total ?? 0,
+  }
 }
 
 /** POST /admin/api/v1/mcps — create a system MCP. */
 export async function createSystemMcp(
   params: CreateMcpParams
 ): Promise<McpDetail> {
-  const resp = await mcpApi.post<McpDetail>('/admin/mcps', params)
-  return resp.data
+  const resp = await mcpApi.post<{ data: McpDetail }>('/admin/mcps', params)
+  return resp.data.data
 }
 
 /** GET /admin/api/v1/mcps/{id} — fetch full detail for a system MCP. */
 export async function getSystemMcp(id: string): Promise<McpDetail> {
-  const resp = await mcpApi.get<McpDetail>(`/admin/mcps/${encodeURIComponent(id)}`)
-  return resp.data
+  const resp = await mcpApi.get<{ data: McpDetail }>(
+    `/admin/mcps/${encodeURIComponent(id)}`
+  )
+  return resp.data.data
 }
 
 /** PATCH /admin/api/v1/mcps/{id} — partial update. Any admin can edit any
@@ -212,11 +190,11 @@ export async function updateSystemMcp(
   id: string,
   params: PatchMcpParams
 ): Promise<McpDetail> {
-  const resp = await mcpApi.patch<McpDetail>(
+  const resp = await mcpApi.patch<{ data: McpDetail }>(
     `/admin/mcps/${encodeURIComponent(id)}`,
     params
   )
-  return resp.data
+  return resp.data.data
 }
 
 /** DELETE /admin/api/v1/mcps/{id} — soft delete. */
@@ -228,10 +206,10 @@ export async function deleteSystemMcp(id: string): Promise<void> {
 
 /** POST /admin/api/v1/mcps/probe body. Mirrors service.ProbeRequest exactly
  *  — the marketplace decodes with DisallowUnknownFields, so any extra field
- *  (like a UI-only authType) is rejected as "request body is not valid
- *  JSON". A Bearer token, when set, lives inside `headers.Authorization`
- *  and reaches the remote MCP through that path. Only remote transports
- *  (streamable-http / sse) are probable — stdio needs a desktop runtime. */
+ *  is rejected as "request body is not valid JSON". A Bearer token, when
+ *  set, lives inside `headers.Authorization` and reaches the remote MCP
+ *  through that path. Only remote transports (streamable-http / sse) are
+ *  probable — stdio needs a desktop runtime. */
 export interface McpProbeRequest {
   transport: McpTransport
   url?: string
@@ -239,21 +217,24 @@ export interface McpProbeRequest {
 }
 
 /** POST /admin/api/v1/mcps/probe response envelope. Wire never omits fields
- *  even on failure — server sets tools=[] and ok=false + error.code. */
+ *  even on failure — server sets tools=[] and is_ok=false + error.code. */
 export interface McpProbeResponse {
-  ok: boolean
+  is_ok: boolean
   tools: McpTool[]
   error?: { code?: string; message?: string }
 }
 
 /** Run an MCP handshake against the server described by `req` and return
  *  its tool list. The response is HTTP 200 even on probe failure — the
- *  `ok` flag tells the caller whether tools[] is meaningful. */
+ *  `is_ok` flag tells the caller whether tools[] is meaningful. */
 export async function probeSystemMcp(
   req: McpProbeRequest,
 ): Promise<McpProbeResponse> {
-  const resp = await mcpApi.post<McpProbeResponse>('/admin/mcps/probe', req)
-  return resp.data
+  const resp = await mcpApi.post<{ data: McpProbeResponse }>(
+    '/admin/mcps/probe',
+    req
+  )
+  return resp.data.data
 }
 
 // ─── Icon upload (presigned URL flow) ────────────────────────────────────
@@ -279,7 +260,7 @@ export interface McpIconInitResponse {
  *  operator's Octo login token + role=superAdmin — same as every other
  *  mcpApi call. */
 export async function uploadMcpIcon(file: File): Promise<string> {
-  const initResp = await mcpApi.post<McpIconInitResponse>(
+  const initResp = await mcpApi.post<{ data: McpIconInitResponse }>(
     '/admin/mcps/upload/icon',
     {
       file_name: file.name,
@@ -287,18 +268,7 @@ export async function uploadMcpIcon(file: File): Promise<string> {
       content_type: file.type,
     },
   )
-  const { presigned_url, download_url, headers } = initResp.data
-  // Direct PUT to the presigned URL. Use fetch instead of mcpApi (axios)
-  // because the presigned URL points at the local proxy or OSS host — not
-  // the admin base URL, and we don't want mcpApi's token / Accept-Language
-  // interceptors leaking into a third-party call.
-  const putResp = await fetch(presigned_url, {
-    method: 'PUT',
-    headers: headers ?? {},
-    body: file,
-  })
-  if (!putResp.ok) {
-    throw new Error(`Upload failed (${putResp.status})`)
-  }
+  const { presigned_url, download_url, method, headers } = initResp.data.data
+  await putPresignedFile(presigned_url, file, { method, headers })
   return download_url
 }
