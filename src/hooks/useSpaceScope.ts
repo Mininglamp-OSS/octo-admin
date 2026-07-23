@@ -210,8 +210,9 @@ function buildUserScope(role: SpaceMemberRole): SpaceScope {
       },
       createInvite: async (spaceId, data) => {
         const resp = await user.createSpaceUserInvite(spaceId, data)
+        // "never" 是永久哨兵，也属于显式 expires_at，应走 update 写入。
         const hasCustom =
-          data.max_uses !== undefined || (data.expires_at && data.expires_at.length > 0)
+          data.max_uses !== undefined || (data.expires_at !== undefined && data.expires_at !== '')
         if (hasCustom) {
           try {
             await user.updateSpaceUserInvite(spaceId, resp.invite_code, {

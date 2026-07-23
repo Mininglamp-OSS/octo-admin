@@ -181,23 +181,31 @@ export default function SpaceInvitesPanel({ spaceId, scope, readOnly = false }: 
       initial: {
         no_limit: record.max_uses === 0,
         max_uses: record.max_uses > 0 ? record.max_uses : undefined,
-        expires_at: record.expires_at ? dayjs(record.expires_at) : DEFAULT_EXPIRES(),
+        // expires_at 为空字符串 = 永久；编辑时应保留永久（null），而非默认回填 7 天
+        expires_at: record.expires_at ? dayjs(record.expires_at) : null,
       },
     })
   }
 
   const handleEditorSubmit = async () => {
     const values = await editorForm.validateFields()
-    const expires = values.expires_at
-      ? values.expires_at.second(0).format('YYYY-MM-DD HH:mm:ss')
-      : ''
+    // expires_at 三态：
+    //   具体时间 → 格式化字符串
+    //   null（选了"永久"）→ "never"（服务端哨兵值，明确要求 NULL expires_at）
+    //   undefined（表单未碰）→ undefined（服务端套默认值）
+    const expires =
+      values.expires_at === undefined
+        ? undefined
+        : values.expires_at === null
+          ? 'never'
+          : values.expires_at.second(0).format('YYYY-MM-DD HH:mm:ss')
     const maxUses = values.no_limit ? 0 : values.max_uses
     setEditorLoading(true)
     try {
       if (editor.mode === 'create') {
         const resp = await scope.api.createInvite(spaceId, {
           max_uses: maxUses,
-          expires_at: expires || undefined,
+          expires_at: expires,
         })
         const copied = await copyText(buildInviteLink(resp.invite_code))
         message.success(
