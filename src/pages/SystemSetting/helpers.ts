@@ -81,7 +81,9 @@ export function groupByCategory(items: SystemSettingItem[]): [string, SystemSett
   return Array.from(groups.entries())
 }
 
-const SENTENCE_ENDINGS = '；;。'
+// `.` is deliberately absent: it would cut "octo/v1", "admin@example.com" and
+// version numbers at the wrong place. Question/exclamation marks are safe.
+const SENTENCE_ENDINGS = '；;。？！?!'
 const BRACKETS_OPEN = '（(【['
 const BRACKETS_CLOSE = '）)】]'
 
@@ -90,11 +92,14 @@ const BRACKETS_CLOSE = '）)】]'
  * descriptions stay on one line (the full text lives in a tooltip). Separators
  * inside brackets are ignored — "…（默认关闭，客户端适配后显式开启）" must not be cut.
  * Falls back to the key when there is no description.
+ *
+ * Bracket depth is counted, not type-matched: malformed pairs degrade to a
+ * longer title (clipped with an ellipsis), never to a wrong one.
  */
 export function settingSummary(item: SystemSettingItem): string {
   // A description that opens with a separator would otherwise yield an empty
   // first sentence, so drop any leading separators before scanning.
-  const description = (item.description || '').trim().replace(/^[；;。\s]+/, '')
+  const description = (item.description || '').trim().replace(/^[；;。？！?!\s]+/, '')
   if (!description) return item.key
 
   let depth = 0

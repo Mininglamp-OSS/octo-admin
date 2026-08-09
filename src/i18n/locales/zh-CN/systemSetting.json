@@ -14,7 +14,6 @@
   "badge.changed": "未保存",
   "tooltip.overridden": "该项已写入数据库，覆盖默认值",
   "tooltip.changed": "有未保存的修改",
-  "tooltip.fullDescription": "查看完整说明",
   "tooltip.saveBeforeTest": "请先保存配置后再发送测试邮件",
   "nav.aria": "配置分类",
   "nav.changed": "未保存",

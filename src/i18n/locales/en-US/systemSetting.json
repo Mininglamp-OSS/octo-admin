@@ -14,7 +14,6 @@
   "badge.changed": "Unsaved",
   "tooltip.overridden": "Stored in the database, overriding the default",
   "tooltip.changed": "Has unsaved changes",
-  "tooltip.fullDescription": "Show the full description",
   "tooltip.saveBeforeTest": "Please save the settings before sending a test email",
   "nav.aria": "Setting categories",
   "nav.changed": "Unsaved",

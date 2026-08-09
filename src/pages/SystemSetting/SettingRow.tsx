@@ -132,7 +132,11 @@ export default function SettingRow({
   const name = settingFormName(item.category, item.key)
   const summary = settingSummary(item)
   const description = (item.description || '').trim()
-  // Only flag "there is more to read" when the title is genuinely a truncation.
+  // The title gets clipped two independent ways: sentence extraction, and CSS
+  // ellipsis on a long single-sentence description. The ⓘ hints at the first
+  // (the only one detectable without measuring), but the tooltip covers both and
+  // hangs off the whole title, which is focusable so the text is reachable
+  // without a pointer.
   const hasMoreDetail = description !== '' && description !== summary
 
   const marker = changed
@@ -145,23 +149,14 @@ export default function SettingRow({
     <div className={`setting-row${marker}`}>
       <div className="setting-row-text">
         <div className="setting-row-head">
-          <Tooltip title={description || undefined}>
-            <span className="setting-row-label">{summary}</span>
+          <Tooltip title={description || undefined} trigger={['hover', 'focus']}>
+            <span className="setting-row-title" tabIndex={description ? 0 : undefined}>
+              <span className="setting-row-label">{summary}</span>
+              {/* Decorative: the tooltip lives on the parent, and the control's
+                  aria-label already carries the full description. */}
+              {hasMoreDetail && <InfoCircleOutlined className="setting-row-info" aria-hidden />}
+            </span>
           </Tooltip>
-          {hasMoreDetail && (
-            <Tooltip title={description} trigger={['hover', 'focus']}>
-              {/* A real button, not a bare icon: the remainder of the description
-                  only exists in this tooltip, so it has to be reachable by
-                  keyboard (antd's default trigger is hover only). */}
-              <button
-                type="button"
-                className="setting-row-info"
-                aria-label={t('tooltip.fullDescription')}
-              >
-                <InfoCircleOutlined />
-              </button>
-            </Tooltip>
-          )}
           {changed ? (
             <Tooltip title={t('tooltip.changed')}>
               <span className="setting-badge setting-badge--changed">{t('badge.changed')}</span>

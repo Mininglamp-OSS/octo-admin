@@ -52,6 +52,10 @@ export default function SystemSetting() {
   const [testModalOpen, setTestModalOpen] = useState(false)
   const [settings, setSettings] = useState<SystemSettingItem[]>([])
   const [changedFields, setChangedFields] = useState<string[]>([])
+  // Membership of the "unsaved" group, frozen on entry and only ever added to
+  // while it is open. Deriving it live from changedFields would pull a row out
+  // from under the cursor the moment its value is typed back to the saved one.
+  const [changedGroup, setChangedGroup] = useState<string[]>([])
   const [query, setQuery] = useState('')
   const [activeKey, setActiveKey] = useState(OVERRIDDEN_KEY)
   const [savedAt, setSavedAt] = useState<string | null>(null)
@@ -62,10 +66,10 @@ export default function SystemSetting() {
   const categoryGroups = useMemo(() => groupByCategory(settings), [settings])
   const overriddenItems = useMemo(() => settings.filter((item) => item.configured), [settings])
   const changedSet = useMemo(() => new Set(changedFields), [changedFields])
-  const changedItems = useMemo(
-    () => settings.filter((item) => changedSet.has(settingFormName(item.category, item.key))),
-    [settings, changedSet],
-  )
+  const changedGroupItems = useMemo(() => {
+    const names = new Set(changedGroup)
+    return settings.filter((item) => names.has(settingFormName(item.category, item.key)))
+  }, [settings, changedGroup])
 
   // Searching spans every category, so it replaces the selected category
   // rather than filtering within it.
@@ -73,10 +77,10 @@ export default function SystemSetting() {
     if (trimmedQuery) {
       return groupByCategory(settings.filter((item) => matchesSettingQuery(item, trimmedQuery)))
     }
-    if (activeKey === CHANGED_KEY) return [[CHANGED_KEY, changedItems]]
+    if (activeKey === CHANGED_KEY) return [[CHANGED_KEY, changedGroupItems]]
     if (activeKey === OVERRIDDEN_KEY) return [[OVERRIDDEN_KEY, overriddenItems]]
     return [[activeKey, settings.filter((item) => item.category === activeKey)]]
-  }, [trimmedQuery, settings, activeKey, changedItems, overriddenItems])
+  }, [trimmedQuery, settings, activeKey, changedGroupItems, overriddenItems])
 
   const matchCount = useMemo(
     () => visibleGroups.reduce((total, [, items]) => total + items.length, 0),
@@ -84,19 +88,19 @@ export default function SystemSetting() {
   )
 
   // Keep the selection valid: a virtual group disappears once it empties (e.g.
-  // the last unsaved edit is reverted), and a refresh may drop a category.
+  // after a save clears the unsaved group), and a refresh may drop a category.
   useEffect(() => {
     if (!settings.length) return
     const stillValid =
       activeKey === CHANGED_KEY
-        ? changedItems.length > 0
+        ? changedGroupItems.length > 0
         : activeKey === OVERRIDDEN_KEY
           ? overriddenItems.length > 0
           : settings.some((item) => item.category === activeKey)
     if (!stillValid) {
       setActiveKey(overriddenItems.length ? OVERRIDDEN_KEY : settings[0].category)
     }
-  }, [settings, activeKey, changedItems.length, overriddenItems.length])
+  }, [settings, activeKey, changedGroupItems.length, overriddenItems.length])
 
   // keepSavedHint is set by the post-save reload so the "saved at" hint stays;
   // a manual refresh clears it to avoid implying the page was just saved.
@@ -108,6 +112,7 @@ export default function SystemSetting() {
       setSettings(items)
       form.setFieldsValue(valuesFromSettings(items))
       setChangedFields([])
+      setChangedGroup([])
       if (!options?.keepSavedHint) setSavedAt(null)
     } catch (error) {
       message.error(t('toast.fetchFailed', { message: (error as Error).message }))
@@ -125,14 +130,29 @@ export default function SystemSetting() {
   // report every other category as blank.
   const allValues = () => form.getFieldsValue(true) as SystemSettingFormValues
 
-  const handleValuesChange = () => setChangedFields(changedFieldNames(allValues(), settings))
+  const handleValuesChange = () => {
+    const next = changedFieldNames(allValues(), settings)
+    setChangedFields(next)
+    // Grow-only while the unsaved group is open: a row edited in another
+    // category still shows up there, and reverting one leaves it in place
+    // (unmarked) instead of unmounting the input being typed into.
+    setChangedGroup((previous) => {
+      const merged = new Set(previous)
+      next.forEach((name) => merged.add(name))
+      return merged.size === previous.length ? previous : Array.from(merged)
+    })
+  }
 
   const handleDiscard = () => {
     form.setFieldsValue(valuesFromSettings(settings))
     setChangedFields([])
+    setChangedGroup([])
   }
 
   const handleSave = async () => {
+    // Validates mounted fields only, while the payload below is the whole store.
+    // Harmless today because no setting declares `rules`; if that changes, switch
+    // to validateFields(Object.keys(allValues())) so the two sets match.
     await form.validateFields()
     setSaving(true)
     try {
@@ -210,7 +230,15 @@ export default function SystemSetting() {
         <Button icon={<ReloadOutlined />} onClick={() => fetchSettings()} loading={loading}>
           {t('common:action.refresh')}
         </Button>
-        <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={saving}>
+        <Button
+          type="primary"
+          icon={<SaveOutlined />}
+          onClick={handleSave}
+          loading={saving}
+          // Before the first load lands there is nothing to submit; saving an
+          // empty payload would only produce a misleading success toast.
+          disabled={loading || settings.length === 0}
+        >
           {dirty ? t('action.saveWithCount', { count: changedFields.length }) : t('action.save')}
         </Button>
       </div>
@@ -230,6 +258,9 @@ export default function SystemSetting() {
             overriddenCount={overriddenItems.length}
             onSelect={(key) => {
               setQuery('')
+              // Re-freeze on every entry, so the group opens showing exactly
+              // what is unsaved right now.
+              if (key === CHANGED_KEY) setChangedGroup(changedFields)
               setActiveKey(key)
             }}
             t={t}

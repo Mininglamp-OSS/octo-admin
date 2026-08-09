@@ -143,11 +143,37 @@ describe('settingSummary', () => {
     expect(settingSummary(item)).toBe('是否开启扫码登录（默认关闭；客户端适配后显式开启）')
   })
 
-  it('handles a full stop and an ASCII semicolon', () => {
+  it('handles a full stop, an ASCII semicolon and question/exclamation marks', () => {
     const cn = makeItem({ category: 'a', key: 'b', value_type: 'string', description: '第一句。第二句' })
     const ascii = makeItem({ category: 'a', key: 'c', value_type: 'string', description: 'first; second' })
+    const question = makeItem({ category: 'a', key: 'd', value_type: 'string', description: '是否开启？关闭后不再展示入口' })
+    const bang = makeItem({ category: 'a', key: 'e', value_type: 'string', description: 'Danger! This wipes the cache' })
     expect(settingSummary(cn)).toBe('第一句')
     expect(settingSummary(ascii)).toBe('first')
+    expect(settingSummary(question)).toBe('是否开启')
+    expect(settingSummary(bang)).toBe('Danger')
+  })
+
+  it('never cuts on "." so versions, paths and emails survive', () => {
+    const item = makeItem({
+      category: 'support',
+      key: 'email',
+      value_type: 'string',
+      description: '默认联系人 admin@example.com，卡片协议 octo/v1.2 起生效',
+    })
+    expect(settingSummary(item)).toBe('默认联系人 admin@example.com，卡片协议 octo/v1.2 起生效')
+  })
+
+  it('degrades to a longer title, never a wrong one, on malformed brackets', () => {
+    // Depth is counted, not type-matched: a stray closer ends the bracket run…
+    const mismatched = makeItem({ category: 'a', key: 'b', value_type: 'string', description: '标题（说明]；后续' })
+    expect(settingSummary(mismatched)).toBe('标题（说明]')
+    // …and an unclosed opener suppresses every later separator.
+    const unclosed = makeItem({ category: 'a', key: 'c', value_type: 'string', description: '标题（未闭合；后续' })
+    expect(settingSummary(unclosed)).toBe('标题（未闭合；后续')
+    // A stray closer must not push depth negative and swallow the rest.
+    const strayClose = makeItem({ category: 'a', key: 'd', value_type: 'string', description: '标题）说明；后续' })
+    expect(settingSummary(strayClose)).toBe('标题）说明')
   })
 
   it('returns the description unchanged when there is no separator', () => {

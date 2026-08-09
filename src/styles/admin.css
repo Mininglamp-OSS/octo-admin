@@ -2157,6 +2157,19 @@
   gap: 6px;
   min-width: 0;
 }
+/* The title (label + optional ⓘ) is one tooltip trigger and one tab stop, so
+   clipped text is reachable by keyboard without doubling the tab order. */
+.admin-shell .setting-row-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  border-radius: var(--a-radius-sm);
+}
+.admin-shell .setting-row-title:focus-visible {
+  outline: 2px solid var(--a-brand);
+  outline-offset: 2px;
+}
 .admin-shell .setting-row-label {
   font-size: 14px;
   font-weight: 600;
@@ -2176,10 +2189,9 @@
   color: var(--a-text-quaternary);
   background: none;
   border: 0;
-  cursor: help;
 }
-.admin-shell .setting-row-info:hover,
-.admin-shell .setting-row-info:focus-visible {
+.admin-shell .setting-row-title:hover .setting-row-info,
+.admin-shell .setting-row-title:focus-visible .setting-row-info {
   color: var(--a-brand);
 }
 
@@ -2318,6 +2330,15 @@
   }
   .admin-shell .setting-search {
     width: 100%;
+  }
+  /* Pin both edges: the en-US bar content is wider than a 320px viewport can
+     hold, and with only `right` set it would grow off the left edge. */
+  .admin-shell .setting-save-bar {
+    left: 16px;
+    right: 16px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    border-radius: var(--a-radius-xl);
   }
 }
 
