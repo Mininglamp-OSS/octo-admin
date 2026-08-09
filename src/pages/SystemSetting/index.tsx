@@ -46,7 +46,9 @@ export default function SystemSetting() {
   const { t } = useTranslation(['systemSetting', 'common'])
   const [form] = Form.useForm<SystemSettingFormValues>()
   const [testForm] = Form.useForm<TestEmailFormValues>()
-  const [loading, setLoading] = useState(false)
+  // Starts true: the mount effect fetches immediately, and a false start would
+  // paint the "no settings" Empty for one frame before the request begins.
+  const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testModalOpen, setTestModalOpen] = useState(false)
