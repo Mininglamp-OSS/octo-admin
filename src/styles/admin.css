@@ -1975,28 +1975,118 @@
   min-width: 0;
 }
 
-/* =========== System Setting masonry =========== */
-/* CSS multi-column masonry: cards pack column by column, top to bottom,
-   avoiding the large gaps the old paired Row/Col grid left between rows. */
-.admin-shell .setting-masonry {
-  column-count: 2;
-  column-gap: 16px;
+/* =========== System Setting layout (category rail + single column) =========== */
+/* 60+ settings across ~10 categories: the rail on the left switches categories
+   and only the selected one is rendered, so the page stays about a screen tall.
+   Cross-category lookup goes through the toolbar search instead of scrolling. */
+.admin-shell .setting-layout {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+/* Keep the last row clear of the floating save bar when it is showing. */
+.admin-shell .setting-layout--with-save-bar {
+  padding-bottom: 76px;
 }
 
-.admin-shell .setting-masonry .setting-card {
-  break-inside: avoid;
-  -webkit-column-break-inside: avoid;
-  page-break-inside: avoid;
-  display: inline-block;
+.admin-shell .setting-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.admin-shell .setting-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
-  margin-bottom: 16px;
+  min-height: 34px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  color: var(--a-text-secondary);
+  background: transparent;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: var(--a-radius-lg);
+  cursor: pointer;
+}
+.admin-shell .setting-nav-item:hover {
+  background: var(--a-bg-muted);
+  color: var(--a-text-primary);
+}
+.admin-shell .setting-nav-item.active {
+  background: var(--a-brand-subtle-bg);
+  color: var(--a-brand-subtle-fg);
+  font-weight: 600;
+  border-left-color: var(--a-brand);
+}
+.admin-shell .setting-nav-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.admin-shell .setting-nav-count {
+  flex: none;
+  font-size: 11px;
+  color: var(--a-text-quaternary);
+  font-variant-numeric: tabular-nums;
+}
+.admin-shell .setting-nav-item.active .setting-nav-count {
+  color: var(--a-brand-subtle-fg);
+}
+/* Dot = this category contains overridden rows (warning variant = unsaved edits) */
+.admin-shell .setting-nav-dot {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--a-brand);
+}
+.admin-shell .setting-nav-dot--warning {
+  background: var(--a-warning);
+}
+.admin-shell .setting-nav-divider {
+  height: 1px;
+  margin: 6px 10px;
+  background: var(--a-border-default);
 }
 
-/* Match the previous lg breakpoint: single column on narrow screens */
-@media (max-width: 991.98px) {
-  .admin-shell .setting-masonry {
-    column-count: 1;
-  }
+.admin-shell .setting-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* Toolbar search + totals */
+.admin-shell .setting-search {
+  width: 280px;
+  max-width: 100%;
+}
+.admin-shell .setting-stat {
+  font-size: 12px;
+  color: var(--a-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Search result hint line above the result cards */
+.admin-shell .setting-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px;
+  font-size: 12px;
+  color: var(--a-text-tertiary);
+}
+.admin-shell .setting-hint-clear {
+  padding: 0;
+  height: auto;
+  font-size: 12px;
 }
 
 /* =========== System Setting rows (label / control / meta hierarchy) =========== */
@@ -2015,81 +2105,126 @@
   padding: 1px 8px;
 }
 
-/* Row container: thin dividers between rows act as quiet background structure */
+/* Row container: thin dividers between rows act as quiet background structure.
+   Every row is inline (label left, control right) so row heights stay uniform
+   and the control column has one right edge. */
 .admin-shell .setting-rows {
   display: flex;
   flex-direction: column;
 }
 .admin-shell .setting-row {
-  padding: 14px 0;
-  border-top: 1px solid var(--a-border-default);
-}
-.admin-shell .setting-rows .setting-row:first-child {
-  padding-top: 2px;
-  border-top: 0;
-}
-
-/* inline: label left, compact control right; block: label on top, full-width control */
-.admin-shell .setting-row--inline {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
+  padding: 9px 0 9px 12px;
+  border-top: 1px solid var(--a-border-default);
+  /* transparent by default so overridden/changed rows do not shift the text */
+  border-left: 2px solid transparent;
 }
-.admin-shell .setting-row--inline .setting-row-text {
+.admin-shell .setting-rows .setting-row:first-child {
+  border-top: 0;
+}
+/* Left rule: brand = stored in DB, warning = has an unsaved edit */
+.admin-shell .setting-row--overridden {
+  border-left-color: var(--a-brand);
+}
+.admin-shell .setting-row--changed {
+  border-left-color: var(--a-warning);
+}
+
+.admin-shell .setting-row-text {
   flex: 1;
   min-width: 0;
 }
-.admin-shell .setting-row--inline .setting-row-control {
-  flex-shrink: 0;
+.admin-shell .setting-row-control {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
 }
-.admin-shell .setting-row--block .setting-row-control {
-  margin-top: 8px;
-}
-.admin-shell .setting-row--block .setting-row-control .ant-input,
-.admin-shell .setting-row--block .setting-row-control .ant-input-affix-wrapper,
-.admin-shell .setting-row--block .setting-row-control .ant-input-password {
-  width: 100%;
+.admin-shell .setting-row-control .ant-input-affix-wrapper,
+.admin-shell .setting-row-control .ant-input-password,
+.admin-shell .setting-row-control > .ant-input {
+  width: 340px;
 }
 
-/* Layer 1: label (primary, strongest weight) */
+/* Layer 1: label (primary, strongest weight). Long descriptions are cut to
+   their first sentence and kept on one line; the full text is in the tooltip. */
 .admin-shell .setting-row-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  min-width: 0;
+}
+/* The title (label + optional ⓘ) is one tooltip trigger and one tab stop, so
+   clipped text is reachable by keyboard without doubling the tab order. */
+.admin-shell .setting-row-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  border-radius: var(--a-radius-sm);
+}
+.admin-shell .setting-row-title:focus-visible {
+  outline: 2px solid var(--a-brand);
+  outline-offset: 2px;
 }
 .admin-shell .setting-row-label {
   font-size: 14px;
   font-weight: 600;
   color: var(--a-text-primary);
-  line-height: 1.4;
+  line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.admin-shell .setting-row-info {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--a-text-quaternary);
+  background: none;
+  border: 0;
+}
+.admin-shell .setting-row-title:hover .setting-row-info,
+.admin-shell .setting-row-title:focus-visible .setting-row-info {
+  color: var(--a-brand);
 }
 
 /* Layer 3: key (tertiary, very faint, for troubleshooting/locating only) */
 .admin-shell .setting-row-key {
   display: block;
-  margin-top: 3px;
+  margin-top: 2px;
   font-size: 11px;
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   color: var(--a-text-quaternary);
   letter-spacing: 0.01em;
 }
 
-/* Source badge: DB (configured, brand color) / Default (following default, neutral gray) */
+/* Source badge. Following the default is the norm and carries no badge — only
+   overridden ("in DB") and unsaved rows are called out. Sits next to the label
+   rather than the control, whose width varies from 40px to 340px. */
 .admin-shell .setting-badge {
   flex-shrink: 0;
+  margin-left: 2px;
   font-size: 11px;
   font-weight: 600;
-  line-height: 1.5;
+  line-height: 1.6;
   padding: 0 6px;
   border-radius: var(--a-radius-sm);
+  cursor: help;
 }
 .admin-shell .setting-badge--db {
   color: var(--a-brand-subtle-fg);
   background: var(--a-brand-subtle-bg);
 }
-.admin-shell .setting-badge--default {
-  color: var(--a-text-tertiary);
-  background: var(--a-bg-muted);
+.admin-shell .setting-badge--changed {
+  color: var(--a-warning);
+  background: color-mix(in srgb, var(--a-warning) 14%, transparent);
 }
 
 /* Layer 2: controls */
@@ -2111,7 +2246,100 @@
   opacity: 0.8;
 }
 .admin-shell .setting-number {
-  width: 130px;
+  width: 140px;
+}
+
+/* Floating save bar. Deliberately fixed, not sticky: MainLayout's <Content>
+   sets overflow:auto, making it the nearest scrollport for sticky children
+   while never scrolling itself (the document scrolls), so sticky is a no-op. */
+.admin-shell .setting-save-bar {
+  position: fixed;
+  right: 28px;
+  bottom: 24px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px 9px 16px;
+  background: var(--a-bg-elevated);
+  border: 1px solid var(--a-border-default);
+  border-radius: var(--a-radius-pill);
+  box-shadow: var(--a-shadow-lg);
+  opacity: 0;
+  transform: translateY(12px);
+  /* visibility (not just opacity) so the buttons leave the tab order while
+     hidden — an invisible but focusable "discard" button is a keyboard trap. */
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.18s, transform 0.18s, visibility 0.18s;
+}
+.admin-shell .setting-save-bar.show {
+  opacity: 1;
+  transform: none;
+  visibility: visible;
+  pointer-events: auto;
+}
+.admin-shell .setting-save-bar-text {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--a-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Narrow screens: the rail becomes a horizontally scrollable pill row and
+   controls drop below the label. Matches the previous lg breakpoint. */
+@media (max-width: 991.98px) {
+  .admin-shell .setting-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .admin-shell .setting-nav {
+    flex-direction: row;
+    gap: 4px;
+    padding: 4px;
+    overflow-x: auto;
+    background: var(--a-bg-subtle);
+    border: 1px solid var(--a-border-default);
+    border-radius: var(--a-radius-pill);
+  }
+  .admin-shell .setting-nav-divider {
+    display: none;
+  }
+  .admin-shell .setting-nav-item {
+    width: auto;
+    flex: none;
+    min-height: 28px;
+    border-left: 0;
+    border-radius: var(--a-radius-pill);
+    font-size: 12px;
+  }
+  .admin-shell .setting-nav-item.active {
+    border-left: 0;
+  }
+  .admin-shell .setting-row {
+    flex-wrap: wrap;
+    gap: 8px 12px;
+  }
+  .admin-shell .setting-row-control {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .admin-shell .setting-row-control .ant-input-affix-wrapper,
+  .admin-shell .setting-row-control .ant-input-password,
+  .admin-shell .setting-row-control > .ant-input {
+    width: 100%;
+  }
+  .admin-shell .setting-search {
+    width: 100%;
+  }
+  /* Pin both edges: the en-US bar content is wider than a 320px viewport can
+     hold, and with only `right` set it would grow off the left edge. */
+  .admin-shell .setting-save-bar {
+    left: 16px;
+    right: 16px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    border-radius: var(--a-radius-xl);
+  }
 }
 
 /* Toolbar "saved at" hint */
