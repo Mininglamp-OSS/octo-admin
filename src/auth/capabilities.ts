@@ -23,6 +23,11 @@ export const MANAGER_CAPABILITY_KEYS = [
   // system-level public Skills and categories.
   'skill.read',
   'skill.write',
+  // Expert Market admin surface. Read = list experts / squads; write = create
+  // (upload container) / edit metadata / re-upload / delete platform-provided
+  // (visibility=system) expert + squad records, and manage their categories.
+  'expert.read',
+  'expert.write',
 ] as const
 
 export const MANAGER_NO_ACCESS_PATH = '/no-access'
@@ -64,5 +69,6 @@ export function firstManagerPath(capabilities: ManagerCapabilities | null | unde
   if (hasManagerCapability(capabilities, 'appversion.read')) return '/download'
   if (hasManagerCapability(capabilities, 'mcp.read')) return '/system-mcp'
   if (hasManagerCapability(capabilities, 'skill.read')) return '/skill-market'
+  if (hasManagerCapability(capabilities, 'expert.read')) return '/expert-market'
   return MANAGER_NO_ACCESS_PATH
 }

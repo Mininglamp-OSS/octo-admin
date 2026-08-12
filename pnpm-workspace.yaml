@@ -1,0 +1,4 @@
+# Approve esbuild's postinstall (pnpm 11 blocks dependency build scripts by
+# default; vite needs the esbuild binary built).
+allowBuilds:
+  esbuild: true

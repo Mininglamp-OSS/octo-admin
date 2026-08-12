@@ -1,0 +1,161 @@
+{
+  "pageTitle": "专家市场",
+  "pageDesc": "管理平台级专家与专家团，供全平台用户浏览与安装到回路。",
+  "tab": {
+    "experts": "专家",
+    "squads": "专家团",
+    "categories": "分类"
+  },
+  "createExpert": "上传新建专家",
+  "createSquad": "上传新建专家团",
+  "searchPlaceholder": "搜索名称或简介",
+  "loadFailed": "加载失败",
+  "emptyExpert": "还没有专家，点击右上角「上传新建专家」添加",
+  "emptySquad": "还没有专家团，点击右上角「上传新建专家团」添加",
+  "table": {
+    "name": "名称",
+    "category": "分类",
+    "tags": "标签",
+    "skills": "技能数",
+    "members": "成员数",
+    "creator": "创建者",
+    "memberCount": "{{count}} 名成员"
+  },
+  "actions": {
+    "delete": "删除"
+  },
+  "aiHelp": {
+    "title": "没有现成的包？用 AI 生成",
+    "descExpert": "复制提示词发给任意 AI（如 Claude、ChatGPT），补充你的需求描述，AI 会按格式生成可直接上传的专家包 zip；可一次生成多个，一起拖进来批量导入。",
+    "descSquad": "复制提示词发给任意 AI（如 Claude、ChatGPT），补充你的需求描述，AI 会按格式生成可直接上传的专家团包 zip；可一次生成多个，一起拖进来批量导入。",
+    "copy": "复制提示词",
+    "copied": "已复制，粘贴给 AI 并补充你的需求即可",
+    "copyFailed": "复制失败，请手动复制"
+  },
+  "upload": {
+    "titleExpert": "导入专家",
+    "titleSquad": "导入专家团",
+    "submit": "导入",
+    "submitCount": "导入 {{count}} 个",
+    "zipHintExpert": "拖入或点击选择一个或多个专家包（zip，含 expert.json 与技能包）",
+    "zipHintSquad": "拖入或点击选择一个或多个专家团包（zip，含 squad.json 与技能包）",
+    "zipRequired": "请先添加可导入的包",
+    "importing": "正在导入 {{done}}/{{total}}：{{name}}",
+    "successCount": "已导入 {{count}} 个",
+    "partial": "成功 {{ok}} 个，失败 {{fail}} 个，失败项可直接重试",
+    "categoryPlaceholder": "选择分类（可覆盖包内值）",
+    "tagsHint": "输入后回车添加",
+    "categoryRequired": "请先在该行选择分类"
+  },
+  "list": {
+    "name": "名称",
+    "packages": "技能包",
+    "category": "分类",
+    "categoryPlaceholder": "选择分类",
+    "tags": "标签",
+    "tagsPlaceholder": "回车添加",
+    "status": "状态",
+    "statusParsing": "解析中",
+    "statusReady": "待导入",
+    "statusInvalid": "解析失败",
+    "statusSaving": "导入中",
+    "statusDone": "已导入",
+    "statusFailed": "导入失败"
+  },
+  "reupload": {
+    "button": "重新上传",
+    "success": "已替换内容"
+  },
+  "detail": {
+    "title": "专家详情",
+    "titleSquad": "专家团详情",
+    "loadFailed": "加载详情失败",
+    "instruction": "指令",
+    "mcpConfig": "MCP 配置",
+    "skills": "技能包",
+    "noSkills": "暂无技能包",
+    "leader": "组长",
+    "leaderBadge": "组长",
+    "members": "成员",
+    "strategies": "调度规则",
+    "dependencies": "依赖",
+    "blocking": "必需",
+    "recommended": "推荐",
+    "permission": "权限说明",
+    "viewSkill": "查看内容",
+    "skillLoadFailed": "读取技能内容失败"
+  },
+  "delete": {
+    "confirmDesc": "删除后将从所有空间下架，操作不可撤销。",
+    "ok": "确认删除",
+    "cancel": "取消",
+    "success": "已删除",
+    "failed": "删除失败"
+  },
+  "category": {
+    "create": "新建分类",
+    "rename": "编辑",
+    "delete": "删除",
+    "deleteConfirm": "确认删除该分类？",
+    "deleteInUse": "该分类下还有 {{count}} 个专家，无法删除",
+    "empty": "还没有分类",
+    "table": {
+      "name": "名称",
+      "count": "数量",
+      "sortOrder": "排序",
+      "actions": "操作"
+    },
+    "modal": {
+      "createTitle": "新建分类",
+      "editTitle": "编辑分类",
+      "name": "名称",
+      "nameRequired": "请填写名称",
+      "sortOrder": "排序",
+      "sortOrderHint": "数字越小越靠前"
+    },
+    "success": {
+      "created": "已创建",
+      "updated": "已更新",
+      "deleted": "已删除"
+    },
+    "error": {
+      "nameExists": "分类名称已存在",
+      "createFailed": "创建失败",
+      "updateFailed": "更新失败",
+      "deleteFailed": "删除失败"
+    }
+  },
+  "container": {
+    "kindMismatch": "包类型与当前标签页不匹配（专家 / 专家团）",
+    "zipInvalid": "文件不是有效的 zip 压缩包",
+    "manifestAmbiguous": "包内同时存在 expert.json 与 squad.json，无法判断类型",
+    "manifestMissing": "包内缺少 expert.json 或 squad.json",
+    "manifestParse": "清单 JSON 格式错误",
+    "manifestInvalid": "清单不是合法的 JSON 对象",
+    "nameRequired": "缺少 name",
+    "nameTooLong": "name 超过 128 字",
+    "summaryRequired": "缺少 summary",
+    "summaryTooLong": "summary 超过 512 字",
+    "shortNameTooLong": "short_name 超过 16 字",
+    "tagsTooMany": "标签数量超过上限",
+    "instructionRequired": "缺少 instruction",
+    "mcpConfigType": "mcp_config 必须是 JSON 字符串",
+    "mcpConfigTooLarge": "mcp_config 超过 64 KiB",
+    "mcpConfigInvalid": "mcp_config 不是合法 JSON",
+    "skillsType": "skills 必须是数组",
+    "skillsTooMany": "技能数量超过上限",
+    "skillNameRequired": "技能缺少 name",
+    "skillPathUnsafe": "技能包路径非法",
+    "skillExtInvalid": "技能包必须是 .zip 或 .skill",
+    "membersRequired": "专家团至少需要一名成员",
+    "membersTooMany": "成员数量超过上限",
+    "strategiesTooMany": "调度规则数量超过上限",
+    "memberNameRequired": "成员缺少 name",
+    "memberKeyDup": "存在重复的 member_key",
+    "memberInstructionRequired": "成员缺少 instruction",
+    "leaderCount": "专家团必须且只能有一名组长",
+    "skillFileMissing": "包内缺少引用的技能文件",
+    "skillFileTooLarge": "技能包超过 20 MiB",
+    "memberRoleRequired": "成员缺少 role"
+  }
+}

@@ -19,6 +19,7 @@ import Download from './pages/Download'
 import SystemSetting from './pages/SystemSetting'
 import SystemMcp from './pages/SystemMcp'
 import SkillMarket from './pages/SkillMarket'
+import ExpertMarket from './pages/ExpertMarket'
 import Changelog from './pages/Changelog'
 import AppBots from './pages/AppBots'
 import SystemSkill from './pages/SystemSkill'
@@ -218,6 +219,14 @@ function AdminRoutes() {
           element={
             <CapabilityRoute capability="skill.read">
               <SkillMarket />
+            </CapabilityRoute>
+          }
+        />
+        <Route
+          path="expert-market"
+          element={
+            <CapabilityRoute capability="expert.read">
+              <ExpertMarket />
             </CapabilityRoute>
           }
         />

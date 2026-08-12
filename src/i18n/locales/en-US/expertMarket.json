@@ -1,0 +1,161 @@
+{
+  "pageTitle": "Expert Market",
+  "pageDesc": "Manage platform-level experts and squads that all users can browse and install to Loop.",
+  "tab": {
+    "experts": "Experts",
+    "squads": "Squads",
+    "categories": "Categories"
+  },
+  "createExpert": "Upload expert",
+  "createSquad": "Upload squad",
+  "searchPlaceholder": "Search name or summary",
+  "loadFailed": "Failed to load",
+  "emptyExpert": "No experts yet — click \"Upload expert\" to add one",
+  "emptySquad": "No squads yet — click \"Upload squad\" to add one",
+  "table": {
+    "name": "Name",
+    "category": "Category",
+    "tags": "Tags",
+    "skills": "Skills",
+    "members": "Members",
+    "creator": "Creator",
+    "memberCount": "{{count}} members"
+  },
+  "actions": {
+    "delete": "Delete"
+  },
+  "aiHelp": {
+    "title": "No package yet? Generate one with AI",
+    "descExpert": "Copy the prompt into any AI chat (Claude, ChatGPT, …), add your requirement, and it will generate uploadable expert package zips — generate several and drop them all in for a batch import.",
+    "descSquad": "Copy the prompt into any AI chat (Claude, ChatGPT, …), add your requirement, and it will generate uploadable squad package zips — generate several and drop them all in for a batch import.",
+    "copy": "Copy prompt",
+    "copied": "Copied — paste it to an AI and add your requirement",
+    "copyFailed": "Copy failed, please copy manually"
+  },
+  "upload": {
+    "titleExpert": "Import experts",
+    "titleSquad": "Import squads",
+    "submit": "Import",
+    "submitCount": "Import {{count}}",
+    "zipHintExpert": "Drop or click to select one or more expert packages (zip with expert.json and skill packages)",
+    "zipHintSquad": "Drop or click to select one or more squad packages (zip with squad.json and skill packages)",
+    "zipRequired": "Add at least one importable package first",
+    "importing": "Importing {{done}}/{{total}}: {{name}}",
+    "successCount": "Imported {{count}}",
+    "partial": "{{ok}} imported, {{fail}} failed — failed items can be retried",
+    "categoryPlaceholder": "Select a category (overrides the package value)",
+    "tagsHint": "Type and press Enter to add",
+    "categoryRequired": "Select a category for this row first"
+  },
+  "list": {
+    "name": "Name",
+    "packages": "Packages",
+    "category": "Category",
+    "categoryPlaceholder": "Select category",
+    "tags": "Tags",
+    "tagsPlaceholder": "Enter to add",
+    "status": "Status",
+    "statusParsing": "Parsing",
+    "statusReady": "Ready",
+    "statusInvalid": "Parse failed",
+    "statusSaving": "Importing",
+    "statusDone": "Imported",
+    "statusFailed": "Import failed"
+  },
+  "reupload": {
+    "button": "Re-upload",
+    "success": "Content replaced"
+  },
+  "detail": {
+    "title": "Expert detail",
+    "titleSquad": "Squad detail",
+    "loadFailed": "Failed to load detail",
+    "instruction": "Instruction",
+    "mcpConfig": "MCP config",
+    "skills": "Skills",
+    "noSkills": "No skill packages",
+    "leader": "Leader",
+    "leaderBadge": "Leader",
+    "members": "Members",
+    "strategies": "Dispatch strategies",
+    "dependencies": "Dependencies",
+    "blocking": "Required",
+    "recommended": "Recommended",
+    "permission": "Permission",
+    "viewSkill": "View content",
+    "skillLoadFailed": "Failed to load skill content"
+  },
+  "delete": {
+    "confirmDesc": "Deleting removes it from all spaces. This cannot be undone.",
+    "ok": "Delete",
+    "cancel": "Cancel",
+    "success": "Deleted",
+    "failed": "Delete failed"
+  },
+  "category": {
+    "create": "New category",
+    "rename": "Edit",
+    "delete": "Delete",
+    "deleteConfirm": "Delete this category?",
+    "deleteInUse": "This category still has {{count}} experts and cannot be deleted",
+    "empty": "No categories yet",
+    "table": {
+      "name": "Name",
+      "count": "Count",
+      "sortOrder": "Order",
+      "actions": "Actions"
+    },
+    "modal": {
+      "createTitle": "New category",
+      "editTitle": "Edit category",
+      "name": "Name",
+      "nameRequired": "Name is required",
+      "sortOrder": "Order",
+      "sortOrderHint": "Lower numbers come first"
+    },
+    "success": {
+      "created": "Created",
+      "updated": "Updated",
+      "deleted": "Deleted"
+    },
+    "error": {
+      "nameExists": "Category name already exists",
+      "createFailed": "Create failed",
+      "updateFailed": "Update failed",
+      "deleteFailed": "Delete failed"
+    }
+  },
+  "container": {
+    "kindMismatch": "Package kind does not match this tab (expert / squad)",
+    "zipInvalid": "File is not a valid zip archive",
+    "manifestAmbiguous": "Package has both expert.json and squad.json",
+    "manifestMissing": "Package has no expert.json or squad.json",
+    "manifestParse": "Manifest JSON is malformed",
+    "manifestInvalid": "Manifest is not a valid JSON object",
+    "nameRequired": "name is required",
+    "nameTooLong": "name exceeds 128 chars",
+    "summaryRequired": "summary is required",
+    "summaryTooLong": "summary exceeds 512 chars",
+    "shortNameTooLong": "short_name exceeds 16 chars",
+    "tagsTooMany": "too many tags",
+    "instructionRequired": "instruction is required",
+    "mcpConfigType": "mcp_config must be a JSON string",
+    "mcpConfigTooLarge": "mcp_config exceeds 64 KiB",
+    "mcpConfigInvalid": "mcp_config is not valid JSON",
+    "skillsType": "skills must be an array",
+    "skillsTooMany": "too many skills",
+    "skillNameRequired": "skill is missing name",
+    "skillPathUnsafe": "unsafe skill package path",
+    "skillExtInvalid": "skill package must be .zip or .skill",
+    "membersRequired": "squad requires at least one member",
+    "membersTooMany": "too many members",
+    "strategiesTooMany": "too many strategies",
+    "memberNameRequired": "member is missing name",
+    "memberKeyDup": "duplicate member_key",
+    "memberInstructionRequired": "member is missing instruction",
+    "leaderCount": "squad must have exactly one leader",
+    "skillFileMissing": "referenced skill file not found in package",
+    "skillFileTooLarge": "skill package exceeds 20 MiB",
+    "memberRoleRequired": "member is missing role"
+  }
+}
