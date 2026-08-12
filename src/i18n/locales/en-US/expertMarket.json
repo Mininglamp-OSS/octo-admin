@@ -45,7 +45,8 @@
     "partial": "{{ok}} imported, {{fail}} failed — failed items can be retried",
     "categoryPlaceholder": "Select a category (overrides the package value)",
     "tagsHint": "Type and press Enter to add",
-    "categoryRequired": "Select a category for this row first"
+    "categoryRequired": "Select a category for this row first",
+    "cancelled": "Import cancelled — remaining rows kept for later"
   },
   "list": {
     "name": "Name",
@@ -156,6 +157,7 @@
     "leaderCount": "squad must have exactly one leader",
     "skillFileMissing": "referenced skill file not found in package",
     "skillFileTooLarge": "skill package exceeds 20 MiB",
-    "memberRoleRequired": "member is missing role"
+    "memberRoleRequired": "member is missing role",
+    "containerTooLarge": "container exceeds 512 MiB"
   }
 }

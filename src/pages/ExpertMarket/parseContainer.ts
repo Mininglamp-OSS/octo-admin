@@ -30,6 +30,10 @@ export const MAX_STRATEGIES = 30
 export const MAX_TAGS = 20
 export const MAX_MCP_CONFIG_BYTES = 64 * 1024
 export const MAX_SKILL_PACKAGE_BYTES = 20 * 1024 * 1024
+/** Whole-container ceiling, checked BEFORE JSZip inflates anything: the max
+ *  legal payload is ~20 packages × 20 MiB, so anything past 512 MiB can only
+ *  be malformed and would otherwise freeze the tab mid-extraction. */
+export const MAX_CONTAINER_BYTES = 512 * 1024 * 1024
 
 /** A parse/validation failure. `code` is a stable i18n key suffix; `message`
  *  is a human-readable fallback. */
@@ -318,6 +322,9 @@ type ExpertKindLike = 'agent' | 'squad'
  * referenced skill package into a Blob. Throws ContainerError on any problem.
  */
 export async function parseExpertContainer(file: File | Blob): Promise<ParsedContainer> {
+  if (file.size > MAX_CONTAINER_BYTES) {
+    throw new ContainerError('containerTooLarge', 'container exceeds 512 MiB')
+  }
   let zip: JSZip
   try {
     zip = await JSZip.loadAsync(file)

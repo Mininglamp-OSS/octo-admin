@@ -37,6 +37,16 @@ describe('manager capabilities', () => {
     expect(firstManagerPath(capabilities)).toBe('/spaces')
   })
 
+  it('routes an expert-only manager to the expert market', () => {
+    const capabilities = normalizeManagerCapabilities({
+      'expert.read': true,
+      'expert.write': true,
+    })
+
+    expect(firstManagerPath(capabilities)).toBe('/expert-market')
+    expect(hasManagerCapability(capabilities, 'expert.read')).toBe(true)
+  })
+
   it('falls back to no-access when no readable manager path exists', () => {
     const capabilities = normalizeManagerCapabilities({
       'users.write': true,

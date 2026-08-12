@@ -19,7 +19,7 @@ import {
 } from '../../api/expert'
 import { DetailSection, McpConfigBlock, SkillMdModal, SkillRefList } from './detailParts'
 import ReuploadButton from './ReuploadButton'
-import { buildExpertParams } from './submitContainer'
+import { buildExpertPatch, uploadSkillWrites } from './submitContainer'
 import type { ParsedExpert } from './parseContainer'
 
 const { Text, Paragraph } = Typography
@@ -91,15 +91,14 @@ export default function ExpertDetailDrawer({
     }
   }
 
-  const handleReupload = async (manifest: unknown, uploaded: Map<string, import('../../api/expert').SkillWrite>) => {
+  const handleReupload = async (parsed: import('./parseContainer').ParsedContainer) => {
     if (!detail) return
-    const { category, ...rest } = buildExpertParams(manifest as ParsedExpert, uploaded)
-    // resolveCategory rejects an empty name on PATCH too — when the container
-    // omits category, leave the record's current one untouched.
-    const updated = await patchSystemExpert(
-      detail.expert_id,
-      category ? { category, ...rest } : rest
-    )
+    const m = parsed.manifest as ParsedExpert
+    // One upload per skill reference (server upload keys are single-use), and
+    // a PATCH body that omits fields the container doesn't declare — a
+    // present-but-empty category/tags would CLEAR the curated values.
+    const skills = await uploadSkillWrites(m.skills, parsed.skillFiles)
+    const updated = await patchSystemExpert(detail.expert_id, buildExpertPatch(m, skills))
     setDetail(updated)
     onChanged()
   }

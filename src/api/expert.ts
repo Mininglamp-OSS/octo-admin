@@ -379,22 +379,25 @@ export interface ExpertSkillUploadInit {
 
 /** Two-step skill-package upload: presign, then PUT the raw `.zip/.skill`
  *  bytes directly to the returned URL, then hand back a ready `SkillWrite`
- *  entry. The container zip is never uploaded — only its bundled packages. */
+ *  entry. The container zip is never uploaded — only its bundled packages.
+ *  `opts.signal` aborts both legs (batch cancel). */
 export async function uploadExpertSkill(
   name: string,
   file: File | Blob,
-  fileName: string
+  fileName: string,
+  opts: { signal?: AbortSignal } = {}
 ): Promise<SkillWrite> {
   const size = file.size
   const initResp = await expertApi.post<{ data: ExpertSkillUploadInit }>(
     '/admin/expert_skill_uploads',
-    { file_name: fileName, file_size: size }
+    { file_name: fileName, file_size: size },
+    { signal: opts.signal }
   )
   const { upload_object_key, presigned_url, method, headers } = initResp.data.data
   await putPresignedFile(
     presigned_url,
     file instanceof File ? file : new File([file], fileName),
-    { method, headers: headers ?? {} }
+    { method, headers: headers ?? {}, signal: opts.signal }
   )
   return {
     name,

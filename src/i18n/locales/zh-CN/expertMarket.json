@@ -45,7 +45,8 @@
     "partial": "成功 {{ok}} 个，失败 {{fail}} 个，失败项可直接重试",
     "categoryPlaceholder": "选择分类（可覆盖包内值）",
     "tagsHint": "输入后回车添加",
-    "categoryRequired": "请先在该行选择分类"
+    "categoryRequired": "请先在该行选择分类",
+    "cancelled": "已取消导入，剩余条目保留待导入"
   },
   "list": {
     "name": "名称",
@@ -156,6 +157,7 @@
     "leaderCount": "专家团必须且只能有一名组长",
     "skillFileMissing": "包内缺少引用的技能文件",
     "skillFileTooLarge": "技能包超过 20 MiB",
-    "memberRoleRequired": "成员缺少 role"
+    "memberRoleRequired": "成员缺少 role",
+    "containerTooLarge": "压缩包超过 512 MiB"
   }
 }

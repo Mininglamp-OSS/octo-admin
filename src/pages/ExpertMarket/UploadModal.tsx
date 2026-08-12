@@ -11,7 +11,7 @@
  * continues with the next. Container zips are never uploaded.
  */
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Alert, Button, message, Modal, Select, Table, Tag, Typography, Upload } from 'antd'
 import { CopyOutlined, DeleteOutlined, InboxOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
@@ -21,6 +21,7 @@ import { ApiError } from '../../api'
 import {
   createSystemExpert,
   createSystemSquad,
+  uploadExpertSkill,
   type ExpertCategory,
   type ExpertKind,
 } from '../../api/expert'
@@ -34,7 +35,9 @@ import {
 import {
   buildExpertParams,
   buildSquadParams,
-  uploadSkillFiles,
+  uploadSkillWrites,
+  uploadSquadSkillWrites,
+  type SkillUploader,
 } from './submitContainer'
 import { buildAiPrompt } from './aiPrompt'
 
@@ -98,6 +101,7 @@ export default function UploadModal({
   const [entries, setEntries] = useState<ImportEntry[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [progress, setProgress] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
   const errText = useContainerErrorText()
 
   const updateEntry = (key: string, patch: Partial<ImportEntry>) => {
@@ -110,7 +114,12 @@ export default function UploadModal({
   }
 
   const handleClose = () => {
-    if (submitting) return
+    // While a batch is in flight, Cancel/X aborts the current upload instead
+    // of closing (a hung PUT would otherwise wedge the modal until timeout).
+    if (submitting) {
+      abortRef.current?.abort()
+      return
+    }
     reset()
     onClose()
   }
@@ -162,10 +171,15 @@ export default function UploadModal({
       return
     }
     setSubmitting(true)
+    const ctl = new AbortController()
+    abortRef.current = ctl
+    const upload: SkillUploader = (name, blob, fileName) =>
+      uploadExpertSkill(name, blob, fileName, { signal: ctl.signal })
     let ok = 0
     let fail = 0
     for (let i = 0; i < pending.length; i++) {
       const entry = pending[i]
+      if (ctl.signal.aborted) break
       // The backend rejects an empty category on every write path
       // (resolveCategory('') → 400), so fail the row up front instead of
       // uploading its skill packages first.
@@ -185,22 +199,34 @@ export default function UploadModal({
       // Row edits are authoritative.
       const override = { category: entry.category, tags: entry.tags }
       try {
-        const uploaded = await uploadSkillFiles(entry.parsed.skillFiles)
-        if (entry.parsed.manifest.kind === 'squad') {
-          await createSystemSquad(buildSquadParams(entry.parsed.manifest, uploaded, override))
+        const m = entry.parsed.manifest
+        if (m.kind === 'squad') {
+          const memberSkills = await uploadSquadSkillWrites(m, entry.parsed.skillFiles, upload)
+          await createSystemSquad(buildSquadParams(m, memberSkills, override))
         } else {
-          await createSystemExpert(buildExpertParams(entry.parsed.manifest, uploaded, override))
+          const skills = await uploadSkillWrites(m.skills, entry.parsed.skillFiles, upload)
+          await createSystemExpert(buildExpertParams(m, skills, override))
         }
         updateEntry(entry.key, { status: 'done' })
         ok += 1
       } catch (err) {
+        if (ctl.signal.aborted) {
+          // Nothing was committed for this entry — put it back in line.
+          updateEntry(entry.key, { status: 'ready', error: null })
+          break
+        }
         updateEntry(entry.key, { status: 'failed', error: errText(err) })
         fail += 1
       }
     }
+    abortRef.current = null
     setSubmitting(false)
     setProgress(null)
     if (ok > 0) onImported()
+    if (ctl.signal.aborted) {
+      message.info(t('upload.cancelled'))
+      return
+    }
     if (fail === 0) {
       message.success(t('upload.successCount', { count: ok }))
       reset()
@@ -323,7 +349,7 @@ export default function UploadModal({
           : t('upload.submit')
       }
       okButtonProps={{ disabled: importableCount === 0 || parsingCount > 0 }}
-      cancelButtonProps={{ disabled: submitting }}
+      cancelButtonProps={{ danger: submitting }}
       width={800}
       destroyOnClose
     >

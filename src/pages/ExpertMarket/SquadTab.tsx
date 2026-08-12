@@ -148,7 +148,16 @@ export default function SquadTab() {
         <div className="toolbar-spacer" />
         <Button icon={<ReloadOutlined />} onClick={() => load(page, keyword)} loading={loading} />
         {canWrite && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setUploadOpen(true)}>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              // Refresh the category options — they may have changed on the
+              // Categories tab since this tab mounted.
+              listExpertCategories().then(setCategories).catch(() => {})
+              setUploadOpen(true)
+            }}
+          >
             {t('createSquad')}
           </Button>
         )}

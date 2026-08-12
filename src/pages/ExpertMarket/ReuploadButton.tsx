@@ -1,9 +1,8 @@
 /**
  * "Re-upload container" button used in both detail drawers. Picks a container
- * zip, validates its kind, presign-uploads the bundled skill packages, and
- * hands the parsed manifest + uploaded-key map back to the parent, which
- * PATCHes the record to replace its spec. Upload plumbing lives here so both
- * drawers share it; the kind-specific PATCH stays with the parent.
+ * zip, validates its kind, and hands the parsed container to the parent —
+ * which presign-uploads the bundled packages (one object per skill reference)
+ * and PATCHes the record to replace its spec.
  */
 
 import { useRef, useState } from 'react'
@@ -11,13 +10,12 @@ import { Button, message } from 'antd'
 import { UploadOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { ApiError } from '../../api'
-import type { ExpertKind, SkillWrite } from '../../api/expert'
-import { ContainerError, parseExpertContainer, type ParsedManifest } from './parseContainer'
-import { uploadSkillFiles } from './submitContainer'
+import type { ExpertKind } from '../../api/expert'
+import { ContainerError, parseExpertContainer, type ParsedContainer } from './parseContainer'
 
 interface Props {
   expectKind: ExpertKind
-  onReady: (manifest: ParsedManifest, uploaded: Map<string, SkillWrite>) => Promise<void>
+  onReady: (parsed: ParsedContainer) => Promise<void>
 }
 
 export default function ReuploadButton({ expectKind, onReady }: Props) {
@@ -33,8 +31,7 @@ export default function ReuploadButton({ expectKind, onReady }: Props) {
         message.error(t('container.kindMismatch', { defaultValue: 'Container kind does not match.' }))
         return
       }
-      const uploaded = await uploadSkillFiles(parsed.skillFiles)
-      await onReady(parsed.manifest, uploaded)
+      await onReady(parsed)
       message.success(t('reupload.success'))
     } catch (err) {
       if (err instanceof ContainerError) {
