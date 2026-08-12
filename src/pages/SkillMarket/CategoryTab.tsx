@@ -128,8 +128,8 @@ export default function CategoryTab() {
             <Popconfirm
               title={t('category.deleteConfirm')}
               onConfirm={() => handleDelete(record)}
-              okText={t('common:confirm')}
-              cancelText={t('common:cancel')}
+              okText={t('common:action.confirm')}
+              cancelText={t('common:action.cancel')}
             >
               <Button type="link" size="small" danger>
                 {t('category.delete')}

@@ -156,8 +156,12 @@ export async function listSystemMcps(
   const keyword = params.keyword?.trim()
   if (keyword) query.keyword = keyword
   query.category = params.category ?? 'all'
-  if (params.limit && params.limit > 0) query.limit = params.limit
-  if (params.offset && params.offset > 0) query.offset = params.offset
+  // The admin list endpoint pages by number (page/page_size), not
+  // limit/offset — same translation as ./skill.ts and ./expert.ts.
+  const pageSize = params.limit && params.limit > 0 ? params.limit : 20
+  query.page_size = pageSize
+  query.page =
+    params.offset && params.offset > 0 ? Math.floor(params.offset / pageSize) + 1 : 1
   const resp = await mcpApi.get<{
     data: McpListItem[]
     pagination: { total: number; page: number; page_size: number }

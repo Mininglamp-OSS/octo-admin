@@ -215,8 +215,8 @@ export default function SkillTab() {
               <Popconfirm
                 title={t('skill.deleteConfirm')}
                 onConfirm={() => handleDelete(record)}
-                okText={t('common:confirm')}
-                cancelText={t('common:cancel')}
+                okText={t('common:action.confirm')}
+                cancelText={t('common:action.cancel')}
               >
                 <Button type="link" size="small" danger>
                   {t('skill.delete')}
