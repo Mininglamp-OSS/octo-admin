@@ -482,7 +482,10 @@ export async function parseExpertContainer(file: File | Blob): Promise<ParsedCon
       'skillFileTooLarge',
       `package "${skill.file}" exceeds 20 MiB`
     )
-    const blob = new Blob([bytes])
+    // TS 5.9 types Uint8Array<ArrayBufferLike>, which no longer satisfies
+    // BlobPart directly; the joined array is exactly sized, so its buffer is
+    // the payload.
+    const blob = new Blob([bytes.buffer as ArrayBuffer])
     skillFiles.set(skill.file, {
       skillName: skill.name,
       path: skill.file,
