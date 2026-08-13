@@ -130,6 +130,8 @@ describe('uploadIcon', () => {
       method: 'PUT',
       headers: { 'content-type': 'image/png' },
       body: file,
+      // putPresignedFile now bounds every PUT with a timeout signal.
+      signal: expect.any(AbortSignal),
     })
     expect(result).toEqual({ object_key: 'icons/icon-1/logo.png' })
   })

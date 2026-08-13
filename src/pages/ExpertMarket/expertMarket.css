@@ -1,0 +1,240 @@
+/* Expert market admin — visual add-ons on top of the console's admin.css.
+   Uses the same --a-* tokens as .admin-shell. Mirrors systemMcp.css naming
+   with an `exp-` prefix so the two modules stay independent. */
+
+/* ── Table name cell ─────────────────────────────────────────────────────── */
+.admin-shell .exp-cell-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.admin-shell .exp-cell-name__tile,
+.admin-shell .exp-preview__tile,
+.admin-shell .exp-detail__tile {
+  flex: none;
+  border-radius: 8px;
+  background: var(--a-bg-muted);
+  color: var(--a-text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  overflow: hidden;
+}
+.admin-shell .exp-cell-name__tile {
+  width: 32px;
+  height: 32px;
+  font-size: 12px;
+}
+.admin-shell .exp-cell-name__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.admin-shell .exp-cell-name__sub {
+  font-size: 12px;
+  color: var(--a-text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 420px;
+}
+.admin-shell .exp-more {
+  color: var(--a-text-quaternary);
+  font-size: 12px;
+}
+
+/* ── Upload preview ──────────────────────────────────────────────────────── */
+.admin-shell .exp-preview {
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  background: var(--a-bg-subtle);
+  border: 1px solid var(--a-border-default);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.admin-shell .exp-preview__head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.admin-shell .exp-preview__tile {
+  width: 44px;
+  height: 44px;
+  font-size: 14px;
+}
+.admin-shell .exp-preview__meta {
+  min-width: 0;
+}
+.admin-shell .exp-preview__name {
+  font-weight: 600;
+  color: var(--a-text-primary);
+}
+.admin-shell .exp-preview__summary {
+  font-size: 12px;
+  color: var(--a-text-tertiary);
+  line-height: 1.5;
+}
+.admin-shell .exp-preview__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* ── Detail drawer ───────────────────────────────────────────────────────── */
+.admin-shell .exp-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.admin-shell .exp-detail__meta {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--a-border-default);
+}
+.admin-shell .exp-detail__tile {
+  width: 52px;
+  height: 52px;
+  font-size: 18px;
+  border-radius: 10px;
+}
+.admin-shell .exp-detail__meta-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.admin-shell .exp-detail__summary {
+  color: var(--a-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.admin-shell .exp-detail__sub {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--a-text-tertiary);
+  font-size: 12px;
+}
+.admin-shell .exp-detail__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+.admin-shell .exp-detail__section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.admin-shell .exp-detail__section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--a-text-secondary);
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+
+/* ── Key-value list + strategies ─────────────────────────────────────────── */
+.admin-shell .exp-kv {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  row-gap: 8px;
+  column-gap: 12px;
+  margin: 0;
+  font-size: 13px;
+}
+.admin-shell .exp-kv dt {
+  color: var(--a-text-tertiary);
+  font-weight: 400;
+}
+.admin-shell .exp-kv dd {
+  color: var(--a-text-primary);
+  margin: 0;
+  word-break: break-word;
+}
+.admin-shell .exp-strategies {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--a-text-secondary);
+  line-height: 1.6;
+}
+
+/* ── mcp_config / json block ─────────────────────────────────────────────── */
+.admin-shell .exp-pre {
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--a-bg-subtle);
+  border-radius: 6px;
+  font-family: 'SF Mono', Monaco, Consolas, monospace;
+  font-size: 12px;
+  color: var(--a-text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow: auto;
+}
+
+/* ── Skill list ──────────────────────────────────────────────────────────── */
+.admin-shell .exp-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.admin-shell .exp-list__item {
+  padding: 10px 12px;
+  background: var(--a-bg-subtle);
+  border-radius: 6px;
+}
+.admin-shell .exp-list__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--a-text-primary);
+}
+.admin-shell .exp-list__sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--a-text-tertiary);
+}
+
+/* ── Squad member collapse ───────────────────────────────────────────────── */
+.admin-shell .exp-member__role {
+  color: var(--a-text-tertiary);
+  font-size: 12px;
+}
+.admin-shell .exp-member__body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.admin-shell .exp-member__head {
+  margin: 8px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--a-text-tertiary);
+}
+.admin-shell .exp-member__head:first-child {
+  margin-top: 0;
+}
+
+/* ── Drawer footer ───────────────────────────────────────────────────────── */
+.admin-shell .exp-drawer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.admin-shell .exp-drawer-footer--confirm > *:first-child {
+  margin-right: auto;
+}

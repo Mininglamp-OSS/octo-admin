@@ -87,22 +87,68 @@ export function assertSafeExternalUrl(raw: string): void {
   throw new ApiError('Upload URL scheme is not allowed', 502, 'invalid_response')
 }
 
+/** In dev, marketplace's built-in storage presigns absolute URLs to its own
+ *  host (http://127.0.0.1:8092/api/v1/_storage/…). The admin app runs on the
+ *  Vite origin, so a direct PUT is cross-origin and the storage endpoint
+ *  sends no CORS headers. Route those URLs through the `/market` dev proxy
+ *  (the inverse of vite.config.ts's `/market` → strip rewrite) so the PUT is
+ *  same-origin. Real OSS hosts (https) pass through untouched; prod serves
+ *  everything behind one nginx origin so the rewrite never applies there. */
+function toSameOriginUploadUrl(raw: string): string {
+  if (!import.meta.env.DEV) return raw
+  try {
+    const url = new URL(raw)
+    if (
+      url.protocol === 'http:' &&
+      (url.hostname === 'localhost' || url.hostname === '127.0.0.1') &&
+      url.pathname.startsWith('/api/v1/_storage/')
+    ) {
+      return `/market${url.pathname}${url.search}`
+    }
+  } catch {
+    // Not an absolute URL — let assertSafeExternalUrl report it.
+  }
+  return raw
+}
+
+/** Ceiling for one presigned PUT (worst case: a 20 MiB package on a slow
+ *  link). Without it a stalled TCP connection would hang an import batch
+ *  forever — fetch has no default timeout, unlike the axios instance above. */
+const UPLOAD_TIMEOUT_MS = 120_000
+
 /** PUT `file` bytes to a marketplace-issued presigned URL. Uses fetch (not
  *  the marketplace axios instance) because the presigned URL points at the
  *  local dev proxy or an OSS host — not the admin base URL — and we don't
  *  want the token / Accept-Language interceptors leaking into a third-party
- *  call. Errors become ApiError so upload flows share a single error type. */
+ *  call. Errors become ApiError so upload flows share a single error type.
+ *  `options.signal` lets a caller cancel an in-flight batch; the timeout
+ *  applies either way. */
 export async function putPresignedFile(
   presignedUrl: string,
   file: File,
-  options: { method?: string; headers?: Record<string, string> } = {}
+  options: { method?: string; headers?: Record<string, string>; signal?: AbortSignal } = {}
 ): Promise<void> {
   assertSafeExternalUrl(presignedUrl)
-  const putResp = await fetch(presignedUrl, {
-    method: options.method || 'PUT',
-    headers: options.headers ?? {},
-    body: file,
-  })
+  const timeout = AbortSignal.timeout(UPLOAD_TIMEOUT_MS)
+  const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout
+  let putResp: Response
+  try {
+    putResp = await fetch(toSameOriginUploadUrl(presignedUrl), {
+      method: options.method || 'PUT',
+      headers: options.headers ?? {},
+      body: file,
+      signal,
+    })
+  } catch (err) {
+    const name = (err as Error)?.name
+    if (name === 'TimeoutError') {
+      throw new ApiError(`Upload timed out after ${UPLOAD_TIMEOUT_MS / 1000}s`, 408, 'upload_timeout')
+    }
+    if (name === 'AbortError') {
+      throw new ApiError('Upload cancelled', undefined, 'upload_cancelled')
+    }
+    throw err
+  }
   if (!putResp.ok) {
     throw new ApiError(`Upload failed (${putResp.status})`, putResp.status)
   }
