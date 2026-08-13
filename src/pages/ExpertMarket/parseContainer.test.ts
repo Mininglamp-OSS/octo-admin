@@ -214,3 +214,30 @@ describe('parseExpertContainer — real zip', () => {
     expect(await codeAsync(() => parseExpertContainer(notZip))).toBe('zipInvalid')
   })
 })
+
+describe('parseExpertContainer — zip-bomb guards', () => {
+  // A tiny compressed container whose entries inflate huge: DEFLATE turns
+  // megabytes of zeros into a few KB, which is exactly the bomb shape.
+  async function buildDeflated(files: Record<string, string | Uint8Array>): Promise<Blob> {
+    const zip = new JSZip()
+    for (const [path, content] of Object.entries(files)) zip.file(path, content)
+    return zip.generateAsync({ type: 'blob', compression: 'DEFLATE' })
+  }
+
+  it('rejects an oversized manifest from metadata, before parsing it', async () => {
+    const padded = { ...validExpert, summary: 'x'.repeat(2 * 1024 * 1024) }
+    const zip = await buildDeflated({ 'expert.json': JSON.stringify(padded) })
+    expect(zip.size).toBeLessThan(100 * 1024) // the outer file itself is tiny
+    expect(await codeAsync(() => parseExpertContainer(zip))).toBe('manifestTooLarge')
+  })
+
+  it('rejects an over-cap skill entry from metadata, before inflating it', async () => {
+    const zip = await buildDeflated({
+      'expert.json': JSON.stringify(validExpert),
+      // 21 MiB of zeros — compresses to ~20 KB but inflates past the 20 MiB cap.
+      'skills/checklist.zip': new Uint8Array(21 * 1024 * 1024),
+    })
+    expect(zip.size).toBeLessThan(200 * 1024)
+    expect(await codeAsync(() => parseExpertContainer(zip))).toBe('skillFileTooLarge')
+  })
+})

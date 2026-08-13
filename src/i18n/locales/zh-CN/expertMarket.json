@@ -158,6 +158,8 @@
     "skillFileMissing": "包内缺少引用的技能文件",
     "skillFileTooLarge": "技能包超过 20 MiB",
     "memberRoleRequired": "成员缺少 role",
-    "containerTooLarge": "压缩包超过 512 MiB"
+    "containerTooLarge": "压缩包超过 512 MiB",
+    "manifestTooLarge": "清单文件超过 1 MiB",
+    "entryMetaMissing": "压缩包条目元数据缺失，已拒绝"
   }
 }

@@ -317,9 +317,98 @@ type ExpertKindLike = 'agent' | 'squad'
 
 // ─── Async container (zip) parsing ───────────────────────────────────────────
 
+/** Manifest ceiling: the field limits above bound a legal manifest to well
+ *  under this, so anything bigger is malformed or hostile. */
+export const MAX_MANIFEST_BYTES = 1 * 1024 * 1024
+
+/** Uncompressed size recorded in the entry's central-directory header.
+ *  jszip keeps it on the internal compressed-data record; absent/negative
+ *  metadata is treated as suspicious by the callers (fail early). */
+function declaredSize(entry: JSZip.JSZipObject): number | null {
+  const data = (entry as unknown as { _data?: { uncompressedSize?: number } })._data
+  const n = data?.uncompressedSize
+  return typeof n === 'number' && Number.isFinite(n) && n >= 0 ? n : null
+}
+
+/** jszip's StreamHelper — present at runtime (zipObject.js) but absent from
+ *  its index.d.ts, so typed locally. */
+interface ZipStream {
+  on(event: 'data', cb: (chunk: Uint8Array) => void): ZipStream
+  on(event: 'error', cb: (err: Error) => void): ZipStream
+  on(event: 'end', cb: () => void): ZipStream
+  pause(): void
+  resume(): void
+}
+
+/** Inflate one entry while counting actual bytes, rejecting the moment the
+ *  cap is crossed — the central-directory size is attacker-controlled, so a
+ *  zip bomb whose header lies is stopped here instead of exhausting the tab. */
+function inflateCapped(
+  entry: JSZip.JSZipObject,
+  cap: number,
+  code: string,
+  message: string
+): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    const chunks: Uint8Array[] = []
+    let total = 0
+    let settled = false
+    const stream = (
+      entry as unknown as { internalStream(type: 'uint8array'): ZipStream }
+    ).internalStream('uint8array')
+    stream.on('data', (chunk: Uint8Array) => {
+      if (settled) return
+      total += chunk.length
+      if (total > cap) {
+        settled = true
+        stream.pause()
+        reject(new ContainerError(code, message))
+        return
+      }
+      chunks.push(chunk)
+    })
+    stream.on('error', (err: Error) => {
+      if (!settled) {
+        settled = true
+        reject(new ContainerError('zipInvalid', err.message))
+      }
+    })
+    stream.on('end', () => {
+      if (!settled) {
+        settled = true
+        const joined = new Uint8Array(total)
+        let offset = 0
+        for (const c of chunks) {
+          joined.set(c, offset)
+          offset += c.length
+        }
+        resolve(joined)
+      }
+    })
+    stream.resume()
+  })
+}
+
+/** Reject an entry whose declared uncompressed size is missing or over `cap`
+ *  BEFORE any inflation happens. */
+function assertDeclaredSize(entry: JSZip.JSZipObject, cap: number, code: string, what: string): void {
+  const size = declaredSize(entry)
+  if (size == null) {
+    throw new ContainerError('entryMetaMissing', `${what}: zip entry metadata is missing`)
+  }
+  if (size > cap) {
+    throw new ContainerError(code, `${what} exceeds ${Math.floor(cap / 1024 / 1024)} MiB`)
+  }
+}
+
 /**
  * Unzip a container, locate its manifest, validate it, and resolve every
  * referenced skill package into a Blob. Throws ContainerError on any problem.
+ *
+ * Zip-bomb posture: the outer file size is capped, every entry's DECLARED
+ * uncompressed size is checked before inflation, a running total bounds the
+ * whole container, and the actual inflation is byte-counted against the same
+ * caps in case the headers lie.
  */
 export async function parseExpertContainer(file: File | Blob): Promise<ParsedContainer> {
   if (file.size > MAX_CONTAINER_BYTES) {
@@ -343,9 +432,16 @@ export async function parseExpertContainer(file: File | Blob): Promise<ParsedCon
   }
   const kind: ExpertKindLike = squadJson ? 'squad' : 'agent'
 
+  assertDeclaredSize(manifestFile, MAX_MANIFEST_BYTES, 'manifestTooLarge', 'manifest')
+  const manifestBytes = await inflateCapped(
+    manifestFile,
+    MAX_MANIFEST_BYTES,
+    'manifestTooLarge',
+    'manifest exceeds 1 MiB'
+  )
   let rawManifest: unknown
   try {
-    rawManifest = JSON.parse(await manifestFile.async('string'))
+    rawManifest = JSON.parse(new TextDecoder().decode(manifestBytes))
   } catch {
     throw new ContainerError('manifestParse', 'manifest JSON is malformed')
   }
@@ -358,17 +454,35 @@ export async function parseExpertContainer(file: File | Blob): Promise<ParsedCon
       ? manifest.members.flatMap((m) => m.skills)
       : manifest.skills
 
-  const skillFiles = new Map<string, ResolvedSkillFile>()
+  // Pre-flight every referenced entry from metadata alone — per-entry cap and
+  // a total-uncompressed cap — before inflating anything.
+  const uniquePaths: string[] = []
+  let declaredTotal = 0
   for (const skill of refs) {
-    if (!skill.file || skillFiles.has(skill.file)) continue
+    if (!skill.file || uniquePaths.includes(skill.file)) continue
     const entry = zip.file(skill.file)
     if (!entry) {
       throw new ContainerError('skillFileMissing', `bundled package "${skill.file}" not found in container`)
     }
-    const blob = await entry.async('blob')
-    if (blob.size > MAX_SKILL_PACKAGE_BYTES) {
-      throw new ContainerError('skillFileTooLarge', `package "${skill.file}" exceeds 20 MiB`)
+    assertDeclaredSize(entry, MAX_SKILL_PACKAGE_BYTES, 'skillFileTooLarge', `package "${skill.file}"`)
+    declaredTotal += declaredSize(entry) ?? 0
+    if (declaredTotal > MAX_CONTAINER_BYTES) {
+      throw new ContainerError('containerTooLarge', 'container exceeds 512 MiB uncompressed')
     }
+    uniquePaths.push(skill.file)
+  }
+
+  const skillFiles = new Map<string, ResolvedSkillFile>()
+  for (const skill of refs) {
+    if (!skill.file || skillFiles.has(skill.file)) continue
+    const entry = zip.file(skill.file)!
+    const bytes = await inflateCapped(
+      entry,
+      MAX_SKILL_PACKAGE_BYTES,
+      'skillFileTooLarge',
+      `package "${skill.file}" exceeds 20 MiB`
+    )
+    const blob = new Blob([bytes])
     skillFiles.set(skill.file, {
       skillName: skill.name,
       path: skill.file,
