@@ -1,9 +1,10 @@
-import { useCallback, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Form, Input, Button, Card, Spin, Alert, message } from 'antd'
-import { UserOutlined, LockOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, LockOutlined, MailOutlined, SafetyCertificateOutlined, UserOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
-import { login } from '../../api/auth'
+import { login, resendLoginCode, verifyLogin, type LoginChallengeResponse, type ManagerLoginResult } from '../../api/auth'
+import { ApiError } from '../../api'
 import { useAuthStore } from '../../store/auth'
 import LanguageSwitcher from '../../components/LanguageSwitcher'
 import { useSessionRestore } from './useSessionRestore'
@@ -122,16 +123,56 @@ interface LoginForm {
   password: string
 }
 
+interface VerificationForm {
+  code: string
+}
+
+function formatRemainingTime(seconds: number) {
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = seconds % 60
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
+}
+
+function isManagerLoginChallenge(data: ManagerLoginResult): data is LoginChallengeResponse {
+  return 'challenge_id' in data && Boolean(data.challenge_id)
+}
+
 function CredentialsForm() {
   const [loading, setLoading] = useState(false)
+  const [resendLoading, setResendLoading] = useState(false)
+  const [challenge, setChallenge] = useState<LoginChallengeResponse | null>(null)
+  const [remainingSeconds, setRemainingSeconds] = useState(0)
+  const [loginForm] = Form.useForm<LoginForm>()
+  const [verificationForm] = Form.useForm<VerificationForm>()
   const navigate = useNavigate()
   const authLogin = useAuthStore((state) => state.loginSuper)
   const { t } = useTranslation('login')
 
-  const onFinish = async (values: LoginForm) => {
+  useEffect(() => {
+    if (!challenge) {
+      setRemainingSeconds(0)
+      return
+    }
+
+    setRemainingSeconds(challenge.expires_in)
+    const timer = window.setInterval(() => {
+      setRemainingSeconds((seconds) => Math.max(seconds - 1, 0))
+    }, 1000)
+
+    return () => window.clearInterval(timer)
+  }, [challenge])
+
+  const onLogin = async (values: LoginForm) => {
     setLoading(true)
     try {
       const data = await login(values)
+      if (isManagerLoginChallenge(data)) {
+        setChallenge(data)
+        loginForm.resetFields()
+        verificationForm.resetFields()
+        message.success(t('verification.sent'))
+        return
+      }
       authLogin(data.token, data.name, data.role)
       message.success(t('success'))
       navigate('/dashboard')
@@ -142,27 +183,130 @@ function CredentialsForm() {
     }
   }
 
+  const onVerify = async (values: VerificationForm) => {
+    if (!challenge) return
+
+    setLoading(true)
+    try {
+      const data = await verifyLogin({
+        challenge_id: challenge.challenge_id,
+        code: values.code,
+      })
+      authLogin(data.token, data.name, data.role)
+      message.success(t('success'))
+      navigate('/dashboard')
+    } catch (error) {
+      if (error instanceof ApiError && error.code === 'err.server.user.manager_login_challenge_invalid') {
+        resetChallenge()
+        message.error(t('verification.invalid'))
+        return
+      }
+      message.error((error as Error).message || t('verification.failure'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const onResend = async () => {
+    if (!challenge) return
+
+    setResendLoading(true)
+    try {
+      const data = await resendLoginCode(challenge.challenge_id)
+      setChallenge(data)
+      verificationForm.resetFields()
+      message.success(t('verification.resent'))
+    } catch (error) {
+      if (error instanceof ApiError && error.code === 'err.server.user.manager_login_challenge_invalid') {
+        resetChallenge()
+        message.error(t('verification.invalid'))
+        return
+      }
+      message.error((error as Error).message || t('verification.resendFailure'))
+    } finally {
+      setResendLoading(false)
+    }
+  }
+
+  const backToLogin = () => {
+    resetChallenge()
+  }
+
+  function resetChallenge() {
+    setChallenge(null)
+    verificationForm.resetFields()
+    loginForm.resetFields()
+  }
+
   return (
     <>
-      <Form onFinish={onFinish} size="large">
-        <Form.Item
-          name="username"
-          rules={[{ required: true, message: t('username.required') }]}
-        >
-          <Input prefix={<UserOutlined />} placeholder={t('username.placeholder')} />
-        </Form.Item>
-        <Form.Item
-          name="password"
-          rules={[{ required: true, message: t('password.required') }]}
-        >
-          <Input.Password prefix={<LockOutlined />} placeholder={t('password.placeholder')} />
-        </Form.Item>
-        <Form.Item style={{ marginBottom: 0 }}>
-          <Button type="primary" htmlType="submit" loading={loading} block>
-            {t('submit')}
-          </Button>
-        </Form.Item>
-      </Form>
+      {challenge ? (
+        <>
+          <div style={{ textAlign: 'center', marginBottom: 20, color: 'var(--a-text-secondary)' }}>
+            <MailOutlined style={{ marginRight: 6 }} />
+            {t('verification.description', { email: challenge.email })}
+          </div>
+          <Form form={verificationForm} onFinish={onVerify} size="large">
+            <Form.Item
+              name="code"
+              rules={[
+                { required: true, message: t('verification.code.required') },
+                { pattern: /^\d{6}$/, message: t('verification.code.invalid') },
+              ]}
+            >
+              <Input
+                prefix={<SafetyCertificateOutlined />}
+                placeholder={t('verification.code.placeholder')}
+                inputMode="numeric"
+                maxLength={6}
+              />
+            </Form.Item>
+            <Form.Item style={{ marginBottom: 12 }}>
+              <Button type="primary" htmlType="submit" loading={loading} block>
+                {t('verification.submit')}
+              </Button>
+            </Form.Item>
+          </Form>
+          <div style={{ textAlign: 'center', color: 'var(--a-text-tertiary)', fontSize: 13 }}>
+            {remainingSeconds > 0
+              ? t('verification.expiresIn', { time: formatRemainingTime(remainingSeconds) })
+              : t('verification.expired')}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 12 }}>
+            <Button type="link" onClick={onResend} loading={resendLoading} disabled={loading}>
+              {t('verification.resend')}
+            </Button>
+            <Button
+              type="link"
+              icon={<ArrowLeftOutlined />}
+              onClick={backToLogin}
+              disabled={loading || resendLoading}
+            >
+              {t('verification.back')}
+            </Button>
+          </div>
+        </>
+      ) : (
+        <Form form={loginForm} onFinish={onLogin} size="large">
+          <Form.Item
+            name="username"
+            rules={[{ required: true, message: t('username.required') }]}
+          >
+            <Input prefix={<UserOutlined />} placeholder={t('username.placeholder')} />
+          </Form.Item>
+          <Form.Item
+            name="password"
+            rules={[{ required: true, message: t('password.required') }]}
+          >
+            <Input.Password prefix={<LockOutlined />} placeholder={t('password.placeholder')} />
+          </Form.Item>
+          <Form.Item style={{ marginBottom: 0 }}>
+            <Button type="primary" htmlType="submit" loading={loading} block>
+              {t('submit')}
+            </Button>
+          </Form.Item>
+        </Form>
+      )}
       <div
         style={{
           marginTop: 20,

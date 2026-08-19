@@ -1,15 +1,28 @@
 import api from './index'
 import { normalizeManagerCapabilities, type ManagerMe } from '../auth/capabilities'
 
-interface LoginParams {
+export interface LoginParams {
   username: string
   password: string
 }
 
-interface LoginResponse {
+export interface ManagerLoginResponse {
   token: string
   name: string
   role: string
+}
+
+export interface LoginChallengeResponse {
+  challenge_id: string
+  email: string
+  expires_in: number
+}
+
+export type ManagerLoginResult = ManagerLoginResponse | LoginChallengeResponse
+
+export interface VerifyLoginParams {
+  challenge_id: string
+  code: string
 }
 
 interface ManagerMeOptions {
@@ -22,7 +35,15 @@ interface ManagerMeOptions {
 }
 
 export const login = (params: LoginParams) =>
-  api.post<LoginResponse>('/v1/manager/login', params).then((res) => res.data)
+  api.post<ManagerLoginResult>('/v1/manager/login', params).then((res) => res.data)
+
+export const verifyLogin = (params: VerifyLoginParams) =>
+  api.post<ManagerLoginResponse>('/v1/manager/login/verify', params).then((res) => res.data)
+
+export const resendLoginCode = (challenge_id: string) =>
+  api
+    .post<LoginChallengeResponse>('/v1/manager/login/resend', { challenge_id })
+    .then((res) => res.data)
 
 export const getManagerMe = (options: ManagerMeOptions = {}) =>
   api
