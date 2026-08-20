@@ -30,7 +30,7 @@ import 'dayjs/locale/zh-cn'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import api from '../../api'
 import { colors, radius, space, font } from '../../styles/tokens'
-import { parseUpdateDesc, getVersionSeverity, formatVersion, parseContributors, detectViewerOS, groupReleases, desktopPlatforms } from './utils'
+import { parseUpdateDesc, getVersionSeverity, formatVersion, parseContributors, detectViewerOS, groupReleases, orderBuilds, desktopPlatforms } from './utils'
 import type { VersionSeverity, ChangeCategory, Contributor, ViewerOS, AppVersion, DesktopBuild, ReleaseEntry } from './utils'
 import type { PlatformKey } from '../../styles/tokens'
 import { AnalyticsPanel } from './AnalyticsPanel'
@@ -64,22 +64,9 @@ const platformConfig: Record<string, { label: string; icon: React.ReactNode; ton
   chrome: { label: 'Chrome 扩展', icon: <ChromeIcon />, tone: 'chrome', color: '#4285f4', colorDark: '#60a5fa' },
 }
 
-/** Fallback order when we cannot tell what the visitor is running. */
-const desktopOrder = ['windows', 'macos', 'linux']
-
 const viewerOS: ViewerOS | null = typeof navigator === 'undefined'
   ? null
   : detectViewerOS(navigator.userAgent, navigator.maxTouchPoints)
-
-/** The visitor's own build first; everything else in a stable order. */
-function orderBuilds(builds: DesktopBuild[]): DesktopBuild[] {
-  return [...builds].sort((a, b) => {
-    if (a.os === b.os) return 0
-    if (a.os === viewerOS) return -1
-    if (b.os === viewerOS) return 1
-    return desktopOrder.indexOf(a.os) - desktopOrder.indexOf(b.os)
-  })
-}
 
 const tabItems = [
   { key: 'all', label: '全部', icon: <UnorderedListOutlined />, color: '', colorDark: '' },
@@ -542,7 +529,7 @@ function EntryBadges({ entry }: { entry: ReleaseEntry }) {
   if (!entry.builds) return <PlatformBadge platform={entry.os} />
   return (
     <>
-      {orderBuilds(entry.builds).map((build) => (
+      {orderBuilds(entry.builds, viewerOS).map((build) => (
         <PlatformBadge key={build.os} platform={build.os} />
       ))}
     </>
@@ -555,7 +542,7 @@ function EntryBadges({ entry }: { entry: ReleaseEntry }) {
  * equal weight rather than guessing at them.
  */
 function DesktopDownloads({ builds, compact }: { builds: DesktopBuild[]; compact?: boolean }) {
-  const ordered = orderBuilds(builds).filter((build) => build.download_url)
+  const ordered = orderBuilds(builds, viewerOS).filter((build) => build.download_url)
   if (ordered.length === 0) return null
   const knowsViewer = ordered[0].os === viewerOS
 
@@ -578,12 +565,15 @@ function DesktopDownloads({ builds, compact }: { builds: DesktopBuild[]; compact
           textDecoration: 'none',
           whiteSpace: 'nowrap',
         }
+        const quiet: React.CSSProperties = { color: colors.text.secondary, textDecoration: 'underline' }
         const style: React.CSSProperties = compact
-          ? { ...base, color: isLead || !knowsViewer ? 'var(--brand)' : colors.text.tertiary }
+          ? isLead || !knowsViewer
+            ? { ...base, color: 'var(--brand)' }
+            : { ...base, ...quiet }
           : isLead
             ? { ...base, color: 'var(--brand-contrast)', background: 'var(--brand-solid)', border: '1px solid var(--brand-solid)', padding: '5px 14px', borderRadius: radius.sm }
             : knowsViewer
-              ? { ...base, color: colors.text.secondary, padding: '5px 10px' }
+              ? { ...base, ...quiet, padding: '5px 10px' }
               : { ...base, color: 'var(--brand)', border: '1px solid var(--brand)', padding: '4px 12px', borderRadius: radius.sm }
 
         return (

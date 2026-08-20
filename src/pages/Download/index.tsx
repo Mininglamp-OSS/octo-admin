@@ -26,6 +26,8 @@ import type { ColumnsType } from 'antd/es/table'
 import { useTranslation } from 'react-i18next'
 import api from '../../api'
 import { hasManagerCapability } from '../../auth/capabilities'
+// Same platform list the public changelog groups by — keep the two pages in step.
+import { desktopPlatforms } from '../Changelog/utils'
 import { useAuthStore } from '../../store/auth'
 
 interface AppVersion {
@@ -49,8 +51,6 @@ const osOptions = [
   { label: 'macOS', value: 'macos' },
   { label: 'Linux', value: 'linux' },
 ]
-
-const DESKTOP_PLATFORMS = new Set(['windows', 'macos', 'linux'])
 
 interface PlatformMeta {
   label: string
@@ -119,7 +119,7 @@ export default function Download() {
       if (forceFilter === 'yes' && v.is_force !== 1) return false
       if (forceFilter === 'no' && v.is_force === 1) return false
       if (platformFilter === 'all') return true
-      if (platformFilter === 'desktop') return DESKTOP_PLATFORMS.has(v.os)
+      if (platformFilter === 'desktop') return desktopPlatforms.has(v.os)
       return v.os === platformFilter
     })
   }, [data, platformFilter, forceFilter])

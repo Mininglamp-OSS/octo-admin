@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { detectViewerOS, getVersionSeverity, groupReleases, parseContributors, parseUpdateDesc } from './utils'
+import { detectViewerOS, getVersionSeverity, groupReleases, orderBuilds, parseContributors, parseUpdateDesc } from './utils'
 import type { AppVersion } from './utils'
 
 describe('parseContributors', () => {
@@ -29,6 +29,30 @@ describe('parseUpdateDesc', () => {
   it('keeps an explicit prefix ahead of the release-announcement fallback', () => {
     expect(parseUpdateDesc('修复 macOS 上的崩溃发布').fixed).toHaveLength(1)
   })
+
+  it('never lets a release-announcement heading swallow the sections under it', () => {
+    for (const heading of ['## Windows 桌面端 1.0.0 版本发布', '**Windows 桌面端 1.0.0 版本发布**']) {
+      const parsed = parseUpdateDesc(`${heading}\n- 修复：启动白屏\n- 移除：旧的托盘菜单\n- 安全：升级依赖`)
+      expect(parsed.fixed.map((c) => c.text)).toEqual(['启动白屏'])
+      expect(parsed.removed.map((c) => c.text)).toEqual(['旧的托盘菜单'])
+      expect(parsed.security.map((c) => c.text)).toEqual(['升级依赖'])
+      expect(parsed.added).toEqual([])
+    }
+  })
+
+  it('leaves a 【…】 heading behaving exactly as it did before', () => {
+    // An unrecognised 【…】 heading has always pinned the lines under it to 其他
+    // (SECTION_HEADING keeps 'other', unlike the markdown path). Not this change's
+    // to fix — but the release-announcement rule must not turn them into 新增.
+    const parsed = parseUpdateDesc('【1.0.0 正式发布】\n- 修复：启动白屏\n- 安全：升级依赖')
+    expect(parsed.other.map((c) => c.text)).toEqual(['启动白屏', '升级依赖'])
+    expect(parsed.added).toEqual([])
+  })
+
+  it('does not read ordinary prose that merely ends in 上线 as a new feature', () => {
+    expect(parseUpdateDesc('问题：功能无法上线').other).toHaveLength(1)
+    expect(parseUpdateDesc('问题：功能无法上线').added).toEqual([])
+  })
 })
 
 describe('getVersionSeverity', () => {
@@ -39,6 +63,12 @@ describe('getVersionSeverity', () => {
   it('tags nothing when there is no predecessor to diff against', () => {
     expect(getVersionSeverity('3.2.1')).toBe('unknown')
     expect(getVersionSeverity('3.2.1', 'not-a-version')).toBe('unknown')
+  })
+
+  it('tags nothing when the comparison does not move forward', () => {
+    // Staggered rollout: macOS 1.0.0 lands after Windows 1.1.0 in the shared lane.
+    expect(getVersionSeverity('1.0.0', '1.1.0')).toBe('unknown')
+    expect(getVersionSeverity('2.3.4', '2.3.4')).toBe('unknown')
   })
 })
 
@@ -62,8 +92,8 @@ describe('groupReleases', () => {
     expect(rest).toEqual([])
     expect(entry.app_version).toBe('1.0.0')
     expect(entry.builds).toEqual([
-      { os: 'windows', download_url: 'https://x/setup.exe' },
-      { os: 'macos', download_url: 'https://x/octo.dmg' },
+      { os: 'windows', download_url: 'https://x/setup.exe', created_at: '2026-08-20 16:34:04' },
+      { os: 'macos', download_url: 'https://x/octo.dmg', created_at: '2026-08-20 14:18:06' },
     ])
     // The card is dated by the newest build, and keeps both sets of notes.
     expect(entry.created_at).toBe('2026-08-20 16:34:04')
@@ -80,13 +110,32 @@ describe('groupReleases', () => {
     expect(entry.update_desc).toBe('新增：全局搜索')
   })
 
-  it('keeps the newest build when one OS ships the same version twice', () => {
+  it('links the newest build when one OS ships the same version twice, in either feed order', () => {
+    const newest = release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/setup-2.exe', created_at: '2026-08-20 18:00:00', is_force: 1 })
+    const oldest = release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/setup-1.exe', created_at: '2026-08-20 16:00:00' })
+
+    for (const feed of [[newest, oldest], [oldest, newest]]) {
+      const [entry] = groupReleases(feed)
+      expect(entry.builds).toEqual([
+        { os: 'windows', download_url: 'https://x/setup-2.exe', created_at: '2026-08-20 18:00:00' },
+      ])
+      expect(entry.created_at).toBe('2026-08-20 18:00:00')
+      expect(entry.is_force).toBe(1)
+    }
+  })
+
+  it('unions per-OS notes line by line instead of dropping a shorter set', () => {
     const [entry] = groupReleases([
-      release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/setup-2.exe', created_at: '2026-08-20 18:00:00' }),
-      release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/setup-1.exe', created_at: '2026-08-20 16:00:00' }),
+      release({ os: 'windows', app_version: '2.1.0', update_desc: '修复：启动崩溃\n新增：全局搜索' }),
+      release({ os: 'macos', app_version: '2.1.0', update_desc: '修复：启动崩溃\n新增：菜单栏图标' }),
     ])
 
-    expect(entry.builds).toEqual([{ os: 'windows', download_url: 'https://x/setup-2.exe' }])
+    expect(entry.update_desc.split('\n')).toEqual(['修复：启动崩溃', '新增：全局搜索', '新增：菜单栏图标'])
+  })
+
+  it('hands back copies, never the objects the caller passed in', () => {
+    const input = [release({ os: 'ios', app_version: '3.4.1' })]
+    expect(groupReleases(input)[0]).not.toBe(input[0])
   })
 
   it('separates desktop versions and never mixes them with web or mobile', () => {
@@ -131,5 +180,28 @@ describe('detectViewerOS', () => {
     expect(detectViewerOS('Mozilla/5.0 (X11; CrOS x86_64 14541.0.0)')).toBeNull()
     // iPadOS claims to be a Mac; the touch points are the tell.
     expect(detectViewerOS('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15', 5)).toBeNull()
+  })
+})
+
+describe('orderBuilds', () => {
+  const builds = [
+    { os: 'windows', download_url: 'a.exe', created_at: '2026-08-20 16:00:00' },
+    { os: 'macos', download_url: 'a.dmg', created_at: '2026-08-20 14:00:00' },
+    { os: 'linux', download_url: 'a.AppImage', created_at: '2026-08-20 12:00:00' },
+  ]
+
+  it("leads with the visitor's own platform", () => {
+    expect(orderBuilds(builds, 'macos').map((b) => b.os)).toEqual(['macos', 'windows', 'linux'])
+    expect(orderBuilds(builds, 'linux').map((b) => b.os)).toEqual(['linux', 'windows', 'macos'])
+  })
+
+  it('falls back to the canonical order when the visitor is unknown', () => {
+    expect(orderBuilds(builds, null).map((b) => b.os)).toEqual(['windows', 'macos', 'linux'])
+  })
+
+  it('does not mutate the builds it was given', () => {
+    const original = [...builds]
+    orderBuilds(builds, 'linux')
+    expect(builds).toEqual(original)
   })
 })

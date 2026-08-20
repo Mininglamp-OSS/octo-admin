@@ -42,10 +42,18 @@ const CATEGORY_PATTERNS: [ChangeCategory, RegExp][] = [
   ['fixed', /^(修复|修正|解决|fix[：:]?\s|bug)/i],
   ['added', /^(新增|新功能[：:]?\s?|新加|添加|支持|feat(ure)?[：:]?\s?|\+\s)/i],
   ['changed', /^(优化|改进|提升|更新|调整|升级|重构|改为|改善|chore[：:]?\s?|refactor|perf)/i],
-  // Release announcements ("Windows 桌面端 1.0.0 版本发布") name the platform first,
-  // so they only match at the end of the line. Kept last so an explicit prefix wins.
-  ['added', /(?:正式|首次|版本)?(?:发布|上线)$/],
 ]
+
+/**
+ * A line announcing the release itself ("Windows 桌面端 1.0.0 版本发布") names the
+ * platform first, so no prefix rule catches it — it reads as 新增, not 其他.
+ *
+ * Deliberately NOT part of CATEGORY_PATTERNS: classifyLine() also decides section
+ * headings, and a heading matching this would swallow the 修复/移除/安全 headings
+ * below it into 新增. The qualifier is required so ordinary prose that merely ends
+ * in 上线 ("问题：功能无法上线") stays where it belongs.
+ */
+const RELEASE_ANNOUNCEMENT = /(?:正式|首次|版本)(?:发布|上线)$/
 
 const PREFIX_STRIP = /^(安全|漏洞|CVE|security|移除|删除|废弃|下线|remove|deprecat\w*|修复|修正|解决|fix|bug|新增|新功能|新加|添加|支持|feat(?:ure)?|优化|改进|提升|更新|调整|升级|重构|改为|改善|chore|refactor|perf)[：:：]?\s*/i
 
@@ -136,6 +144,8 @@ export function parseUpdateDesc(desc: string): ParsedChanges {
       push(currentSection, stripped || line)
     } else if (cat !== 'other') {
       push(cat, stripped)
+    } else if (RELEASE_ANNOUNCEMENT.test(line)) {
+      push('added', line)
     } else {
       push('other', line)
     }
@@ -184,7 +194,9 @@ export function getVersionSeverity(version: string, prevVersion?: string): Versi
   const prevBuild = parseBuildNumber(prevVersion)
   if (build !== null && prevBuild !== null && build > prevBuild) return 'build'
 
-  return 'patch'
+  // Nothing increased — a staggered rollout can put 1.0.0 after 1.1.0 in the shared
+  // desktop lane. No tag beats a wrong one.
+  return 'unknown'
 }
 
 export interface AppVersion {
@@ -199,6 +211,7 @@ export interface AppVersion {
 export interface DesktopBuild {
   os: string
   download_url: string
+  created_at: string
 }
 
 /** One card on the timeline. A desktop release carries every OS build of that
@@ -210,14 +223,47 @@ export interface ReleaseEntry extends AppVersion {
 /* Desktop builds are versioned, downloadable artifacts. All builds of one version
    share a card — 1.0.0 is a single release that happens to ship two installers —
    while `web` collapses per day, since it ships several times a day with nothing
-   to download. */
-export const desktopPlatforms = new Set(['windows', 'macos', 'linux'])
+   to download.
+
+   This list is the single source of truth: the platform set, the fallback display
+   order and the ViewerOS union all derive from it. */
+export const desktopOrder = ['windows', 'macos', 'linux'] as const
+
+export type ViewerOS = (typeof desktopOrder)[number]
+
+export const desktopPlatforms: ReadonlySet<string> = new Set(desktopOrder)
+
+/** The visitor's own build first; everything else in the canonical order. */
+export function orderBuilds(builds: DesktopBuild[], viewerOS: ViewerOS | null): DesktopBuild[] {
+  const rank = (os: string) => {
+    const at = (desktopOrder as readonly string[]).indexOf(os)
+    return at === -1 ? desktopOrder.length : at
+  }
+  return [...builds].sort((a, b) => {
+    if (a.os === b.os) return 0
+    if (a.os === viewerOS) return -1
+    if (b.os === viewerOS) return 1
+    return rank(a.os) - rank(b.os)
+  })
+}
+
+/** Per-OS notes usually repeat verbatim; union them line by line so a shared line
+ *  is not duplicated and an OS-specific line is never swallowed. */
+function mergeNotes(existing: string, incoming: string): string {
+  const seen = new Set(existing.split('\n').map((line) => line.trim()))
+  const extra = incoming
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line && !seen.has(line))
+  return extra.length > 0 ? existing + '\n' + extra.join('\n') : existing
+}
 
 /**
  * Collapse the raw feed into timeline cards: desktop builds group by version,
  * web deploys group by day, everything else stands alone.
  *
- * Expects `raw` newest first — the order the API returns.
+ * Card order follows `raw`, which the API returns newest first; which binary a
+ * card links is decided by comparing timestamps, not by that order.
  */
 export function groupReleases(raw: AppVersion[]): ReleaseEntry[] {
   const result: ReleaseEntry[] = []
@@ -228,27 +274,31 @@ export function groupReleases(raw: AppVersion[]): ReleaseEntry[] {
 
   for (const item of raw) {
     if (desktopPlatforms.has(item.os)) {
+      const build = { os: item.os, download_url: item.download_url, created_at: item.created_at }
       const at = desktopByVersion.get(item.app_version)
       if (at === undefined) {
         desktopByVersion.set(item.app_version, result.length)
-        result.push({ ...item, builds: [{ os: item.os, download_url: item.download_url }] })
+        result.push({ ...item, builds: [build] })
         continue
       }
       const entry = result[at]
-      // Newest first, so an OS already present holds the newer build of this version.
-      if (entry.builds!.some((build) => build.os === item.os)) continue
-      entry.builds!.push({ os: item.os, download_url: item.download_url })
+      const sameOS = entry.builds!.find((existing) => existing.os === item.os)
+      if (!sameOS) {
+        entry.builds!.push(build)
+      } else if (item.created_at > sameOS.created_at) {
+        // Same OS re-uploaded for this version: the link has to point at the newer
+        // binary, whatever order the feed happens to arrive in.
+        sameOS.download_url = item.download_url
+        sameOS.created_at = item.created_at
+      }
       entry.created_at = entry.created_at > item.created_at ? entry.created_at : item.created_at
       entry.is_force = entry.is_force || item.is_force
-      // Per-OS notes usually repeat; keep whatever this build says on its own.
-      if (!entry.update_desc.includes(item.update_desc)) {
-        entry.update_desc = entry.update_desc + '\n' + item.update_desc
-      }
+      entry.update_desc = mergeNotes(entry.update_desc, item.update_desc)
       continue
     }
 
     if (item.os !== 'web') {
-      result.push(item)
+      result.push({ ...item })
       continue
     }
 
@@ -268,8 +318,6 @@ export function groupReleases(raw: AppVersion[]): ReleaseEntry[] {
 
   return result
 }
-
-export type ViewerOS = 'windows' | 'macos' | 'linux'
 
 /**
  * Best-effort sniff of the visitor's desktop OS, used only to promote the

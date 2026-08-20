@@ -1691,6 +1691,7 @@
 :root[data-theme='dark'] .admin-shell .pill-outline.ios { color: #38bdf8; }
 :root[data-theme='dark'] .admin-shell .pill-outline.android { color: #4ade80; }
 :root[data-theme='dark'] .admin-shell .pill-outline.web { color: #818cf8; }
+:root[data-theme='dark'] .admin-shell .pill-outline.desktop { color: #2dd4bf; }
 :root[data-theme='dark'] .admin-shell .pill-outline.plugin { color: #fb923c; }
 
 /* Ghost-style edit icon button for row actions */
