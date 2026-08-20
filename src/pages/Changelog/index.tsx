@@ -30,8 +30,8 @@ import 'dayjs/locale/zh-cn'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import api from '../../api'
 import { colors, radius, space, font } from '../../styles/tokens'
-import { parseUpdateDesc, getVersionSeverity, formatVersion, parseContributors, detectViewerOS, isHandheld, forcedPlatforms, groupReleases, orderBuilds, noteBlocks, latestDesktopDownloads, offerVersionLabel, offeredAbove, safeDownloadUrl, desktopPlatforms } from './utils'
-import type { VersionSeverity, ChangeCategory, Contributor, ViewerOS, AppVersion, DesktopBuild, DesktopDownload, NoteBlock, ReleaseEntry } from './utils'
+import { parseUpdateDesc, getVersionSeverity, formatVersion, detectViewerOS, isHandheld, forcedPlatforms, entryContributors, groupReleases, orderBuilds, noteBlocks, latestDesktopDownloads, offerVersionLabel, offeredAbove, safeDownloadUrl, desktopPlatforms } from './utils'
+import type { VersionSeverity, ChangeCategory, ChangeItem, Contributor, ViewerOS, AppVersion, DesktopBuild, DesktopDownload, NoteBlock, ReleaseEntry } from './utils'
 import type { PlatformKey } from '../../styles/tokens'
 import { AnalyticsPanel } from './AnalyticsPanel'
 import { useTheme } from '../../hooks/useTheme'
@@ -680,7 +680,7 @@ function splitByTimeTag(desc: string): { time: string | null; content: string }[
 
 /* Announcements are shown but never counted: "1.0.0 版本发布" is the release, not
    something in it, and counting it reports a change the release does not contain. */
-const isChange = (item: { announces?: string }) => item.announces === undefined
+const isChange = (item: ChangeItem) => item.announces === undefined
 
 function countChanges(parsed: ReturnType<typeof parseUpdateDesc>): number {
   return Object.values(parsed).reduce((total, items) => total + items.filter(isChange).length, 0)
@@ -698,6 +698,12 @@ function StructuredChanges({ desc }: { desc: string }) {
     <div className="changelog-notes" style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
       {sections.map((section, si) => {
         const parsed = parseUpdateDesc(section.content)
+        // Every line an author wrote is rendered under the heading they filed it
+        // under, announcements included — "shown but never counted" is the whole
+        // rule, and filtering the headings by isChange would hide the lines rather
+        // than merely stop counting them. So on a note holding one change and one
+        // announcement the badge shows two bullets while the summary says one:
+        // deliberate, since the alternative is a line disappearing.
         const categories = (['added', 'changed', 'fixed', 'security', 'removed', 'other'] as const).filter((k) => parsed[k].length > 0)
         const totalChanges = countChanges(parsed)
 
@@ -924,19 +930,6 @@ function blockStats(blocks: NoteBlock[]): { added: number; fixed: number; change
   )
 }
 
-function blockContributors(blocks: NoteBlock[]): Contributor[] {
-  const seen = new Set<string>()
-  const all: Contributor[] = []
-  for (const block of blocks) {
-    for (const contributor of parseContributors(block.desc)) {
-      if (seen.has(contributor.name)) continue
-      seen.add(contributor.name)
-      all.push(contributor)
-    }
-  }
-  return all
-}
-
 function getChangeStats(desc: string): { added: number; fixed: number; changed: number } {
   const sections = splitByTimeTag(desc)
   let added = 0, fixed = 0, changed = 0
@@ -1014,7 +1007,7 @@ function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: Re
   // build of one version, and is_force is per build.
   const forcedOn = forcedPlatforms(item).map((os) => platformConfig[os]?.label ?? os)
   const blocks = useMemo(() => noteBlocks(item, viewerOS), [item])
-  const contributors = useMemo(() => blockContributors(blocks), [blocks])
+  const contributors = useMemo(() => entryContributors(item), [item])
   const dotColor = 'var(--timeline-dot-border)'
 
   const dateObj = dayjs(item.created_at)
@@ -1149,7 +1142,7 @@ export function LatestReleaseSpotlight({ item, severity, hideDownloads }: { item
   const dateObj = dayjs(item.created_at)
   const blocks = useMemo(() => noteBlocks(item, viewerOS), [item])
   const stats = useMemo(() => blockStats(blocks), [blocks])
-  const contributors = useMemo(() => blockContributors(blocks), [blocks])
+  const contributors = useMemo(() => entryContributors(item), [item])
   const isWebMerged = isWeb && TIME_TAG_PATTERN.test(item.update_desc)
   const downloadHref = safeDownloadUrl(item.download_url)
 

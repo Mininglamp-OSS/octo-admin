@@ -25,7 +25,7 @@ describe('parseUpdateDesc', () => {
     // reported as a feature, but a reader still sees every line an author wrote.
     const parsed = parseUpdateDesc('Windows 桌面端 1.0.0 版本发布')
     expect(parsed.added).toEqual([])
-    expect(parsed.other).toEqual([{ text: 'Windows 桌面端 1.0.0 版本发布', group: undefined, announces: '1.0.0' }])
+    expect(parsed.other).toEqual([{ text: 'Windows 桌面端 1.0.0 版本发布', group: undefined, announces: { version: '1.0.0', subject: 'Windows 桌面端' } }])
   })
 
   it('marks the announcement wherever the note happens to file it', () => {
@@ -33,7 +33,7 @@ describe('parseUpdateDesc', () => {
     // sentence stop inflating 新增 — under a heading, behind a prefix, or bare.
     for (const desc of ['新增\n- Windows 桌面端 1.0.0 版本发布', '新增：Windows 桌面端 1.0.0 版本发布']) {
       expect(parseUpdateDesc(desc).added).toEqual([
-        { text: 'Windows 桌面端 1.0.0 版本发布', group: undefined, announces: '1.0.0' },
+        { text: 'Windows 桌面端 1.0.0 版本发布', group: undefined, announces: { version: '1.0.0', subject: 'Windows 桌面端' } },
       ])
     }
   })
@@ -99,24 +99,42 @@ describe('parseUpdateDesc', () => {
 })
 
 describe('announcesOnly', () => {
-  it('is true only for a note that announces the very release it sits on', () => {
-    expect(announcesOnly('Windows 桌面端 1.0.0 版本发布', '1.0.0')).toBe(true)
-    expect(announcesOnly('Windows 桌面端 1.0.0 版本发布', 'v1.0')).toBe(true)
+  it('is true only for a note announcing this release, on this platform', () => {
+    expect(announcesOnly('Windows 桌面端 1.0.0 版本发布', '1.0.0', 'windows')).toBe(true)
+    expect(announcesOnly('Windows 桌面端 1.0.0 版本发布', 'v1.0', 'windows')).toBe(true)
+    // No subject at all can only be about the release it sits on.
+    expect(announcesOnly('1.0.0 版本发布', '1.0.0', 'windows')).toBe(true)
+    // A full stop is punctuation, not a change of meaning.
+    expect(announcesOnly('Windows 桌面端 1.0.0 版本发布。', '1.0.0', 'windows')).toBe(true)
+  })
+
+  it('keeps a note whose subject is something else that reached this number', () => {
+    // A version number names no particular thing: the plugin market can reach 2.0
+    // in the same train that takes the desktop app to 2.0.0. Matching on the number
+    // alone read this as the card repeating itself and deleted the news.
+    expect(announcesOnly('插件市场 2.0 正式上线', '2.0.0', 'windows')).toBe(false)
+    expect(announcesOnly('深色模式 3.0 正式发布', '3.0.0', 'windows')).toBe(false)
+    // And the Windows note on a card does not get to announce macOS.
+    expect(announcesOnly('Mac 桌面端 1.0.0 版本发布', '1.0.0', 'windows')).toBe(false)
   })
 
   it('keeps a note announcing anything other than this release', () => {
-    // Same sentence, different subject: the plugin market shipping 2.0 is news on
-    // the 1.0.0 card, not a restatement of its headline.
-    expect(announcesOnly('插件市场 2.0 正式上线', '1.0.0')).toBe(false)
-    expect(announcesOnly('白屏崩溃已解决，伴随 1.0.0 版本发布', '1.0.0')).toBe(false)
+    expect(announcesOnly('插件市场 2.0 正式上线', '1.0.0', 'windows')).toBe(false)
+    expect(announcesOnly('白屏崩溃已解决，伴随 1.0.0 版本发布', '1.0.0', 'windows')).toBe(false)
   })
 
   it('keeps a note that announces the release and then says something', () => {
-    expect(announcesOnly('Windows 桌面端 1.0.0 版本发布\n修复：启动白屏', '1.0.0')).toBe(false)
+    expect(announcesOnly('Windows 桌面端 1.0.0 版本发布\n修复：启动白屏', '1.0.0', 'windows')).toBe(false)
+  })
+
+  it('is unmoved by a credit line, which the card reads from elsewhere', () => {
+    // The block goes; the credits do not, because entryContributors() reads them
+    // off the entry rather than off the blocks that survived.
+    expect(announcesOnly('Windows 桌面端 1.0.0 版本发布\n@contributors: alice, bob', '1.0.0', 'windows')).toBe(true)
   })
 
   it('is false for a note with nothing in it, which has its own handling', () => {
-    expect(announcesOnly('', '1.0.0')).toBe(false)
+    expect(announcesOnly('', '1.0.0', 'windows')).toBe(false)
   })
 })
 
@@ -228,6 +246,26 @@ describe('groupReleases', () => {
     for (const feed of [rows, [...rows].reverse()]) {
       const [entry] = groupReleases(feed)
       expect(entry.builds?.[0].download_url).toBe(latestDesktopDownloads(feed)[0].download_url)
+    }
+  })
+
+  it('shows the newest notes filed, whatever order three uploads arrive in', () => {
+    // The build the card links and the notes it shows need not come from the same
+    // row: a re-upload that only fixes a link is saved with the notes box empty.
+    // Folding "keep what is there when the new one is blank" hands the card
+    // whichever non-blank row happened to be seen first, which the feed decides.
+    const older = release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/1.exe', created_at: '2026-08-20 10:00:00', update_desc: '修复：启动白屏' })
+    const newer = release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/2.exe', created_at: '2026-08-20 12:00:00', update_desc: '修复：托盘图标丢失' })
+    const relink = release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/3.exe', created_at: '2026-08-20 18:00:00', update_desc: '  ' })
+
+    const orders = [
+      [older, newer, relink], [older, relink, newer], [newer, older, relink],
+      [newer, relink, older], [relink, older, newer], [relink, newer, older],
+    ]
+    for (const feed of orders) {
+      const [entry] = groupReleases(feed)
+      expect(entry.builds?.[0].download_url).toBe('https://x/3.exe')
+      expect(noteBlocks(entry)).toEqual([{ os: [], desc: '修复：托盘图标丢失' }])
     }
   })
 
@@ -565,6 +603,19 @@ describe('latestDesktopDownloads', () => {
     }
   })
 
+  it('sees a prerelease token however the qualifier is spelled', () => {
+    // semver's own separator is the dot, and an architecture is as likely to be
+    // written x86_64 as x86. Splitting on the hyphen alone left both unread, and
+    // the band then offered a release candidate over the stable it precedes.
+    const stable = release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/stable.exe', created_at: '2026-01-01 00:00:00' })
+    for (const spelling of ['1.0.1-x86.rc1', '1.0.1-x86_64-rc1']) {
+      const rc = release({ os: 'windows', app_version: spelling, download_url: 'https://x/rc.exe', created_at: '2026-02-01 00:00:00' })
+      for (const feed of [[stable, rc], [rc, stable]]) {
+        expect(latestDesktopDownloads(feed).map((build) => build.download_url)).toEqual(['https://x/stable.exe'])
+      }
+    }
+  })
+
   it('does not read a word that merely starts like a qualifier as one', () => {
     const older = release({ os: 'windows', app_version: '1.2.2', download_url: 'https://x/old.exe', created_at: '2026-01-01 00:00:00' })
     const prebuilt = release({ os: 'windows', app_version: '1.2.3-prebuilt', download_url: 'https://x/new.exe', created_at: '2026-02-01 00:00:00' })
@@ -743,6 +794,15 @@ describe('offerVersionLabel', () => {
     // The band sits above a button handing over the release candidate; "v1.0.0"
     // there would name a release nobody can download yet.
     expect(offerVersionLabel([offer('1.0.0-rc1')])).toBe('v1.0.0-rc1')
+  })
+
+  it('reads two architectures of one version as one release', () => {
+    // isPrerelease already says -x64 is an architecture rather than a release
+    // distinction; the label has to agree, or the band drops the version line for
+    // a release that has one.
+    expect(offerVersionLabel([offer('1.0.0-x64'), { ...offer('1.0.0-arm64'), os: 'macos' }])).toBe('v1.0.0')
+    // A prerelease among them is a different release, and still says nothing.
+    expect(offerVersionLabel([offer('1.0.0-x64'), { ...offer('1.0.0-rc1'), os: 'macos' }])).toBeNull()
   })
 
   it('says nothing about a version string it cannot read', () => {

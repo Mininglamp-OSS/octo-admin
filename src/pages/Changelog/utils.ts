@@ -3,9 +3,10 @@ export type ChangeCategory = 'security' | 'removed' | 'fixed' | 'added' | 'chang
 export interface ChangeItem {
   text: string
   group?: string
-  /** The version this line announces, when the line is an announcement of a release
-   *  rather than of anything in it. Counted by nothing; still shown. */
-  announces?: string
+  /** What this line announces, when it announces a release rather than anything in
+   *  it: the version, and the subject it names ahead of the version. Counted by
+   *  nothing; still shown. */
+  announces?: { version: string; subject: string }
 }
 
 export interface ParsedChanges {
@@ -75,8 +76,18 @@ const RELEASE_ANNOUNCEMENT = /(?:正式|首次|版本)(?:发布|上线)$/
  *   - "协议从 1.0 升级到 2.0 正式上线" names two versions and is a change between them;
  *   - "1.5x 倍速播放正式上线" and "深色模式正式发布" announce features, not releases.
  * None of them are announcements of a release, and none are marked.
+ *
+ * Both the subject and the whole version are captured. A version number names no
+ * particular thing — the plugin market can reach 2.0 in the same train that takes
+ * the desktop app to 2.0.0 — so the subject is what says which thing shipped, and
+ * announcesOnly() reads it before letting a card drop anything.
  */
-const VERSION_ANNOUNCEMENT = /^[^\d，。；、,;:：]*?(\d+\.\d+(?:\.\d+)?)\S*\s*(?:正式|首次|版本)(?:发布|上线)$/
+const VERSION_ANNOUNCEMENT =
+  /^([^\d，。；、,;:：]*?)(\d+\.\d+(?:\.\d+)?(?:[-+][0-9A-Za-z][0-9A-Za-z._+-]*)?)\S*\s*(?:正式|首次|版本)(?:发布|上线)$/
+
+/* Trailing sentence punctuation is common in these notes and says nothing about
+   what the line is; both announcement rules anchor on the verb at the end. */
+const TRAILING_STOP = /[。．.！!、，,;；]+$/
 
 const PREFIX_STRIP = /^(安全|漏洞|CVE|security|移除|删除|废弃|下线|remove|deprecat\w*|修复|修正|解决|fix|bug|新增|新功能|新加|添加|支持|feat(?:ure)?|优化|改进|提升|更新|调整|升级|重构|改为|改善|chore|refactor|perf)[：:：]?\s*/i
 
@@ -103,7 +114,7 @@ export function parseUpdateDesc(desc: string): ParsedChanges {
   let currentSection: ChangeCategory | null = null
   let currentGroup: string | undefined
 
-  const push = (cat: ChangeCategory, text: string, announces?: string) => {
+  const push = (cat: ChangeCategory, text: string, announces?: ChangeItem['announces']) => {
     result[cat].push(announces === undefined ? { text, group: currentGroup } : { text, group: currentGroup, announces })
   }
 
@@ -151,11 +162,12 @@ export function parseUpdateDesc(desc: string): ParsedChanges {
     const isHeader = /^.+[：:]\s*$/.test(line)
     const cat = classifyLine(line)
     const stripped = stripPrefix(line)
-    // Asked of the line with any 新增/修复 prefix removed, and asked before the
-    // branches below place it: an announcement is one whether it was written bare,
-    // under a section heading, or behind a prefix of its own, and all three shapes
-    // were inflating the counters.
-    const announces = VERSION_ANNOUNCEMENT.exec(stripped || line)?.[1]
+    // Asked of the line with any 新增/修复 prefix removed and any full stop trimmed,
+    // and asked before the branches below place it: an announcement is one whether
+    // it was written bare, under a section heading, or behind a prefix of its own,
+    // and all three shapes were inflating the counters.
+    const announced = VERSION_ANNOUNCEMENT.exec((stripped || line).replace(TRAILING_STOP, ''))
+    const announces = announced === null ? undefined : { version: announced[2], subject: announced[1].trim() }
 
     // bare keyword line like "新增" / "修复" — section header, not item
     if (cat !== 'other' && !stripped) {
@@ -172,11 +184,11 @@ export function parseUpdateDesc(desc: string): ParsedChanges {
       push(currentSection, stripped || line, announces)
     } else if (cat !== 'other') {
       push(cat, stripped, announces)
-    } else if (announces !== undefined) {
+    } else if (announces) {
       // Nobody filed it anywhere, and it announces a release: 其他 is where it
       // belongs, rather than the 新增 the fallback below would give it.
       push('other', line, announces)
-    } else if (RELEASE_ANNOUNCEMENT.test(line)) {
+    } else if (RELEASE_ANNOUNCEMENT.test(line.replace(TRAILING_STOP, ''))) {
       push('added', line)
     } else {
       push('other', line)
@@ -275,7 +287,7 @@ export interface ReleaseEntry extends AppVersion {
  * `Octo 2.0.0-beta` as a prerelease, or the pair compares as stable-versus-nothing
  * and the beta wins.
  */
-const VERSION_SUFFIX = /\d+\.\d+(?:\.\d+)?((?:-[0-9A-Za-z.]+)+)/
+const VERSION_SUFFIX = /\d+\.\d+(?:\.\d+)?((?:-[0-9A-Za-z._]+)+)/
 /* Anchored at both ends of the token: a qualifier is the word itself, optionally
    numbered (-rc1, -beta.2). Matching on prefix alone reads -prebuilt as a
    prerelease and ranks a finished build below the release before it. */
@@ -284,9 +296,11 @@ const PRERELEASE_TOKEN = /^(alpha|beta|rc|pre|preview|dev|snapshot|canary|nightl
 export function isPrerelease(version: string): boolean {
   const suffix = VERSION_SUFFIX.exec(version.replace(/\(.*\)/, ''))
   if (!suffix) return false
-  // Every hyphenated token, not just the first: 1.0.0-x86-rc1 names an
-  // architecture before it names the release candidate it is.
-  return suffix[1].split('-').some((token) => token !== '' && PRERELEASE_TOKEN.test(token))
+  // Every token, not just the first: 1.0.0-x86-rc1 names an architecture before it
+  // names the release candidate it is. Split on every separator a qualifier is
+  // written with — semver's own is the dot (1.0.0-x86.rc1), and an architecture is
+  // as likely to be spelled x86_64 as x86.
+  return suffix[1].split(/[-._]/).some((token) => token !== '' && PRERELEASE_TOKEN.test(token))
 }
 
 /** Ranked so a stable release outranks any prerelease, and both outrank a version
@@ -347,6 +361,11 @@ function supersedes(candidate: AppVersion, current: DesktopDownload): boolean {
  * Rows alike down to the second still need an answer, or the fold in
  * latestDesktopDownloads() returns whichever arrived first and the
  * order-independence above is only most of a total order.
+ *
+ * It stops at the URL rather than going on to is_force and update_desc, and that is
+ * enough: two rows agreeing on version, second and URL are the same installer, and
+ * the notes are no longer decided here — groupReleases() picks those separately, by
+ * the newest row that filed any.
  */
 function supersedesSameVersion(
   candidate: { created_at: string; download_url: string },
@@ -364,11 +383,12 @@ export interface DesktopDownload extends DesktopBuild {
 /**
  * The version line for the offer, or null when the installers do not share one.
  *
- * One comparison, on formatVersion() output. That was unsafe while formatVersion
- * dropped a `-suffix`: Windows on 1.0.0 and macOS on 1.0.0-rc1 formatted alike, so
- * the band badged v1.0.0 above a button handing over the RC. Now that the qualifier
- * survives formatting, formatting alike is the same question as being one release —
- * and 1.0 written beside 1.0.0 still is one, said two ways.
+ * Formatting alike is the first answer, and 1.0 written beside 1.0.0 is one release
+ * said two ways. Where the strings differ it is the qualifier that differs, and not
+ * every qualifier makes a different release: -x64 beside -arm64 is one version built
+ * twice, which isPrerelease() already says in as many words, while -rc1 beside 1.0.0
+ * is the release candidate and the release it precedes. So an architecture falls
+ * back to the version the two builds share; a prerelease among them does not.
  *
  * A string no version can be read out of is not labelled at all: a `v` in front of
  * it would claim more than the string says.
@@ -378,7 +398,16 @@ export function offerVersionLabel(offers: DesktopDownload[]): string | null {
   if (offers.some((offer) => parseSemVer(offer.app_version) === null)) return null
 
   const formatted = new Set(offers.map((offer) => formatVersion(offer.app_version.trim().replace(/^v/i, ''))))
-  return formatted.size === 1 ? `v${[...formatted][0]}` : null
+  if (formatted.size === 1) return `v${[...formatted][0]}`
+
+  if (offers.some((offer) => isPrerelease(offer.app_version))) return null
+
+  const shared = new Set(offers.map((offer) => {
+    const triple = parseSemVer(offer.app_version)!
+    const build = parseBuildNumber(offer.app_version)
+    return `${triple[0]}.${triple[1]}.${triple[2]}${build !== null ? `(${build})` : ''}`
+  }))
+  return shared.size === 1 ? `v${[...shared][0]}` : null
 }
 
 /**
@@ -444,20 +473,64 @@ export function forcedPlatforms(entry: ReleaseEntry): string[] {
   return forced.length === entry.builds.length ? [] : forced.map((build) => build.os)
 }
 
+/* What a note may call the platform it is announcing. A card knows which platform
+   each of its notes came from, and that is the half of "which release is this
+   about" that a version number cannot supply. */
+const PLATFORM_NAMED: Record<string, RegExp> = {
+  windows: /windows|视窗/i,
+  macos: /mac\b|macos|苹果/i,
+  linux: /linux/i,
+  web: /web|网页/i,
+  android: /android|安卓/i,
+  ios: /ios|iphone|苹果/i,
+  chrome: /chrome/i,
+  'openclaw-plugin': /openclaw/i,
+}
+
 /**
  * Whether a note says nothing the card it belongs to does not already say: every
- * line in it announces this very release.
+ * line in it announces this very release, on this very platform.
  *
- * The version is what settles it. "Windows 桌面端 1.0.0 版本发布" on the 1.0.0 card
- * repeats the headline, the platform badge and the severity tag beneath which it is
- * printed; the same sentence about anything else — "插件市场 2.0 正式上线" — is news,
- * and is kept and shown whatever card it lands on.
+ * Both halves are needed. A version number names no particular thing — the plugin
+ * market can reach 2.0 in the same train that takes the desktop app to 2.0.0 — so
+ * matching on the number alone would read "插件市场 2.0 正式上线" as the 2.0.0 card
+ * repeating itself and drop a line that is news. The subject settles it: a note is
+ * about this release when it names this platform, or names nothing at all.
+ *
+ * Credits are not items and are not consulted here: entryContributors() reads them
+ * off the entry rather than off the blocks that survive, so dropping a block cannot
+ * take a credit with it and this does not have to hold a block open to protect one.
  */
-export function announcesOnly(desc: string, appVersion: string): boolean {
+export function announcesOnly(desc: string, appVersion: string, os: string): boolean {
   const items = Object.values(parseUpdateDesc(desc)).flat()
   if (items.length === 0) return false
+
   const own = formatVersion(appVersion.trim().replace(/^v/i, ''))
-  return items.every((item) => item.announces !== undefined && formatVersion(item.announces) === own)
+  const platform = PLATFORM_NAMED[os]
+  return items.every(({ announces }) =>
+    announces !== undefined
+    && formatVersion(announces.version) === own
+    && (announces.subject === '' || (platform !== undefined && platform.test(announces.subject))))
+}
+
+/**
+ * Everyone credited anywhere in a release, read from the entry itself.
+ *
+ * Not from the note blocks a card ends up rendering: a block can be dropped for
+ * saying nothing new, and the credits on it are not part of what it said.
+ */
+export function entryContributors(entry: ReleaseEntry): Contributor[] {
+  const descs = entry.builds ? entry.builds.map((build) => build.update_desc) : [entry.update_desc]
+  const seen = new Set<string>()
+  const all: Contributor[] = []
+  for (const desc of descs) {
+    for (const contributor of parseContributors(desc)) {
+      if (seen.has(contributor.name)) continue
+      seen.add(contributor.name)
+      all.push(contributor)
+    }
+  }
+  return all
 }
 
 /**
@@ -471,10 +544,10 @@ export function announcesOnly(desc: string, appVersion: string): boolean {
  * is the common case; only genuinely differing notes are shown per OS.
  */
 export function noteBlocks(entry: ReleaseEntry, viewerOS: ViewerOS | null = null): NoteBlock[] {
-  const saysNothingNew = (desc: string) => !desc || announcesOnly(desc, entry.app_version)
+  const saysNothingNew = (desc: string, os: string) => !desc || announcesOnly(desc, entry.app_version, os)
 
   if (!entry.builds) {
-    return saysNothingNew(entry.update_desc.trim()) ? [] : [{ os: [], desc: entry.update_desc }]
+    return saysNothingNew(entry.update_desc.trim(), entry.os) ? [] : [{ os: [], desc: entry.update_desc }]
   }
 
   const blocks: NoteBlock[] = []
@@ -483,7 +556,7 @@ export function noteBlocks(entry: ReleaseEntry, viewerOS: ViewerOS | null = null
     const desc = build.update_desc.trim()
     // A note that only announces this very release would render as a platform
     // heading over a line repeating the headline above it.
-    if (saysNothingNew(desc)) continue
+    if (saysNothingNew(desc, build.os)) continue
     const shared = byDesc.get(desc)
     if (shared) {
       shared.os.push(build.os)
@@ -613,6 +686,9 @@ export function groupReleases(raw: AppVersion[]): ReleaseEntry[] {
   // Index by grouping key rather than only checking the last entry, so a release
   // landing between two web deploys no longer splits that day in two.
   const desktopByVersion = new Map<string, number>()
+  // Which row the notes on each build came from, so a later row can be compared
+  // against it rather than against the build the card happens to link.
+  const noteSource = new Map<DesktopBuild, AppVersion>()
   const webByDate = new Map<string, number>()
   const webMembers = new Map<number, AppVersion[]>()
 
@@ -631,28 +707,33 @@ export function groupReleases(raw: AppVersion[]): ReleaseEntry[] {
         // The per-OS links live in `builds`; a single inherited URL would read as
         // authoritative for a card that offers several installers.
         result.push({ ...item, download_url: '', builds: [build] })
+        if (build.update_desc.trim()) noteSource.set(build, item)
         continue
       }
       const entry = result[at]
       const sameOS = entry.builds!.find((existing) => existing.os === item.os)
       if (!sameOS) {
         entry.builds!.push(build)
-      } else if (supersedesSameVersion(item, sameOS)) {
-        // Same OS re-uploaded for this version: the card has to follow the newer
-        // build, whatever order the feed happens to arrive in — and has to pick the
-        // same one the band above it offers.
-        Object.assign(sameOS, build, {
-          // Re-uploading to fix a broken link is done with the notes box left
-          // empty. It is the same release either way, so the notes already on the
-          // card still describe it; taking them away would empty the card over a
-          // change that was never made to what shipped.
-          update_desc: build.update_desc.trim() ? build.update_desc : sameOS.update_desc,
-        })
-      } else if (!sameOS.update_desc.trim()) {
-        // The same rule read from the other side. The feed arrives in updated_at
-        // order, so the blank re-upload can be the row seen first, and then it is
-        // the superseded row that carries the only notes this release has.
-        sameOS.update_desc = build.update_desc
+        if (build.update_desc.trim()) noteSource.set(build, item)
+        continue
+      }
+
+      // Two questions, answered separately, because one row can win the first and
+      // another the second: a re-upload that only fixes a broken link is saved with
+      // the notes box empty, so the build the card links and the notes it shows do
+      // not have to come from the same row.
+      if (supersedesSameVersion(item, sameOS)) {
+        const keep = sameOS.update_desc
+        Object.assign(sameOS, build, { update_desc: keep })
+      }
+
+      // Whichever row filed the newest notes owns them, whatever order the feed
+      // arrived in. Folding "keep what is there if the new one is blank" instead
+      // would hand the card whichever non-blank row happened to be seen first.
+      const source = noteSource.get(sameOS)
+      if (item.update_desc.trim() && (source === undefined || supersedesSameVersion(item, source))) {
+        sameOS.update_desc = item.update_desc
+        noteSource.set(sameOS, item)
       }
       continue
     }

@@ -70,4 +70,24 @@ describe('LatestReleaseSpotlight', () => {
     act(() => root.render(<LatestReleaseSpotlight item={entry} severity="initial" hideDownloads />))
     expect(host.textContent).toContain('启动白屏')
   })
+
+  it('keeps the credits on a release whose note says nothing else', () => {
+    // The card drops a note that only announces the release it sits on — and the
+    // credits on that note are not part of what it said. Reading them off the
+    // blocks that survived lost the contributors of the very release this card is
+    // for.
+    const announced: ReleaseEntry = {
+      ...entry,
+      builds: [
+        { os: 'windows', download_url: 'https://cdn.example.com/setup.exe', created_at: '2026-08-20 16:34:04', is_force: 0, update_desc: 'Windows 桌面端 1.0.0 版本发布\n@contributors: alice' },
+        { os: 'macos', download_url: 'https://cdn.example.com/octo.dmg', created_at: '2026-08-20 14:18:06', is_force: 0, update_desc: 'Mac 桌面端 1.0.0 版本发布\n@contributors: bob' },
+      ],
+    }
+
+    act(() => root.render(<LatestReleaseSpotlight item={announced} severity="initial" hideDownloads />))
+    // The body really is dropped — this is not the credits surviving because the
+    // block did.
+    expect(host.textContent).not.toContain('版本发布')
+    expect(Array.from(host.querySelectorAll('img')).map((img) => img.getAttribute('alt'))).toEqual(['alice', 'bob'])
+  })
 })
