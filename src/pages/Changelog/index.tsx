@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useSyncExternalStore } from 'react'
 import { Tabs, Spin, Empty, Tag, ConfigProvider, theme as antdTheme } from 'antd'
 import {
   AndroidOutlined,
@@ -91,6 +91,14 @@ const css = `
 .changelog-item {
   animation: fadeSlideIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
+/* Release notes quote code: a dotted config key or a file path is one unbreakable
+   word, routinely past 60 characters, and no line-breaking opportunity exists
+   inside it. Left alone such a word sets the min-content width of the note column,
+   the timeline row cannot shrink below it, and every screen narrower than the word
+   scrolls sideways — the whole page, not just the one line. */
+.changelog-notes {
+  overflow-wrap: anywhere;
+}
 .contributor-group {
   display: flex;
   align-items: center;
@@ -153,8 +161,11 @@ const css = `
   .contributor-avatar:hover img {
     transform: none;
   }
-  .contributor-avatar:hover .contributor-name {
-    opacity: 0;
+  /* Not just transparent: an absolutely positioned tooltip still counts toward the
+     document's scrollable width, and near the right edge of a phone that is enough
+     to make the page scroll sideways to reveal a name nobody can trigger. */
+  .contributor-name {
+    display: none;
   }
 }
 .contributor-name {
@@ -437,22 +448,46 @@ function Heatmap({ data }: { data: AppVersion[] }) {
 // flex row accounts for it — the fan happens inside that reserved box and can
 // never overflow the card (the whole group wraps to its own line if too wide).
 const MAX_VISIBLE_CONTRIBUTORS = 10
+/* The avatar row is the one part of an entry that refuses to shrink: ten 24px
+   avatars and a "+N" badge come to 184px, while a 360px phone leaves the note
+   column about 200px after the page padding, the date gutter and the rail. At the
+   full count the faces — not the prose — decide how wide the page is, and the page
+   scrolls sideways. Show fewer of them there; the badge still counts the rest. */
+const MAX_VISIBLE_CONTRIBUTORS_NARROW = 5
+const NARROW_SCREEN = '(max-width: 420px)'
+
+function narrowScreenQuery(): MediaQueryList | null {
+  return typeof window === 'undefined' || !window.matchMedia ? null : window.matchMedia(NARROW_SCREEN)
+}
+
+function subscribeToWidth(notify: () => void): () => void {
+  const query = narrowScreenQuery()
+  if (!query) return () => {}
+  query.addEventListener('change', notify)
+  return () => query.removeEventListener('change', notify)
+}
+
+function useNarrowScreen(): boolean {
+  return useSyncExternalStore(subscribeToWidth, () => narrowScreenQuery()?.matches ?? false, () => false)
+}
 const AVATAR_SIZE = 24
 // Per-avatar step: 16px at rest (8px overlap, via margin-left:-8px in CSS) →
 // 20px on hover (4px overlap). The group reserves the fanned width below.
 const FAN_STEP = 20
 
 function ContributorAvatars({ contributors, showLabel }: { contributors: Contributor[]; showLabel?: boolean }) {
+  const narrow = useNarrowScreen()
   if (contributors.length === 0) return null
 
-  const visible = contributors.slice(0, MAX_VISIBLE_CONTRIBUTORS)
-  const overflow = contributors.slice(MAX_VISIBLE_CONTRIBUTORS)
+  const cap = narrow ? MAX_VISIBLE_CONTRIBUTORS_NARROW : MAX_VISIBLE_CONTRIBUTORS
+  const visible = contributors.slice(0, cap)
+  const overflow = contributors.slice(cap)
   const itemCount = visible.length + (overflow.length > 0 ? 1 : 0)
   const reservedWidth = (itemCount - 1) * FAN_STEP + AVATAR_SIZE
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      {showLabel && (
+      {showLabel && !narrow && (
         <span style={{ fontSize: font.size.xs, color: colors.text.tertiary, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <TeamOutlined />
           贡献者
@@ -639,7 +674,7 @@ function StructuredChanges({ desc }: { desc: string }) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+    <div className="changelog-notes" style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
       {sections.map((section, si) => {
         const parsed = parseUpdateDesc(section.content)
         const categories = (['added', 'changed', 'fixed', 'security', 'removed', 'other'] as const).filter((k) => parsed[k].length > 0)
