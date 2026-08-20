@@ -230,6 +230,73 @@ export interface ReleaseEntry extends AppVersion {
   builds?: DesktopBuild[]
 }
 
+/**
+ * Which of two rows for one OS the page should offer. Version wins over upload
+ * time — a hotfix row for an older version added later must not displace the
+ * newer build — and the timestamp only settles versions that compare equal or
+ * cannot be parsed.
+ */
+function supersedes(candidate: AppVersion, current: DesktopDownload): boolean {
+  const a = parseSemVer(candidate.app_version)
+  const b = parseSemVer(current.app_version)
+  if (a && b) {
+    for (let i = 0; i < 3; i++) {
+      if (a[i] !== b[i]) return a[i] > b[i]
+    }
+    const buildA = parseBuildNumber(candidate.app_version)
+    const buildB = parseBuildNumber(current.app_version)
+    if (buildA !== null && buildB !== null && buildA !== buildB) return buildA > buildB
+  }
+  return candidate.created_at > current.created_at
+}
+
+/** An installer the page can offer outright, with the version it belongs to. */
+export interface DesktopDownload extends DesktopBuild {
+  app_version: string
+}
+
+/**
+ * The newest usable installer for each desktop OS across the whole feed.
+ *
+ * The timeline answers "what changed"; this answers "give me the app". A desktop
+ * release sinks below a week of web deploys within days, so the offer cannot be
+ * tied to where its card happens to sit. Rows whose URL the browser should not be
+ * handed are skipped rather than rendered as a dead button.
+ */
+export function latestDesktopDownloads(raw: AppVersion[]): DesktopDownload[] {
+  const newestByOS = new Map<string, DesktopDownload>()
+
+  for (const item of raw) {
+    if (!desktopPlatforms.has(item.os)) continue
+    if (!safeDownloadUrl(item.download_url)) continue
+    const current = newestByOS.get(item.os)
+    if (current && !supersedes(item, current)) continue
+    newestByOS.set(item.os, {
+      os: item.os,
+      app_version: item.app_version,
+      download_url: item.download_url,
+      created_at: item.created_at,
+      is_force: item.is_force,
+      update_desc: item.update_desc,
+    })
+  }
+
+  return desktopOrder.map((os) => newestByOS.get(os)).filter((build): build is DesktopDownload => build !== undefined)
+}
+
+/**
+ * Whether every installer this card links is already on offer above it, so the card
+ * can drop its own download row instead of repeating the same buttons half a screen
+ * apart. Keyed by platform as well as URL: two platforms sharing one URL must not
+ * cover for each other.
+ */
+export function offeredAbove(entry: ReleaseEntry, offers: DesktopDownload[]): boolean {
+  if (!entry.builds) return false
+  const offered = new Set(offers.map((offer) => `${offer.os}\u0000${offer.download_url}`))
+  const links = entry.builds.filter((build) => safeDownloadUrl(build.download_url))
+  return links.length > 0 && links.every((build) => offered.has(`${build.os}\u0000${build.download_url}`))
+}
+
 /** A block of release notes as one OS filed them. */
 export interface NoteBlock {
   /** Platforms sharing these notes. Empty when the card has one set of notes. */
