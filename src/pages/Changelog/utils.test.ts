@@ -439,6 +439,24 @@ describe('latestDesktopDownloads', () => {
     }
   })
 
+  it('ranks only a recognised suffix as a prerelease', () => {
+    // 1.2.3-x64 is an arch, not a release candidate; ranking it below a stable would
+    // offer the older 1.2.2 installer instead of the newer build it names.
+    const offers = latestDesktopDownloads([
+      release({ os: 'windows', app_version: '1.2.3-x64', download_url: 'https://x/new.exe', created_at: '2026-09-01 00:00:00' }),
+      release({ os: 'windows', app_version: '1.2.2', download_url: 'https://x/old.exe', created_at: '2026-01-01 00:00:00' }),
+    ])
+
+    expect(offers.map((build) => build.download_url)).toEqual(['https://x/new.exe'])
+  })
+
+  it('settles rows alike down to the second on something other than arrival order', () => {
+    const a = release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/a.exe', created_at: '2026-01-01 00:00:00' })
+    const b = release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/b.exe', created_at: '2026-01-01 00:00:00' })
+
+    expect(latestDesktopDownloads([a, b])).toEqual(latestDesktopDownloads([b, a]))
+  })
+
   it('still offers a prerelease when it is the only build there is', () => {
     const offers = latestDesktopDownloads([release({ os: 'macos', app_version: '1.0.0-rc1', download_url: 'https://x/rc.dmg' })])
     expect(offers.map((build) => build.app_version)).toEqual(['1.0.0-rc1'])
@@ -495,6 +513,17 @@ describe('offerVersionLabel', () => {
     // formatVersion drops the suffix, so this would otherwise read "v1.0.0" above a
     // button handing over the release candidate.
     expect(offerVersionLabel([offer('1.0.0-rc1')])).toBe('1.0.0-rc1')
+  })
+
+  it('says nothing when one platform is on a prerelease and another is not', () => {
+    // Both format to 1.0.0, so a formatted comparison would badge the RC as stable.
+    // Asserted in both platform orders, since the label reads from the offer list.
+    expect(offerVersionLabel([offer('1.0.0'), { ...offer('1.0.0-rc1'), os: 'macos' }])).toBeNull()
+    expect(offerVersionLabel([offer('1.0.0-rc1'), { ...offer('1.0.0'), os: 'macos' }])).toBeNull()
+  })
+
+  it('says nothing when two platforms are on different prereleases', () => {
+    expect(offerVersionLabel([offer('1.0.0-rc1'), { ...offer('1.0.0-rc2'), os: 'macos' }])).toBeNull()
   })
 
   it('says nothing when the installers do not share a version', () => {

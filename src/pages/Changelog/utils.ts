@@ -231,17 +231,24 @@ export interface ReleaseEntry extends AppVersion {
 }
 
 /**
- * A numeric version carrying a `-suffix`: 2.0.0-beta, 1.0.0-rc1, Octo 2.0.0-rc.
+ * A version whose suffix says it is not the final build: 2.0.0-beta, 1.0.0-rc1,
+ * Octo 2.0.0-rc.2.
  *
- * Deliberately as lenient as parseSemVer, which matches a triple anywhere in the
- * string: if one recognises `Octo 2.0.0` as a version, the other has to recognise
- * `Octo 2.0.0-beta` as a prerelease, or the prefixed pair compares as stable vs
- * nothing and the beta wins.
+ * Only recognised tokens count. Not every hyphen means prerelease — `1.2.3-x64` and
+ * `1.2.3-20260115` are an arch and a date stamp, and ranking those below a stable
+ * release would offer an older installer than the one they name.
+ *
+ * The triple is matched as leniently as parseSemVer does, which finds one anywhere
+ * in the string: if that recognises `Octo 2.0.0` as a version, this has to recognise
+ * `Octo 2.0.0-beta` as a prerelease, or the pair compares as stable-versus-nothing
+ * and the beta wins.
  */
-const PRERELEASE_SUFFIX = /\d+\.\d+(?:\.\d+)?-[0-9A-Za-z.-]+/
+const VERSION_SUFFIX = /\d+\.\d+(?:\.\d+)?-([0-9A-Za-z]+)/
+const PRERELEASE_TOKEN = /^(alpha|beta|rc|pre|preview|dev|snapshot|canary|nightly)/i
 
 export function isPrerelease(version: string): boolean {
-  return PRERELEASE_SUFFIX.test(version.replace(/\(.*\)/, ''))
+  const suffix = VERSION_SUFFIX.exec(version.replace(/\(.*\)/, ''))
+  return suffix !== null && PRERELEASE_TOKEN.test(suffix[1])
 }
 
 /** Ranked so a stable release outranks any prerelease, and both outrank a version
@@ -288,7 +295,11 @@ function supersedes(candidate: AppVersion, current: DesktopDownload): boolean {
     if (a.triple[i] !== b.triple[i]) return a.triple[i] > b.triple[i]
   }
   if (a.build !== b.build) return a.build > b.build
-  return candidate.created_at > current.created_at
+  if (candidate.created_at !== current.created_at) return candidate.created_at > current.created_at
+  // Rows alike down to the second still need one answer, or the fold returns
+  // whichever arrived first and the order-independence above is only most of a
+  // total order.
+  return candidate.download_url > current.download_url
 }
 
 /** An installer the page can offer outright, with the version it belongs to. */
@@ -306,10 +317,19 @@ export interface DesktopDownload extends DesktopBuild {
  * moving them together later.)
  */
 export function offerVersionLabel(offers: DesktopDownload[]): string | null {
-  const versions = Array.from(new Set(offers.map((offer) => formatVersion(offer.app_version))))
-  if (versions.length !== 1) return null
-  const offered = offers[0].app_version.trim()
-  return isPrerelease(offered) ? offered : `v${versions[0]}`
+  // Written the same way, modulo a `v` prefix: label it.
+  const raw = Array.from(new Set(offers.map((offer) => offer.app_version.trim().replace(/^v/i, ''))))
+  if (raw.length === 1) return isPrerelease(raw[0]) ? raw[0] : `v${formatVersion(raw[0])}`
+
+  // Written differently with a prerelease among them: say nothing. formatVersion()
+  // drops a `-suffix`, so comparing formatted versions here would collapse Windows
+  // on 1.0.0 and macOS on 1.0.0-rc1 into one version and badge the RC as stable —
+  // above the button that hands it over.
+  if (offers.some((offer) => isPrerelease(offer.app_version))) return null
+
+  // All stable and formatting alike (1.0 and 1.0.0) — one version, said once.
+  const formatted = Array.from(new Set(offers.map((offer) => formatVersion(offer.app_version))))
+  return formatted.length === 1 ? `v${formatted[0]}` : null
 }
 
 /**

@@ -79,6 +79,11 @@ const tabItems = [
 ]
 
 const css = `
+.download-link:focus-visible {
+  outline: 2px solid var(--brand-solid);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
 @keyframes fadeSlideIn {
   from { opacity: 0; transform: translateY(12px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -583,7 +588,7 @@ function DesktopDownloads({ builds, compact, large }: { builds: DesktopBuild[]; 
               : { ...base, color: 'var(--brand-solid)', border: '1px solid var(--brand-solid)', padding: large ? '9px 20px' : '4px 12px', borderRadius: large ? radius.md : radius.sm }
 
         return (
-          <a key={build.os} href={build.href} target="_blank" rel="noopener noreferrer" style={style}>
+          <a key={build.os} className="download-link" href={build.href} target="_blank" rel="noopener noreferrer" style={style}>
             <DownloadOutlined />
             下载 {platformConfig[build.os]?.label ?? build.os}
           </a>
@@ -742,11 +747,13 @@ function StructuredChanges({ desc }: { desc: string }) {
  * deploys within days, so the installer cannot only live where its release sits —
  * one button per OS that has a build, the visitor's own promoted.
  */
-function DesktopDownloadBar({ downloads }: { downloads: DesktopDownload[] }) {
+export function DesktopDownloadBar({ downloads }: { downloads: DesktopDownload[] }) {
   if (downloads.length === 0) return null
 
   const versionLabel = offerVersionLabel(downloads)
-  const platforms = downloads.map((build) => platformConfig[build.os]?.label ?? build.os).join('、')
+  // Same order the buttons take, so the line does not read "Windows、macOS" above a
+  // macOS-first row.
+  const platforms = orderBuilds(downloads, viewerOS).map((build) => platformConfig[build.os]?.label ?? build.os).join('、')
 
   return (
     // Labelled: these are the first focusable things on the page, ahead of its <h1>.
@@ -776,7 +783,8 @@ function DesktopDownloadBar({ downloads }: { downloads: DesktopDownload[] }) {
       </span>
 
       <div style={{ minWidth: 0 }}>
-        <div style={{
+        <h2 style={{
+          margin: 0,
           fontSize: font.size.lg,
           fontWeight: font.weight.bold,
           color: colors.text.primary,
@@ -784,7 +792,7 @@ function DesktopDownloadBar({ downloads }: { downloads: DesktopDownload[] }) {
           lineHeight: 1.3,
         }}>
           Octo 桌面端
-        </div>
+        </h2>
         <div style={{ fontSize: font.size.base, color: colors.text.secondary, marginTop: 2 }}>
           {versionLabel && `${versionLabel} · `}支持 {platforms}
         </div>
@@ -1130,6 +1138,7 @@ function LatestReleaseSpotlight({ item, severity, hideDownloads }: { item: Relea
         <ReleaseNotes blocks={blocks} />
       </div>
 
+      {(stats.added > 0 || stats.fixed > 0 || stats.changed > 0 || !hideDownloads) && (
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -1183,6 +1192,7 @@ function LatestReleaseSpotlight({ item, severity, hideDownloads }: { item: Relea
           </a>
         ) : null}
       </div>
+      )}
     </div>
   )
 }
