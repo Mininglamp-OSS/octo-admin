@@ -19,6 +19,8 @@
   --brand-hover: #4f46e5;
   --brand-bg: #eef2ff;
   --brand-text-on-bg: #4338ca;
+  --brand-solid: #4f46e5;
+  --brand-contrast: #ffffff;
 
   --platform-android-base: #3ddc84;
   --platform-android-bg: #ecfdf5;
@@ -31,6 +33,10 @@
   --platform-web-base: #6366f1;
   --platform-web-bg: #eef2ff;
   --platform-web-text: #3730a3;
+
+  --platform-desktop-base: #0d9488;
+  --platform-desktop-bg: #f0fdfa;
+  --platform-desktop-text: #115e59;
 
   --platform-plugin-base: #f59e0b;
   --platform-plugin-bg: #fffbeb;
@@ -133,6 +139,8 @@
   --brand-hover: #a5b4fc;
   --brand-bg: rgba(99, 102, 241, 0.15);
   --brand-text-on-bg: #a5b4fc;
+  --brand-solid: #818cf8;
+  --brand-contrast: #0b1220;
 
   --platform-android-base: #4ade80;
   --platform-android-bg: #064e3b;
@@ -145,6 +153,10 @@
   --platform-web-base: #818cf8;
   --platform-web-bg: #312e81;
   --platform-web-text: #c7d2fe;
+
+  --platform-desktop-base: #2dd4bf;
+  --platform-desktop-bg: rgba(45, 212, 191, 0.12);
+  --platform-desktop-text: #99f6e4;
 
   --platform-plugin-base: #fbbf24;
   --platform-plugin-bg: #451a03;
@@ -255,6 +267,8 @@
     --brand-hover: #a5b4fc;
     --brand-bg: rgba(99, 102, 241, 0.15);
     --brand-text-on-bg: #a5b4fc;
+    --brand-solid: #818cf8;
+    --brand-contrast: #0b1220;
 
     --platform-android-base: #4ade80;
     --platform-android-bg: #064e3b;
@@ -267,6 +281,10 @@
     --platform-web-base: #818cf8;
     --platform-web-bg: #312e81;
     --platform-web-text: #c7d2fe;
+
+    --platform-desktop-base: #2dd4bf;
+    --platform-desktop-bg: rgba(45, 212, 191, 0.12);
+    --platform-desktop-text: #99f6e4;
 
     --platform-plugin-base: #fbbf24;
     --platform-plugin-bg: #451a03;

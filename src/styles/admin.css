@@ -1678,6 +1678,7 @@
 .admin-shell .pill-outline.ios { color: #0ea5e9; }
 .admin-shell .pill-outline.android { color: #16a34a; }
 .admin-shell .pill-outline.web { color: var(--a-brand); }
+.admin-shell .pill-outline.desktop { color: #0d9488; }
 .admin-shell .pill-outline.plugin { color: #f97316; }
 .admin-shell .pill-outline.neutral { color: var(--a-text-tertiary); }
 .admin-shell .pill-outline.danger { color: var(--a-danger); }
@@ -1690,6 +1691,7 @@
 :root[data-theme='dark'] .admin-shell .pill-outline.ios { color: #38bdf8; }
 :root[data-theme='dark'] .admin-shell .pill-outline.android { color: #4ade80; }
 :root[data-theme='dark'] .admin-shell .pill-outline.web { color: #818cf8; }
+:root[data-theme='dark'] .admin-shell .pill-outline.desktop { color: #2dd4bf; }
 :root[data-theme='dark'] .admin-shell .pill-outline.plugin { color: #fb923c; }
 
 /* Ghost-style edit icon button for row actions */

@@ -15,6 +15,7 @@ export const colors = {
     android: { base: 'var(--platform-android-base)', bg: 'var(--platform-android-bg)', text: 'var(--platform-android-text)' },
     ios: { base: 'var(--platform-ios-base)', bg: 'var(--platform-ios-bg)', text: 'var(--platform-ios-text)' },
     web: { base: 'var(--platform-web-base)', bg: 'var(--platform-web-bg)', text: 'var(--platform-web-text)' },
+    desktop: { base: 'var(--platform-desktop-base)', bg: 'var(--platform-desktop-bg)', text: 'var(--platform-desktop-text)' },
     'openclaw-plugin': { base: 'var(--platform-plugin-base)', bg: 'var(--platform-plugin-bg)', text: 'var(--platform-plugin-text)' },
     chrome: { base: 'var(--platform-chrome-base)', bg: 'var(--platform-chrome-bg)', text: 'var(--platform-chrome-text)' },
   },

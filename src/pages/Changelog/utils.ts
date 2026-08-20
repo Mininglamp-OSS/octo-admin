@@ -44,6 +44,17 @@ const CATEGORY_PATTERNS: [ChangeCategory, RegExp][] = [
   ['changed', /^(优化|改进|提升|更新|调整|升级|重构|改为|改善|chore[：:]?\s?|refactor|perf)/i],
 ]
 
+/**
+ * A line announcing the release itself ("Windows 桌面端 1.0.0 版本发布") names the
+ * platform first, so no prefix rule catches it — it reads as 新增, not 其他.
+ *
+ * Deliberately NOT part of CATEGORY_PATTERNS: classifyLine() also decides section
+ * headings, and a heading matching this would swallow the 修复/移除/安全 headings
+ * below it into 新增. The qualifier is required so ordinary prose that merely ends
+ * in 上线 ("问题：功能无法上线") stays where it belongs.
+ */
+const RELEASE_ANNOUNCEMENT = /(?:正式|首次|版本)(?:发布|上线)$/
+
 const PREFIX_STRIP = /^(安全|漏洞|CVE|security|移除|删除|废弃|下线|remove|deprecat\w*|修复|修正|解决|fix|bug|新增|新功能|新加|添加|支持|feat(?:ure)?|优化|改进|提升|更新|调整|升级|重构|改为|改善|chore|refactor|perf)[：:：]?\s*/i
 
 function stripPrefix(line: string): string {
@@ -133,6 +144,8 @@ export function parseUpdateDesc(desc: string): ParsedChanges {
       push(currentSection, stripped || line)
     } else if (cat !== 'other') {
       push(cat, stripped)
+    } else if (RELEASE_ANNOUNCEMENT.test(line)) {
+      push('added', line)
     } else {
       push('other', line)
     }
@@ -141,7 +154,7 @@ export function parseUpdateDesc(desc: string): ParsedChanges {
   return result
 }
 
-export type VersionSeverity = 'major' | 'minor' | 'patch' | 'build' | 'pre-release' | 'initial'
+export type VersionSeverity = 'major' | 'minor' | 'patch' | 'build' | 'pre-release' | 'initial' | 'unknown'
 
 function parseSemVer(version: string): [number, number, number] | null {
   const cleaned = version.replace(/\(.*\)/, '')
@@ -157,17 +170,24 @@ function parseBuildNumber(version: string): number | null {
 
 export function getVersionSeverity(version: string, prevVersion?: string): VersionSeverity {
   const cur = parseSemVer(version)
-  if (!cur) return 'patch'
+  // 'unknown' means "nothing to compare against" and renders no tag at all —
+  // better than guessing 'patch' for the oldest entry we happen to hold.
+  if (!cur) return 'unknown'
 
   if (cur[0] === 0) return 'pre-release'
 
   const build = parseBuildNumber(version)
   if (build === 1) return 'initial'
 
-  if (!prevVersion) return 'patch'
+  // Exactly "1.0.0" with nothing before it is a first stable release. parseSemVer
+  // is lenient — it reads 1.0.0 out of both 1.0.0(62) and 1.0.0-rc1 — and each of
+  // those says the opposite: a stream sitting on 1.0.0 while its build number
+  // advances, and a release candidate. Any other version with no predecessor is
+  // simply the oldest one we know about.
+  if (!prevVersion) return /^v?1\.0\.0$/.test(version.trim()) ? 'initial' : 'unknown'
 
   const prev = parseSemVer(prevVersion)
-  if (!prev) return 'patch'
+  if (!prev) return 'unknown'
 
   if (prev[0] === 0 && cur[0] >= 1 && cur[1] === 0 && cur[2] === 0) return 'initial'
   if (cur[0] > prev[0]) return 'major'
@@ -177,7 +197,254 @@ export function getVersionSeverity(version: string, prevVersion?: string): Versi
   const prevBuild = parseBuildNumber(prevVersion)
   if (build !== null && prevBuild !== null && build > prevBuild) return 'build'
 
-  return 'patch'
+  // Nothing increased — a staggered rollout can put 1.0.0 after 1.1.0 in the shared
+  // desktop lane. No tag beats a wrong one.
+  return 'unknown'
+}
+
+export interface AppVersion {
+  app_version: string
+  os: string
+  is_force: number
+  update_desc: string
+  download_url: string
+  created_at: string
+}
+
+export interface DesktopBuild {
+  os: string
+  download_url: string
+  created_at: string
+  is_force: number
+  update_desc: string
+}
+
+/**
+ * One card on the timeline. A desktop release carries every OS build of that
+ * version, so 1.0.0 is a single entry offering both installers.
+ *
+ * When `builds` is present it is the authority for installers, notes and force
+ * flags; the inherited scalar fields describe the newest build alone.
+ */
+export interface ReleaseEntry extends AppVersion {
+  builds?: DesktopBuild[]
+}
+
+/** A block of release notes as one OS filed them. */
+export interface NoteBlock {
+  /** Platforms sharing these notes. Empty when the card has one set of notes. */
+  os: string[]
+  desc: string
+}
+
+/**
+ * The note blocks a card should render.
+ *
+ * Per-OS notes are NOT merged into one document. parseUpdateDesc() is stateful —
+ * a 【…】 / ## / **bold** heading owns every line after it — so unioning two OSes'
+ * lines files whatever only macOS said under whatever heading Windows happened to
+ * end on, which is how a macOS-only security fix earns a green 新增 badge. Builds
+ * that filed identical notes still collapse into a single unlabelled block, which
+ * is the common case; only genuinely differing notes are shown per OS.
+ */
+export function noteBlocks(entry: ReleaseEntry, viewerOS: ViewerOS | null = null): NoteBlock[] {
+  if (!entry.builds) {
+    return entry.update_desc.trim() ? [{ os: [], desc: entry.update_desc }] : []
+  }
+
+  const blocks: NoteBlock[] = []
+  const byDesc = new Map<string, NoteBlock>()
+  for (const build of orderBuilds(entry.builds, viewerOS)) {
+    const desc = build.update_desc.trim()
+    if (!desc) continue
+    const shared = byDesc.get(desc)
+    if (shared) {
+      shared.os.push(build.os)
+      continue
+    }
+    const block: NoteBlock = { os: [build.os], desc }
+    byDesc.set(desc, block)
+    blocks.push(block)
+  }
+
+  // Unlabel only when every build actually filed these notes. One block can also
+  // mean the others said nothing, and presenting one platform's notes — a
+  // platform-specific security fix among them — as release-wide is the same
+  // misattribution this function exists to prevent.
+  const spoke = blocks.reduce((count, block) => count + block.os.length, 0)
+  if (blocks.length === 1 && spoke === entry.builds.length) blocks[0].os = []
+  return blocks
+}
+
+/* Desktop builds are versioned, downloadable artifacts. All builds of one version
+   share a card — 1.0.0 is a single release that happens to ship two installers —
+   while `web` collapses per day, since it ships several times a day with nothing
+   to download.
+
+   This list is the single source of truth: the platform set, the fallback display
+   order and the ViewerOS union all derive from it. */
+export const desktopOrder = ['windows', 'macos', 'linux'] as const
+
+export type ViewerOS = (typeof desktopOrder)[number]
+
+export const desktopPlatforms: ReadonlySet<string> = new Set(desktopOrder)
+
+/** The visitor's own build first; everything else in the canonical order. */
+export function orderBuilds(builds: DesktopBuild[], viewerOS: ViewerOS | null): DesktopBuild[] {
+  const rank = (os: string) => {
+    const at = (desktopOrder as readonly string[]).indexOf(os)
+    return at === -1 ? desktopOrder.length : at
+  }
+  return [...builds].sort((a, b) => {
+    if (a.os === b.os) return 0
+    if (a.os === viewerOS) return -1
+    if (b.os === viewerOS) return 1
+    return rank(a.os) - rank(b.os)
+  })
+}
+
+const URL_SCHEME = /^([a-z][a-z0-9+.-]*):/i
+
+/**
+ * download_url is admin-entered and lands in an `href` on the public What's New
+ * page, so only a plain http(s) link — or a path-relative one, which stays on this
+ * origin and cannot execute script — is ever handed to the browser.
+ *
+ * Three things browsers do that a naive check misses:
+ *   - control characters are ignored, so "java\tscript:" runs;
+ *   - `\` is folded to `/` against an http(s) base, so `//host`, `\\host`, `/\host`
+ *     and `\/host` are all network-path references that resolve to another origin
+ *     despite carrying no scheme;
+ *   - a scheme with no authority is still absolute, so `http:host` on an https page
+ *     navigates to http://host rather than to a path.
+ *
+ * Returns the original string when it is safe to link, null when it is not.
+ */
+export function safeDownloadUrl(url: string | null | undefined): string | null {
+  const trimmed = (url ?? '').trim()
+  if (!trimmed) return null
+
+  const probe = trimmed.replace(/[\u0000-\u0020\u007F]/g, '')
+  // No relative download path starts with a backslash, and any pair of leading
+  // slashes in either direction is an authority, not a path.
+  if (probe.startsWith('\\') || /^[/\\][/\\]/.test(probe)) return null
+
+  const scheme = URL_SCHEME.exec(probe)
+  if (!scheme) return trimmed
+
+  const protocol = scheme[1].toLowerCase()
+  if (protocol !== 'http' && protocol !== 'https') return null
+  return probe.toLowerCase().startsWith(`${protocol}://`) ? trimmed : null
+}
+
+function byNewestFirst(a: { created_at: string }, b: { created_at: string }): number {
+  return a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0
+}
+
+/**
+ * Collapse the raw feed into timeline cards: desktop builds group by version,
+ * web deploys group by day, everything else stands alone.
+ *
+ * Cards come back newest first by their own timestamp, and which binary a card
+ * links is decided the same way — neither depends on the order `raw` arrives in.
+ */
+export function groupReleases(raw: AppVersion[]): ReleaseEntry[] {
+  const result: ReleaseEntry[] = []
+  // Index by grouping key rather than only checking the last entry, so a release
+  // landing between two web deploys no longer splits that day in two.
+  const desktopByVersion = new Map<string, number>()
+  const webByDate = new Map<string, number>()
+  const webMembers = new Map<number, AppVersion[]>()
+
+  for (const item of raw) {
+    if (desktopPlatforms.has(item.os)) {
+      const build: DesktopBuild = {
+        os: item.os,
+        download_url: item.download_url,
+        created_at: item.created_at,
+        is_force: item.is_force,
+        update_desc: item.update_desc,
+      }
+      const at = desktopByVersion.get(item.app_version)
+      if (at === undefined) {
+        desktopByVersion.set(item.app_version, result.length)
+        // The per-OS links live in `builds`; a single inherited URL would read as
+        // authoritative for a card that offers several installers.
+        result.push({ ...item, download_url: '', builds: [build] })
+        continue
+      }
+      const entry = result[at]
+      const sameOS = entry.builds!.find((existing) => existing.os === item.os)
+      if (!sameOS) {
+        entry.builds!.push(build)
+      } else if (item.created_at > sameOS.created_at) {
+        // Same OS re-uploaded for this version: the card has to follow the newer
+        // build, whatever order the feed happens to arrive in.
+        Object.assign(sameOS, build)
+      }
+      continue
+    }
+
+    if (item.os !== 'web') {
+      result.push({ ...item })
+      continue
+    }
+
+    const date = item.created_at.slice(0, 10)
+    const at = webByDate.get(date)
+    if (at === undefined) {
+      webByDate.set(date, result.length)
+      webMembers.set(result.length, [item])
+      result.push({ ...item })
+      continue
+    }
+    webMembers.get(at)!.push(item)
+  }
+
+  for (const at of desktopByVersion.values()) {
+    const entry = result[at]
+    const newest = entry.builds!.reduce((a, b) => (b.created_at > a.created_at ? b : a))
+    entry.created_at = newest.created_at
+    entry.update_desc = newest.update_desc
+    // 必须升级 follows the builds the card actually links, not every row that ever
+    // carried this version — a superseded upload must not force its replacement.
+    entry.is_force = entry.builds!.some((build) => build.is_force === 1) ? 1 : 0
+  }
+
+  for (const [at, members] of webMembers) {
+    // Newest deploy first inside the day card too: arrival order is updated_at order.
+    const ordered = [...members].sort(byNewestFirst)
+    const entry = result[at]
+    entry.created_at = ordered[0].created_at
+    entry.is_force = ordered.some((member) => member.is_force === 1) ? 1 : 0
+    entry.update_desc = ordered
+      .map((member) => `@@TIME:${member.created_at.slice(11, 16)}@@\n${member.update_desc}`)
+      .join('\n')
+  }
+
+  // Order by the date each card claims rather than by feed position: the API sorts
+  // by updated_at, so re-saving an old row (fixing a typo, swapping a broken
+  // installer URL) would otherwise hoist it — and the day grouped around it — into
+  // the Latest Release slot. Sort is stable, so same-timestamp cards keep feed order.
+  return result.sort(byNewestFirst)
+}
+
+/**
+ * Best-effort sniff of the visitor's desktop OS, used only to promote the
+ * matching installer. Returns null whenever we cannot be sure — mobile, ChromeOS,
+ * anything unrecognised — and the page then shows every build with equal weight.
+ */
+export function detectViewerOS(userAgent: string, maxTouchPoints = 0): ViewerOS | null {
+  if (/Android/i.test(userAgent)) return null
+  if (/iPhone|iPod/i.test(userAgent)) return null
+  if (/CrOS/i.test(userAgent)) return null
+  if (/Windows NT/i.test(userAgent)) return 'windows'
+  // iPadOS 13+ ships a desktop Safari UA claiming "Macintosh"; the touch points
+  // are what still give it away.
+  if (/iPad/i.test(userAgent)) return null
+  if (/Mac OS X|Macintosh/i.test(userAgent)) return maxTouchPoints > 1 ? null : 'macos'
+  if (/Linux|X11/i.test(userAgent)) return 'linux'
+  return null
 }
 
 export interface Contributor {

@@ -22,14 +22,16 @@ import {
   SunOutlined,
   MoonOutlined,
   DesktopOutlined,
+  WindowsOutlined,
+  LinuxOutlined,
 } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import 'dayjs/locale/zh-cn'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import api from '../../api'
 import { colors, radius, space, font } from '../../styles/tokens'
-import { parseUpdateDesc, getVersionSeverity, formatVersion, parseContributors } from './utils'
-import type { VersionSeverity, ChangeCategory, Contributor } from './utils'
+import { parseUpdateDesc, getVersionSeverity, formatVersion, parseContributors, detectViewerOS, groupReleases, orderBuilds, noteBlocks, safeDownloadUrl, desktopPlatforms } from './utils'
+import type { VersionSeverity, ChangeCategory, Contributor, ViewerOS, AppVersion, DesktopBuild, NoteBlock, ReleaseEntry } from './utils'
 import type { PlatformKey } from '../../styles/tokens'
 import { AnalyticsPanel } from './AnalyticsPanel'
 import { useTheme } from '../../hooks/useTheme'
@@ -37,15 +39,6 @@ import type { Theme } from '../../hooks/useTheme'
 
 dayjs.locale('zh-cn')
 dayjs.extend(relativeTime)
-
-interface AppVersion {
-  app_version: string
-  os: string
-  is_force: number
-  update_desc: string
-  download_url: string
-  created_at: string
-}
 
 const ChromeIcon = () => (
   <svg width="1em" height="1em" viewBox="0 0 24 24" style={{ verticalAlign: '-0.125em' }}>
@@ -60,19 +53,25 @@ const ChromeIcon = () => (
   </svg>
 )
 
-const platformConfig: Record<string, { label: string; icon: React.ReactNode; color: string; colorDark: string }> = {
-  android: { label: 'Android', icon: <AndroidOutlined />, color: '#22c55e', colorDark: '#4ade80' },
-  ios: { label: 'iOS', icon: <AppleOutlined />, color: '#334155', colorDark: '#cbd5e1' },
-  web: { label: 'Web', icon: <GlobalOutlined />, color: '#0ea5e9', colorDark: '#38bdf8' },
-  'openclaw-plugin': { label: 'OpenClaw Plugin', icon: <ApiOutlined />, color: '#f97316', colorDark: '#fb923c' },
-  chrome: { label: 'Chrome 扩展', icon: <ChromeIcon />, color: '#4285f4', colorDark: '#60a5fa' },
+const platformConfig: Record<string, { label: string; icon: React.ReactNode; tone: PlatformKey; color: string; colorDark: string }> = {
+  android: { label: 'Android', icon: <AndroidOutlined />, tone: 'android', color: '#22c55e', colorDark: '#4ade80' },
+  ios: { label: 'iOS', icon: <AppleOutlined />, tone: 'ios', color: '#334155', colorDark: '#cbd5e1' },
+  web: { label: 'Web', icon: <GlobalOutlined />, tone: 'web', color: '#0ea5e9', colorDark: '#38bdf8' },
+  windows: { label: 'Windows', icon: <WindowsOutlined />, tone: 'desktop', color: '#0d9488', colorDark: '#2dd4bf' },
+  macos: { label: 'macOS', icon: <AppleOutlined />, tone: 'desktop', color: '#0d9488', colorDark: '#2dd4bf' },
+  linux: { label: 'Linux', icon: <LinuxOutlined />, tone: 'desktop', color: '#0d9488', colorDark: '#2dd4bf' },
+  'openclaw-plugin': { label: 'OpenClaw Plugin', icon: <ApiOutlined />, tone: 'openclaw-plugin', color: '#f97316', colorDark: '#fb923c' },
+  chrome: { label: 'Chrome 扩展', icon: <ChromeIcon />, tone: 'chrome', color: '#4285f4', colorDark: '#60a5fa' },
 }
 
-const webPlatforms = new Set(['windows', 'macos', 'linux', 'web'])
+const viewerOS: ViewerOS | null = typeof navigator === 'undefined'
+  ? null
+  : detectViewerOS(navigator.userAgent, navigator.maxTouchPoints)
 
 const tabItems = [
   { key: 'all', label: '全部', icon: <UnorderedListOutlined />, color: '', colorDark: '' },
   { key: 'web', label: 'Web', icon: <GlobalOutlined />, color: '#0ea5e9', colorDark: '#38bdf8' },
+  { key: 'desktop', label: '桌面端', icon: <DesktopOutlined />, color: '#0d9488', colorDark: '#2dd4bf' },
   { key: 'android', label: 'Android', icon: <AndroidOutlined />, color: '#22c55e', colorDark: '#4ade80' },
   { key: 'ios', label: 'iOS', icon: <AppleOutlined />, color: '#334155', colorDark: '#cbd5e1' },
   { key: 'openclaw-plugin', label: 'OpenClaw Plugin', icon: <ApiOutlined />, color: '#f97316', colorDark: '#fb923c' },
@@ -500,7 +499,7 @@ function ContributorAvatars({ contributors, showLabel }: { contributors: Contrib
 
 function PlatformBadge({ platform }: { platform: string }) {
   const cfg = platformConfig[platform]
-  const platformColors = colors.platform[platform as PlatformKey]
+  const platformColors = cfg ? colors.platform[cfg.tone] : undefined
   if (!cfg || !platformColors) {
     return <Tag style={{ margin: 0, fontSize: font.size.xs, borderRadius: radius.pill }}>{platform}</Tag>
   }
@@ -522,6 +521,71 @@ function PlatformBadge({ platform }: { platform: string }) {
       {cfg.icon}
       {cfg.label}
     </span>
+  )
+}
+
+/** Every platform this release covers — desktop shows one badge per installer. */
+function EntryBadges({ entry }: { entry: ReleaseEntry }) {
+  if (!entry.builds) return <PlatformBadge platform={entry.os} />
+  return (
+    <>
+      {orderBuilds(entry.builds, viewerOS).map((build) => (
+        <PlatformBadge key={build.os} platform={build.os} />
+      ))}
+    </>
+  )
+}
+
+/**
+ * One link per desktop installer. When we recognise the visitor's OS their build
+ * leads and is the only filled button; otherwise every build is offered with
+ * equal weight rather than guessing at them.
+ */
+function DesktopDownloads({ builds, compact }: { builds: DesktopBuild[]; compact?: boolean }) {
+  const ordered = orderBuilds(builds, viewerOS)
+    .map((build) => ({ ...build, href: safeDownloadUrl(build.download_url) }))
+    .filter((build): build is typeof build & { href: string } => build.href !== null)
+  if (ordered.length === 0) return null
+  const knowsViewer = ordered[0].os === viewerOS
+
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: compact ? space[4] : space[2],
+      flexWrap: 'wrap',
+      marginTop: compact ? space[3] : 0,
+    }}>
+      {ordered.map((build, index) => {
+        const isLead = index === 0 && knowsViewer
+        const base: React.CSSProperties = {
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
+          fontSize: font.size.sm,
+          fontWeight: isLead ? font.weight.semibold : font.weight.medium,
+          textDecoration: 'none',
+          whiteSpace: 'nowrap',
+        }
+        const quiet: React.CSSProperties = { color: colors.text.secondary, textDecoration: 'underline' }
+        const style: React.CSSProperties = compact
+          ? isLead || !knowsViewer
+            ? { ...base, color: 'var(--brand-solid)' }
+            : { ...base, ...quiet }
+          : isLead
+            ? { ...base, color: 'var(--brand-contrast)', background: 'var(--brand-solid)', border: '1px solid var(--brand-solid)', padding: '5px 14px', borderRadius: radius.sm }
+            : knowsViewer
+              ? { ...base, ...quiet, padding: '5px 10px' }
+              : { ...base, color: 'var(--brand-solid)', border: '1px solid var(--brand-solid)', padding: '4px 12px', borderRadius: radius.sm }
+
+        return (
+          <a key={build.os} href={build.href} target="_blank" rel="noopener noreferrer" style={style}>
+            <DownloadOutlined />
+            下载 {platformConfig[build.os]?.label ?? build.os}
+          </a>
+        )
+      })}
+    </div>
   )
 }
 
@@ -669,6 +733,60 @@ function StructuredChanges({ desc }: { desc: string }) {
   )
 }
 
+/** Notes as each platform filed them — never merged, so a line keeps the section
+ *  its own author put it under. */
+function ReleaseNotes({ blocks }: { blocks: NoteBlock[] }) {
+  return (
+    <>
+      {blocks.map((block, index) => (
+        <div key={block.os.join('-') || index} style={{ marginTop: index > 0 ? space[5] : 0 }}>
+          {block.os.length > 0 && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              fontSize: font.size.xs,
+              fontWeight: font.weight.semibold,
+              color: colors.text.tertiary,
+              marginBottom: space[2],
+            }}>
+              {block.os.map((os) => platformConfig[os]?.label ?? os).join(' · ')}
+            </div>
+          )}
+          <StructuredChanges desc={block.desc} />
+        </div>
+      ))}
+    </>
+  )
+}
+
+function blockStats(blocks: NoteBlock[]): { added: number; fixed: number; changed: number } {
+  return blocks.reduce(
+    (total, block) => {
+      const stats = getChangeStats(block.desc)
+      return {
+        added: total.added + stats.added,
+        fixed: total.fixed + stats.fixed,
+        changed: total.changed + stats.changed,
+      }
+    },
+    { added: 0, fixed: 0, changed: 0 },
+  )
+}
+
+function blockContributors(blocks: NoteBlock[]): Contributor[] {
+  const seen = new Set<string>()
+  const all: Contributor[] = []
+  for (const block of blocks) {
+    for (const contributor of parseContributors(block.desc)) {
+      if (seen.has(contributor.name)) continue
+      seen.add(contributor.name)
+      all.push(contributor)
+    }
+  }
+  return all
+}
+
 function getChangeStats(desc: string): { added: number; fixed: number; changed: number } {
   const sections = splitByTimeTag(desc)
   let added = 0, fixed = 0, changed = 0
@@ -737,19 +855,20 @@ const DOT_SIZE = 14
 const DOT_BORDER = 3
 const TIME_COL_WIDTH = 72
 
-function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: AppVersion; isFirst?: boolean; prevVersion?: string; prevTimeLabel?: string }) {
-  const normalized = webPlatforms.has(item.os) ? 'web' : item.os
+function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: ReleaseEntry; isFirst?: boolean; prevVersion?: string; prevTimeLabel?: string }) {
+  const isWeb = item.os === 'web'
   const severity = getVersionSeverity(item.app_version, prevVersion)
   const isForce = item.is_force === 1
-  const contributors = useMemo(() => parseContributors(item.update_desc), [item.update_desc])
+  const blocks = useMemo(() => noteBlocks(item, viewerOS), [item])
+  const contributors = useMemo(() => blockContributors(blocks), [blocks])
   const dotColor = 'var(--timeline-dot-border)'
 
   const dateObj = dayjs(item.created_at)
   const dateLabel = dateObj.format('YYYY年M月D日 HH:mm')
   const relativeLabel = formatTimeLabel(dateObj, prevTimeLabel)
 
-  const isWebMerged = normalized === 'web' && TIME_TAG_PATTERN.test(item.update_desc)
-  const stats = useMemo(() => isWebMerged ? getChangeStats(item.update_desc) : null, [item.update_desc, isWebMerged])
+  const isWebMerged = isWeb && TIME_TAG_PATTERN.test(item.update_desc)
+  const stats = useMemo(() => isWebMerged ? blockStats(blocks) : null, [blocks, isWebMerged])
 
   const severityStyle = getSeverityStyle(severity)
   const forceStyle: React.CSSProperties = isForce ? {
@@ -820,18 +939,18 @@ function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: Ap
                 </span>
               )}
               <span style={{
-                fontSize: normalized === 'web'
+                fontSize: isWeb
                   ? font.size.md
                   : (severity === 'major' || severity === 'initial') ? font.size.xl : font.size.lg,
-                fontWeight: normalized === 'web'
+                fontWeight: isWeb
                   ? font.weight.semibold
-                  : severity === 'patch' ? font.weight.bold : font.weight.black,
-                color: normalized === 'web' ? colors.text.secondary : colors.text.primary,
+                  : severity === 'patch' || severity === 'unknown' ? font.weight.bold : font.weight.black,
+                color: isWeb ? colors.text.secondary : colors.text.primary,
                 letterSpacing: '-0.02em',
               }}>
-                {normalized === 'web' ? `${item.created_at.slice(5, 10)} 更新` : `v${formatVersion(item.app_version)}`}
+                {isWeb ? `${item.created_at.slice(5, 10)} 更新` : `v${formatVersion(item.app_version)}`}
               </span>
-              <PlatformBadge platform={normalized} />
+              <EntryBadges entry={item} />
               {isWebMerged && stats && (
                 <span style={{ fontSize: font.size.xs, color: colors.text.tertiary }}>
                   {[
@@ -861,7 +980,9 @@ function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: Ap
               <ContributorAvatars contributors={contributors} showLabel />
             </div>
 
-            <StructuredChanges desc={item.update_desc} />
+            <ReleaseNotes blocks={blocks} />
+
+            {item.builds && <DesktopDownloads builds={item.builds} compact />}
           </div>
         </div>
       </div>
@@ -869,12 +990,14 @@ function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: Ap
   )
 }
 
-function LatestReleaseSpotlight({ item, severity }: { item: AppVersion; severity: VersionSeverity }) {
-  const normalized = webPlatforms.has(item.os) ? 'web' : item.os
+function LatestReleaseSpotlight({ item, severity }: { item: ReleaseEntry; severity: VersionSeverity }) {
+  const isWeb = item.os === 'web'
   const dateObj = dayjs(item.created_at)
-  const stats = useMemo(() => getChangeStats(item.update_desc), [item.update_desc])
-  const contributors = useMemo(() => parseContributors(item.update_desc), [item.update_desc])
-  const isWebMerged = normalized === 'web' && TIME_TAG_PATTERN.test(item.update_desc)
+  const blocks = useMemo(() => noteBlocks(item, viewerOS), [item])
+  const stats = useMemo(() => blockStats(blocks), [blocks])
+  const contributors = useMemo(() => blockContributors(blocks), [blocks])
+  const isWebMerged = isWeb && TIME_TAG_PATTERN.test(item.update_desc)
+  const downloadHref = safeDownloadUrl(item.download_url)
 
   return (
     <div style={{
@@ -923,10 +1046,10 @@ function LatestReleaseSpotlight({ item, severity }: { item: AppVersion; severity
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: space[3], marginBottom: space[3], flexWrap: 'wrap' }}>
-        <span style={{ fontSize: normalized === 'web' ? 22 : 28, fontWeight: normalized === 'web' ? font.weight.semibold : font.weight.black, color: normalized === 'web' ? colors.text.secondary : colors.text.primary, letterSpacing: '-0.03em' }}>
-          {normalized === 'web' ? `${item.created_at.slice(5, 10)} 更新` : `v${formatVersion(item.app_version)}`}
+        <span style={{ fontSize: isWeb ? 22 : 28, fontWeight: isWeb ? font.weight.semibold : font.weight.black, color: isWeb ? colors.text.secondary : colors.text.primary, letterSpacing: '-0.03em' }}>
+          {isWeb ? `${item.created_at.slice(5, 10)} 更新` : `v${formatVersion(item.app_version)}`}
         </span>
-        <PlatformBadge platform={normalized} />
+        <EntryBadges entry={item} />
         {isWebMerged && (
           <span style={{ fontSize: font.size.xs, color: colors.text.tertiary }}>
             {[
@@ -941,7 +1064,7 @@ function LatestReleaseSpotlight({ item, severity }: { item: AppVersion; severity
       </div>
 
       <div style={{ marginBottom: space[4] }}>
-        <StructuredChanges desc={item.update_desc} />
+        <ReleaseNotes blocks={blocks} />
       </div>
 
       <div style={{
@@ -971,9 +1094,11 @@ function LatestReleaseSpotlight({ item, severity }: { item: AppVersion; severity
           </span>
         )}
         <span style={{ flex: 1 }} />
-        {item.download_url && (
+        {item.builds ? (
+          <DesktopDownloads builds={item.builds} />
+        ) : downloadHref ? (
           <a
-            href={item.download_url}
+            href={downloadHref}
             target="_blank"
             rel="noopener noreferrer"
             style={{
@@ -993,7 +1118,7 @@ function LatestReleaseSpotlight({ item, severity }: { item: AppVersion; severity
             <DownloadOutlined />
             Download
           </a>
-        )}
+        ) : null}
       </div>
     </div>
   )
@@ -1022,37 +1147,10 @@ export default function Changelog() {
   const filtered = useMemo(() => {
     const raw = activePlatform === 'all'
       ? data
-      : activePlatform === 'web'
-        ? data.filter((v) => webPlatforms.has(v.os))
-        : activePlatform === 'openclaw-plugin'
-          ? data.filter((v) => v.os === 'openclaw-plugin')
-          : activePlatform === 'chrome'
-            ? data.filter((v) => v.os === 'chrome')
-            : data.filter((v) => v.os === activePlatform)
-
-    const result: AppVersion[] = []
-    for (const item of raw) {
-      const isWeb = webPlatforms.has(item.os)
-      if (!isWeb) {
-        result.push(item)
-        continue
-      }
-      const date = item.created_at.slice(0, 10)
-      const time = item.created_at.slice(11, 16)
-      const taggedDesc = `@@TIME:${time}@@\n${item.update_desc}`
-      const prev = result.length > 0 ? result[result.length - 1] : null
-      if (prev && webPlatforms.has(prev.os) && prev.created_at.slice(0, 10) === date) {
-        result[result.length - 1] = {
-          ...prev,
-          created_at: prev.created_at > item.created_at ? prev.created_at : item.created_at,
-          update_desc: prev.update_desc + '\n' + taggedDesc,
-          is_force: prev.is_force || item.is_force,
-        }
-      } else {
-        result.push({ ...item, update_desc: taggedDesc })
-      }
-    }
-    return result
+      : activePlatform === 'desktop'
+        ? data.filter((v) => desktopPlatforms.has(v.os))
+        : data.filter((v) => v.os === activePlatform)
+    return groupReleases(raw)
   }, [data, activePlatform])
 
   const latestItem = filtered[0] ?? null
@@ -1063,7 +1161,9 @@ export default function Changelog() {
     const lastSeenByPlatform: Record<string, string> = {}
     for (let i = filtered.length - 1; i >= 0; i--) {
       const item = filtered[i]
-      const platform = webPlatforms.has(item.os) ? 'web' : item.os
+      // Desktop shares one version history — its builds ship together — while every
+      // other platform keeps its own, so severity never diffs across platforms.
+      const platform = desktopPlatforms.has(item.os) ? 'desktop' : item.os
       if (lastSeenByPlatform[platform] !== undefined) {
         map.set(i, lastSeenByPlatform[platform])
       }

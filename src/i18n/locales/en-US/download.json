@@ -8,7 +8,7 @@
   "filter": {
     "platform": {
       "all": "All Platforms",
-      "webDesktop": "Web / Desktop"
+      "desktop": "Desktop"
     },
     "force": {
       "all": "All Updates",
