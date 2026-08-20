@@ -486,18 +486,35 @@ export function orderBuilds(builds: DesktopBuild[], viewerOS: ViewerOS | null): 
 
 const URL_SCHEME = /^([a-z][a-z0-9+.-]*):/i
 
+/* A base no page is ever served from, so "does this stay on our own origin" still
+   has an answer where there is no document to ask — a test, a build step. */
+const NO_DOCUMENT_BASE = 'https://changelog.invalid/'
+
+function documentBase(): string {
+  return typeof window === 'undefined' || !window.location ? NO_DOCUMENT_BASE : window.location.href
+}
+
 /**
  * download_url is admin-entered and lands in an `href` on the public What's New
  * page, so only a plain http(s) link — or a path-relative one, which stays on this
  * origin and cannot execute script — is ever handed to the browser.
  *
- * Three things browsers do that a naive check misses:
- *   - control characters are ignored, so "java\tscript:" runs;
- *   - `\` is folded to `/` against an http(s) base, so `//host`, `\\host`, `/\host`
- *     and `\/host` are all network-path references that resolve to another origin
- *     despite carrying no scheme;
- *   - a scheme with no authority is still absolute, so `http:host` on an https page
- *     navigates to http://host rather than to a path.
+ * Where the link goes is settled by resolving it, not by reading the string: the
+ * URL parser is the same one the browser will use on the href, so there is no gap
+ * between the rule and the behaviour for a cleverly written string to live in.
+ * Two things it decides that pattern-matching kept getting wrong:
+ *   - `\` folds to `/` against an http(s) base, so `//host`, `\\host`, `/\host` and
+ *     `\/host` are authorities rather than the paths they look like, and land on
+ *     another origin while carrying no scheme;
+ *   - a scheme need not be http(s) to parse — `javascript:` and `data:` resolve
+ *     perfectly well, and only the resolved protocol says so.
+ *
+ * Control characters are stripped before any of that, because browsers ignore them
+ * inside a URL and "java\tscript:" therefore runs.
+ *
+ * A scheme still has to be written in full (`https://host`, not `https:host`): both
+ * reach the same place, but only one of them looks like what it does, and a link
+ * this page did not have to accept is one it does not.
  *
  * Returns the original string when it is safe to link, null when it is not.
  */
@@ -506,16 +523,23 @@ export function safeDownloadUrl(url: string | null | undefined): string | null {
   if (!trimmed) return null
 
   const probe = trimmed.replace(/[\u0000-\u0020\u007F]/g, '')
-  // No relative download path starts with a backslash, and any pair of leading
-  // slashes in either direction is an authority, not a path.
-  if (probe.startsWith('\\') || /^[/\\][/\\]/.test(probe)) return null
+  const base = documentBase()
+
+  let resolved: URL
+  try {
+    resolved = new URL(probe, base)
+  } catch {
+    return null
+  }
+
+  if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') return null
 
   const scheme = URL_SCHEME.exec(probe)
-  if (!scheme) return trimmed
-
-  const protocol = scheme[1].toLowerCase()
-  if (protocol !== 'http' && protocol !== 'https') return null
-  return probe.toLowerCase().startsWith(`${protocol}://`) ? trimmed : null
+  if (!scheme) {
+    // Carries no scheme of its own, so it may only be a path on this origin.
+    return resolved.origin === new URL(base).origin ? trimmed : null
+  }
+  return probe.toLowerCase().startsWith(`${scheme[1].toLowerCase()}://`) ? trimmed : null
 }
 
 function byNewestFirst(a: { created_at: string }, b: { created_at: string }): number {

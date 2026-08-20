@@ -337,6 +337,19 @@ describe('safeDownloadUrl', () => {
     expect(safeDownloadUrl('\\/attacker.example/x.exe')).toBeNull()
   })
 
+  it('refuses every scheme that is not http(s), however it resolves', () => {
+    expect(safeDownloadUrl('mailto:release@example.com')).toBeNull()
+    expect(safeDownloadUrl('file:///etc/passwd')).toBeNull()
+    expect(safeDownloadUrl('blob:https://cdn.example.com/abc')).toBeNull()
+  })
+
+  it('allows a relative path wherever on this origin it lands', () => {
+    expect(safeDownloadUrl('../releases/a.exe')).toBe('../releases/a.exe')
+    expect(safeDownloadUrl('a.exe')).toBe('a.exe')
+    // A backslash written as data, not as a separator, is a path like any other.
+    expect(safeDownloadUrl('/static/%5C%5Cattacker.example/x.exe')).toBe('/static/%5C%5Cattacker.example/x.exe')
+  })
+
   it('refuses an http(s) scheme with no authority, which is still absolute', () => {
     // "http:attacker.example" on an https page navigates off-origin, not to a path.
     expect(safeDownloadUrl('http:attacker.example')).toBeNull()
