@@ -30,8 +30,8 @@ import 'dayjs/locale/zh-cn'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import api from '../../api'
 import { colors, radius, space, font } from '../../styles/tokens'
-import { parseUpdateDesc, getVersionSeverity, formatVersion, parseContributors, detectViewerOS, groupReleases, orderBuilds, noteBlocks, safeDownloadUrl, desktopPlatforms } from './utils'
-import type { VersionSeverity, ChangeCategory, Contributor, ViewerOS, AppVersion, DesktopBuild, NoteBlock, ReleaseEntry } from './utils'
+import { parseUpdateDesc, getVersionSeverity, formatVersion, parseContributors, detectViewerOS, groupReleases, orderBuilds, noteBlocks, latestDesktopDownloads, safeDownloadUrl, desktopPlatforms } from './utils'
+import type { VersionSeverity, ChangeCategory, Contributor, ViewerOS, AppVersion, DesktopBuild, DesktopDownload, NoteBlock, ReleaseEntry } from './utils'
 import type { PlatformKey } from '../../styles/tokens'
 import { AnalyticsPanel } from './AnalyticsPanel'
 import { useTheme } from '../../hooks/useTheme'
@@ -733,6 +733,51 @@ function StructuredChanges({ desc }: { desc: string }) {
   )
 }
 
+/**
+ * Get-the-app strip above the timeline. The desktop card sinks below a week of web
+ * deploys within days, so the installer cannot only live where its release sits —
+ * one button per OS that has a build, the visitor's own promoted.
+ */
+function DesktopDownloadBar({ downloads }: { downloads: DesktopDownload[] }) {
+  if (downloads.length === 0) return null
+
+  const versions = Array.from(new Set(downloads.map((build) => build.app_version)))
+  const sharedVersion = versions.length === 1 ? versions[0] : null
+
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: space[4],
+      flexWrap: 'wrap',
+      padding: `${space[4]}px ${space[5]}px`,
+      marginBottom: space[6],
+      background: colors.surface.card,
+      border: `1px solid ${colors.surface.border}`,
+      borderRadius: radius.lg,
+    }}>
+      <span style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: space[2],
+        fontSize: font.size.base,
+        fontWeight: font.weight.semibold,
+        color: colors.text.primary,
+      }}>
+        <DesktopOutlined style={{ color: colors.platform.desktop.base }} />
+        桌面端
+        {sharedVersion && (
+          <span style={{ fontSize: font.size.sm, fontWeight: font.weight.medium, color: colors.text.tertiary }}>
+            v{formatVersion(sharedVersion)}
+          </span>
+        )}
+      </span>
+      <span style={{ flex: 1 }} />
+      <DesktopDownloads builds={downloads} />
+    </div>
+  )
+}
+
 /** Notes as each platform filed them — never merged, so a line keeps the section
  *  its own author put it under. */
 function ReleaseNotes({ blocks }: { blocks: NoteBlock[] }) {
@@ -990,7 +1035,7 @@ function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: Re
   )
 }
 
-function LatestReleaseSpotlight({ item, severity }: { item: ReleaseEntry; severity: VersionSeverity }) {
+function LatestReleaseSpotlight({ item, severity, hideDownloads }: { item: ReleaseEntry; severity: VersionSeverity; hideDownloads?: boolean }) {
   const isWeb = item.os === 'web'
   const dateObj = dayjs(item.created_at)
   const blocks = useMemo(() => noteBlocks(item, viewerOS), [item])
@@ -1094,7 +1139,7 @@ function LatestReleaseSpotlight({ item, severity }: { item: ReleaseEntry; severi
           </span>
         )}
         <span style={{ flex: 1 }} />
-        {item.builds ? (
+        {hideDownloads ? null : item.builds ? (
           <DesktopDownloads builds={item.builds} />
         ) : downloadHref ? (
           <a
@@ -1153,8 +1198,21 @@ export default function Changelog() {
     return groupReleases(raw)
   }, [data, activePlatform])
 
+  // Deliberately from `data`, not `filtered`: switching to the iOS tab should not
+  // take the desktop installer away.
+  const desktopDownloads = useMemo(() => latestDesktopDownloads(data), [data])
+
   const latestItem = filtered[0] ?? null
   const restItems = filtered.slice(1)
+
+  // When the newest release is the one the bar above is already offering, the card
+  // would repeat the same two buttons half a screen apart.
+  const spotlightOfferedAbove = useMemo(() => {
+    if (!latestItem?.builds) return false
+    const offered = new Set(desktopDownloads.map((build) => build.download_url))
+    const urls = latestItem.builds.map((build) => build.download_url).filter((url) => safeDownloadUrl(url))
+    return urls.length > 0 && urls.every((url) => offered.has(url))
+  }, [latestItem, desktopDownloads])
 
   const prevVersionMap = useMemo(() => {
     const map = new Map<number, string>()
@@ -1238,6 +1296,8 @@ export default function Changelog() {
 
         <main style={{ width: '100%', maxWidth: 1040, margin: '0 auto', padding: `${space[8]}px ${space[6]}px ${space[8]}px`, boxSizing: 'border-box' }}>
 
+          {!loading && <DesktopDownloadBar downloads={desktopDownloads} />}
+
           <div style={{ marginBottom: space[6] }}>
             <h1 style={{
               fontSize: font.size['2xl'],
@@ -1258,6 +1318,7 @@ export default function Changelog() {
             <LatestReleaseSpotlight
               item={latestItem}
               severity={getVersionSeverity(latestItem.app_version, prevVersionMap.get(0))}
+              hideDownloads={spotlightOfferedAbove}
             />
           )}
 

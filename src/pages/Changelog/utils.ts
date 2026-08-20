@@ -233,6 +233,40 @@ export interface ReleaseEntry extends AppVersion {
   builds?: DesktopBuild[]
 }
 
+/** An installer the page can offer outright, with the version it belongs to. */
+export interface DesktopDownload extends DesktopBuild {
+  app_version: string
+}
+
+/**
+ * The newest usable installer for each desktop OS across the whole feed.
+ *
+ * The timeline answers "what changed"; this answers "give me the app". A desktop
+ * release sinks below a week of web deploys within days, so the offer cannot be
+ * tied to where its card happens to sit. Rows whose URL the browser should not be
+ * handed are skipped rather than rendered as a dead button.
+ */
+export function latestDesktopDownloads(raw: AppVersion[]): DesktopDownload[] {
+  const newestByOS = new Map<string, DesktopDownload>()
+
+  for (const item of raw) {
+    if (!desktopPlatforms.has(item.os)) continue
+    if (!safeDownloadUrl(item.download_url)) continue
+    const current = newestByOS.get(item.os)
+    if (current && current.created_at >= item.created_at) continue
+    newestByOS.set(item.os, {
+      os: item.os,
+      app_version: item.app_version,
+      download_url: item.download_url,
+      created_at: item.created_at,
+      is_force: item.is_force,
+      update_desc: item.update_desc,
+    })
+  }
+
+  return desktopOrder.map((os) => newestByOS.get(os)).filter((build): build is DesktopDownload => build !== undefined)
+}
+
 /** A block of release notes as one OS filed them. */
 export interface NoteBlock {
   /** Platforms sharing these notes. Empty when the card has one set of notes. */

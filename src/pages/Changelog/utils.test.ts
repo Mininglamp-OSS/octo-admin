@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { detectViewerOS, getVersionSeverity, groupReleases, noteBlocks, orderBuilds, parseContributors, parseUpdateDesc, safeDownloadUrl } from './utils'
+import { detectViewerOS, getVersionSeverity, groupReleases, latestDesktopDownloads, noteBlocks, orderBuilds, parseContributors, parseUpdateDesc, safeDownloadUrl } from './utils'
 import type { AppVersion } from './utils'
 
 describe('parseContributors', () => {
@@ -325,5 +325,41 @@ describe('noteBlocks', () => {
   it('passes a non-desktop card through as a single block', () => {
     const [entry] = groupReleases([release({ os: 'ios', app_version: '3.4.1', update_desc: '修复：推送角标' })])
     expect(noteBlocks(entry)).toEqual([{ os: [], desc: '修复：推送角标' }])
+  })
+})
+
+describe('latestDesktopDownloads', () => {
+  it('offers the newest installer for each desktop platform', () => {
+    const offers = latestDesktopDownloads([
+      release({ os: 'windows', app_version: '1.1.0', download_url: 'https://x/1.1.0.exe', created_at: '2026-09-01 10:00:00' }),
+      release({ os: 'macos', app_version: '1.0.0', download_url: 'https://x/1.0.0.dmg', created_at: '2026-08-20 14:00:00' }),
+      release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/1.0.0.exe', created_at: '2026-08-20 16:00:00' }),
+    ])
+
+    expect(offers.map((build) => [build.os, build.app_version, build.download_url])).toEqual([
+      ['windows', '1.1.0', 'https://x/1.1.0.exe'],
+      ['macos', '1.0.0', 'https://x/1.0.0.dmg'],
+    ])
+  })
+
+  it('offers whichever platforms have a build, and nothing when none do', () => {
+    const macOnly = latestDesktopDownloads([
+      release({ os: 'macos', app_version: '1.0.0', download_url: 'https://x/a.dmg' }),
+      release({ os: 'ios', app_version: '3.4.1', download_url: 'https://apps.apple.com/x' }),
+      release({ os: 'web', update_desc: '优化：搜索' }),
+    ])
+    expect(macOnly.map((build) => build.os)).toEqual(['macos'])
+
+    expect(latestDesktopDownloads([release({ os: 'android', download_url: 'https://x/a.apk' })])).toEqual([])
+  })
+
+  it('skips a build whose URL should never reach an href, rather than offering a dead button', () => {
+    const offers = latestDesktopDownloads([
+      release({ os: 'windows', app_version: '1.1.0', download_url: 'javascript:alert(1)', created_at: '2026-09-01 10:00:00' }),
+      release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/1.0.0.exe', created_at: '2026-08-20 16:00:00' }),
+      release({ os: 'macos', app_version: '1.0.0', download_url: '', created_at: '2026-08-20 14:00:00' }),
+    ])
+
+    expect(offers.map((build) => [build.os, build.download_url])).toEqual([['windows', 'https://x/1.0.0.exe']])
   })
 })
