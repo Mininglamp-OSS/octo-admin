@@ -32,7 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   made the whole changelog page scroll sideways on a phone; notes now break inside
   a word, and the contributor row no longer sets a floor on the page width
 - A line that only announced the release ("Windows 桌面端 1.0.0 版本发布") was filed
-  under 新增 and counted as a feature the release did not contain
+  under 新增 and counted as a feature the release did not contain. Such a line is
+  now shown but never counted, and a card drops the note entirely only when the
+  note is nothing but an announcement of that card's own version
 - A version qualifier was dropped when a version was displayed, so a card for
   1.0.0-rc1 was titled v1.0.0
 - The release card and the band above it could pick different installers for the

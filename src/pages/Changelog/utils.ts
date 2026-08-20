@@ -3,6 +3,9 @@ export type ChangeCategory = 'security' | 'removed' | 'fixed' | 'added' | 'chang
 export interface ChangeItem {
   text: string
   group?: string
+  /** The version this line announces, when the line is an announcement of a release
+   *  rather than of anything in it. Counted by nothing; still shown. */
+  announces?: string
 }
 
 export interface ParsedChanges {
@@ -56,19 +59,24 @@ const CATEGORY_PATTERNS: [ChangeCategory, RegExp][] = [
 const RELEASE_ANNOUNCEMENT = /(?:正式|首次|版本)(?:发布|上线)$/
 
 /**
- * The same announcement, naming a version: "Windows 桌面端 1.0.0 版本发布".
+ * The same announcement, naming the version it announces: "Windows 桌面端 1.0.0
+ * 版本发布". The captured version is what lets a card tell an announcement of
+ * itself from an announcement of something else that happens to have a version.
  *
- * The card header already carries every word of it — the version, the platform
- * badges, the severity tag — so the line adds nothing, and filing it under 新增
- * additionally claims that shipping is a feature, which the per-card counters then
- * add up ("新增 2" for a release with no features at all). Such a line is dropped.
+ * Such a line is marked, never dropped. Filing it under 新增 claims that shipping
+ * is a feature and the per-card counters then add it up ("新增 2" for a release with
+ * no features at all) — but a wrong heading is a labelling bug a reader can see
+ * through, while a deleted line leaves nothing to see. Marked lines are shown and
+ * not counted.
  *
- * The version has to be adjacent to the announcement, not merely somewhere in the
- * sentence: "1.5x 倍速播放正式上线" announces a feature that has a number in its
- * name, and stays under 新增 where the rule above puts it. So does "深色模式正式
- * 发布", which names no version at all.
+ * Anchored at both ends, and the run before the version may hold neither digits nor
+ * punctuation, so only a line that is an announcement start to finish qualifies:
+ *   - "白屏崩溃已解决，伴随 1.0.0 版本发布" reports a fix and mentions the release;
+ *   - "协议从 1.0 升级到 2.0 正式上线" names two versions and is a change between them;
+ *   - "1.5x 倍速播放正式上线" and "深色模式正式发布" announce features, not releases.
+ * None of them are announcements of a release, and none are marked.
  */
-const VERSION_ANNOUNCEMENT = /\d+\.\d+(?:\.\d+)?\S*\s*(?:正式|首次|版本)(?:发布|上线)$/
+const VERSION_ANNOUNCEMENT = /^[^\d，。；、,;:：]*?(\d+\.\d+(?:\.\d+)?)\S*\s*(?:正式|首次|版本)(?:发布|上线)$/
 
 const PREFIX_STRIP = /^(安全|漏洞|CVE|security|移除|删除|废弃|下线|remove|deprecat\w*|修复|修正|解决|fix|bug|新增|新功能|新加|添加|支持|feat(?:ure)?|优化|改进|提升|更新|调整|升级|重构|改为|改善|chore|refactor|perf)[：:：]?\s*/i
 
@@ -95,8 +103,8 @@ export function parseUpdateDesc(desc: string): ParsedChanges {
   let currentSection: ChangeCategory | null = null
   let currentGroup: string | undefined
 
-  const push = (cat: ChangeCategory, text: string) => {
-    result[cat].push({ text, group: currentGroup })
+  const push = (cat: ChangeCategory, text: string, announces?: string) => {
+    result[cat].push(announces === undefined ? { text, group: currentGroup } : { text, group: currentGroup, announces })
   }
 
   for (const raw of lines) {
@@ -143,6 +151,11 @@ export function parseUpdateDesc(desc: string): ParsedChanges {
     const isHeader = /^.+[：:]\s*$/.test(line)
     const cat = classifyLine(line)
     const stripped = stripPrefix(line)
+    // Asked of the line with any 新增/修复 prefix removed, and asked before the
+    // branches below place it: an announcement is one whether it was written bare,
+    // under a section heading, or behind a prefix of its own, and all three shapes
+    // were inflating the counters.
+    const announces = VERSION_ANNOUNCEMENT.exec(stripped || line)?.[1]
 
     // bare keyword line like "新增" / "修复" — section header, not item
     if (cat !== 'other' && !stripped) {
@@ -156,11 +169,13 @@ export function parseUpdateDesc(desc: string): ParsedChanges {
       currentGroup = undefined
     } else if (currentSection) {
       // explicit section in effect — respect it, ignore per-line prefix classification
-      push(currentSection, stripped || line)
+      push(currentSection, stripped || line, announces)
     } else if (cat !== 'other') {
-      push(cat, stripped)
-    } else if (VERSION_ANNOUNCEMENT.test(line)) {
-      continue
+      push(cat, stripped, announces)
+    } else if (announces !== undefined) {
+      // Nobody filed it anywhere, and it announces a release: 其他 is where it
+      // belongs, rather than the 新增 the fallback below would give it.
+      push('other', line, announces)
     } else if (RELEASE_ANNOUNCEMENT.test(line)) {
       push('added', line)
     } else {
@@ -261,7 +276,10 @@ export interface ReleaseEntry extends AppVersion {
  * and the beta wins.
  */
 const VERSION_SUFFIX = /\d+\.\d+(?:\.\d+)?((?:-[0-9A-Za-z.]+)+)/
-const PRERELEASE_TOKEN = /^(alpha|beta|rc|pre|preview|dev|snapshot|canary|nightly)/i
+/* Anchored at both ends of the token: a qualifier is the word itself, optionally
+   numbered (-rc1, -beta.2). Matching on prefix alone reads -prebuilt as a
+   prerelease and ranks a finished build below the release before it. */
+const PRERELEASE_TOKEN = /^(alpha|beta|rc|pre|preview|dev|snapshot|canary|nightly)(\d|\.|$)/i
 
 export function isPrerelease(version: string): boolean {
   const suffix = VERSION_SUFFIX.exec(version.replace(/\(.*\)/, ''))
@@ -426,11 +444,20 @@ export function forcedPlatforms(entry: ReleaseEntry): string[] {
   return forced.length === entry.builds.length ? [] : forced.map((build) => build.os)
 }
 
-/** Whether a note still says anything once release announcements are dropped. */
-export function hasVisibleChanges(desc: string): boolean {
-  // Read off the parse result rather than a second list of categories to keep in
-  // step with the first one.
-  return Object.values(parseUpdateDesc(desc)).some((items) => items.length > 0)
+/**
+ * Whether a note says nothing the card it belongs to does not already say: every
+ * line in it announces this very release.
+ *
+ * The version is what settles it. "Windows 桌面端 1.0.0 版本发布" on the 1.0.0 card
+ * repeats the headline, the platform badge and the severity tag beneath which it is
+ * printed; the same sentence about anything else — "插件市场 2.0 正式上线" — is news,
+ * and is kept and shown whatever card it lands on.
+ */
+export function announcesOnly(desc: string, appVersion: string): boolean {
+  const items = Object.values(parseUpdateDesc(desc)).flat()
+  if (items.length === 0) return false
+  const own = formatVersion(appVersion.trim().replace(/^v/i, ''))
+  return items.every((item) => item.announces !== undefined && formatVersion(item.announces) === own)
 }
 
 /**
@@ -444,17 +471,19 @@ export function hasVisibleChanges(desc: string): boolean {
  * is the common case; only genuinely differing notes are shown per OS.
  */
 export function noteBlocks(entry: ReleaseEntry, viewerOS: ViewerOS | null = null): NoteBlock[] {
+  const saysNothingNew = (desc: string) => !desc || announcesOnly(desc, entry.app_version)
+
   if (!entry.builds) {
-    return hasVisibleChanges(entry.update_desc) ? [{ os: [], desc: entry.update_desc }] : []
+    return saysNothingNew(entry.update_desc.trim()) ? [] : [{ os: [], desc: entry.update_desc }]
   }
 
   const blocks: NoteBlock[] = []
   const byDesc = new Map<string, NoteBlock>()
   for (const build of orderBuilds(entry.builds, viewerOS)) {
     const desc = build.update_desc.trim()
-    // A note that was only ever "1.0.0 版本发布" parses to nothing; rendering it
-    // would leave a platform heading standing over an empty list.
-    if (!hasVisibleChanges(desc)) continue
+    // A note that only announces this very release would render as a platform
+    // heading over a line repeating the headline above it.
+    if (saysNothingNew(desc)) continue
     const shared = byDesc.get(desc)
     if (shared) {
       shared.os.push(build.os)
@@ -526,12 +555,21 @@ function documentBase(): string {
  *   - a scheme need not be http(s) to parse — `javascript:` and `data:` resolve
  *     perfectly well, and only the resolved protocol says so.
  *
- * Control characters are stripped before any of that, because browsers ignore them
- * inside a URL and "java\tscript:" therefore runs.
+ * The value resolved is the value returned, not a cleaned copy of it: the parser
+ * already ignores the tab, newline and carriage return that hide a scheme, so
+ * "java\tscript:" resolves to javascript: and is refused on its protocol. Deciding
+ * on a stripped string and handing back the original would approve one URL and
+ * publish another — and a space, say, is not ignored but percent-encoded, so the two
+ * are not the same link.
  *
- * A scheme still has to be written in full (`https://host`, not `https:host`): both
- * reach the same place, but only one of them looks like what it does, and a link
- * this page did not have to accept is one it does not.
+ * The stripped copy is consulted for one question only, which is about the shape of
+ * the string rather than where it goes: a scheme has to be written in full
+ * (`https://host`, not `https:host`). Both reach the same place, but only one of
+ * them looks like what it does.
+ *
+ * One deliberate relaxation over the pattern-matching this replaces: a single
+ * leading backslash is now allowed. The parser folds `\evil.com` to the same-origin
+ * path `/evil.com`, so refusing it was over-rejection rather than a safety property.
  *
  * Returns the original string when it is safe to link, null when it is not.
  */
@@ -539,18 +577,18 @@ export function safeDownloadUrl(url: string | null | undefined): string | null {
   const trimmed = (url ?? '').trim()
   if (!trimmed) return null
 
-  const probe = trimmed.replace(/[\u0000-\u0020\u007F]/g, '')
   const base = documentBase()
 
   let resolved: URL
   try {
-    resolved = new URL(probe, base)
+    resolved = new URL(trimmed, base)
   } catch {
     return null
   }
 
   if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') return null
 
+  const probe = trimmed.replace(/[\u0000-\u0020\u007F]/g, '')
   const scheme = URL_SCHEME.exec(probe)
   if (!scheme) {
     // Carries no scheme of its own, so it may only be a path on this origin.
@@ -738,9 +776,10 @@ export function parseContributors(desc: string): Contributor[] {
 }
 
 /* Everything after the triple that a semver qualifier can carry: -rc1, -beta.2,
-   -x64. Kept rather than dropped, so a card titled v1.0.0 is never a 1.0.0-rc1 and
-   two installers only count as one release when they really are one. */
-const VERSION_QUALIFIER = /\d+\.\d+(?:\.\d+)?(-[0-9A-Za-z][0-9A-Za-z.-]*)/
+   -x64, +arm64. Kept rather than dropped, so a card titled v1.0.0 is never a
+   1.0.0-rc1 — and, now that formatting alike is what "one release" means, so that
+   two strings only collapse into one label when they really are one release. */
+const VERSION_QUALIFIER = /\d+\.\d+(?:\.\d+)?([-+][0-9A-Za-z][0-9A-Za-z.+-]*)/
 
 export function formatVersion(raw: string): string {
   const semver = parseSemVer(raw)

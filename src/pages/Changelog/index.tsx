@@ -474,6 +474,13 @@ function narrowScreenQuery(): MediaQueryList | null {
 function subscribeToWidth(notify: () => void): () => void {
   const query = narrowScreenQuery()
   if (!query) return () => {}
+  // Safari below 14 exposes only the deprecated addListener, and this runs inside
+  // useSyncExternalStore's subscribe: throwing here takes the page down rather than
+  // leaving the avatar row at its wider cap.
+  if (typeof query.addEventListener !== 'function') {
+    query.addListener(notify)
+    return () => query.removeListener(notify)
+  }
   query.addEventListener('change', notify)
   return () => query.removeEventListener('change', notify)
 }
@@ -671,9 +678,12 @@ function splitByTimeTag(desc: string): { time: string | null; content: string }[
   return result
 }
 
+/* Announcements are shown but never counted: "1.0.0 版本发布" is the release, not
+   something in it, and counting it reports a change the release does not contain. */
+const isChange = (item: { announces?: string }) => item.announces === undefined
+
 function countChanges(parsed: ReturnType<typeof parseUpdateDesc>): number {
-  return parsed.added.length + parsed.fixed.length + parsed.changed.length
-    + parsed.removed.length + parsed.security.length + parsed.other.length
+  return Object.values(parsed).reduce((total, items) => total + items.filter(isChange).length, 0)
 }
 
 function StructuredChanges({ desc }: { desc: string }) {
@@ -932,9 +942,10 @@ function getChangeStats(desc: string): { added: number; fixed: number; changed: 
   let added = 0, fixed = 0, changed = 0
   for (const section of sections) {
     const parsed = parseUpdateDesc(section.content)
-    added += parsed.added.length
-    fixed += parsed.fixed.length
-    changed += parsed.changed.length + parsed.removed.length + parsed.security.length + parsed.other.length
+    added += parsed.added.filter(isChange).length
+    fixed += parsed.fixed.filter(isChange).length
+    changed += [parsed.changed, parsed.removed, parsed.security, parsed.other]
+      .reduce((total, items) => total + items.filter(isChange).length, 0)
   }
   return { added, fixed, changed }
 }

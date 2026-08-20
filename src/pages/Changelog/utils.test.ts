@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { detectViewerOS, forcedPlatforms, formatVersion, isHandheld, getVersionSeverity, groupReleases, latestDesktopDownloads, noteBlocks, offerVersionLabel, offeredAbove, orderBuilds, parseContributors, parseUpdateDesc, safeDownloadUrl } from './utils'
+import { announcesOnly, detectViewerOS, forcedPlatforms, formatVersion, isHandheld, getVersionSeverity, groupReleases, latestDesktopDownloads, noteBlocks, offerVersionLabel, offeredAbove, orderBuilds, parseContributors, parseUpdateDesc, safeDownloadUrl } from './utils'
 import type { AppVersion } from './utils'
 
 describe('parseContributors', () => {
@@ -20,12 +20,39 @@ describe('parseContributors', () => {
 })
 
 describe('parseUpdateDesc', () => {
-  it('drops a line that only announces the release it belongs to', () => {
-    // The card header says v1.0.0, Windows and Initial Release already. Kept, the
-    // line reads as a feature, and the card's own counter then reports 新增 1.
+  it('marks a line that only announces a release, and files it under 其他', () => {
+    // Marked, not deleted: the card counters skip it, so shipping stops being
+    // reported as a feature, but a reader still sees every line an author wrote.
     const parsed = parseUpdateDesc('Windows 桌面端 1.0.0 版本发布')
     expect(parsed.added).toEqual([])
-    expect(parsed.other).toEqual([])
+    expect(parsed.other).toEqual([{ text: 'Windows 桌面端 1.0.0 版本发布', group: undefined, announces: '1.0.0' }])
+  })
+
+  it('marks the announcement wherever the note happens to file it', () => {
+    // The counters read the mark, not the category, so all three shapes of the same
+    // sentence stop inflating 新增 — under a heading, behind a prefix, or bare.
+    for (const desc of ['新增\n- Windows 桌面端 1.0.0 版本发布', '新增：Windows 桌面端 1.0.0 版本发布']) {
+      expect(parseUpdateDesc(desc).added).toEqual([
+        { text: 'Windows 桌面端 1.0.0 版本发布', group: undefined, announces: '1.0.0' },
+      ])
+    }
+  })
+
+  it('never marks a line that says anything besides the announcement', () => {
+    // Marking these would let a card drop them, and a reader cannot tell a note
+    // that was never written from one a regex removed.
+    for (const desc of [
+      '白屏崩溃已解决，伴随 1.0.0 版本发布',
+      '协议从 1.0 升级到 2.0 正式上线',
+      '1.5x 倍速播放正式上线',
+      '深色模式正式发布',
+      'TLS 1.3 通道上线',
+    ]) {
+      const items = Object.values(parseUpdateDesc(desc)).flat()
+      expect(items).toHaveLength(1)
+      expect(items[0].announces).toBeUndefined()
+      expect(items[0].text).toContain(desc.slice(0, 4))
+    }
   })
 
   it('keeps an announcement that names a feature rather than a version', () => {
@@ -68,6 +95,28 @@ describe('parseUpdateDesc', () => {
   it('does not read ordinary prose that merely ends in 上线 as a new feature', () => {
     expect(parseUpdateDesc('问题：功能无法上线').other).toHaveLength(1)
     expect(parseUpdateDesc('问题：功能无法上线').added).toEqual([])
+  })
+})
+
+describe('announcesOnly', () => {
+  it('is true only for a note that announces the very release it sits on', () => {
+    expect(announcesOnly('Windows 桌面端 1.0.0 版本发布', '1.0.0')).toBe(true)
+    expect(announcesOnly('Windows 桌面端 1.0.0 版本发布', 'v1.0')).toBe(true)
+  })
+
+  it('keeps a note announcing anything other than this release', () => {
+    // Same sentence, different subject: the plugin market shipping 2.0 is news on
+    // the 1.0.0 card, not a restatement of its headline.
+    expect(announcesOnly('插件市场 2.0 正式上线', '1.0.0')).toBe(false)
+    expect(announcesOnly('白屏崩溃已解决，伴随 1.0.0 版本发布', '1.0.0')).toBe(false)
+  })
+
+  it('keeps a note that announces the release and then says something', () => {
+    expect(announcesOnly('Windows 桌面端 1.0.0 版本发布\n修复：启动白屏', '1.0.0')).toBe(false)
+  })
+
+  it('is false for a note with nothing in it, which has its own handling', () => {
+    expect(announcesOnly('', '1.0.0')).toBe(false)
   })
 })
 
@@ -369,6 +418,14 @@ describe('safeDownloadUrl', () => {
     expect(safeDownloadUrl('\\/attacker.example/x.exe')).toBeNull()
   })
 
+  it('refuses a URL it could only approve by reading a different string', () => {
+    // A space is not ignored inside a URL the way a tab is — it is a forbidden host
+    // code point. Deciding on a copy with it removed approved one link and
+    // published another.
+    expect(safeDownloadUrl('http:// evil.com')).toBeNull()
+    expect(safeDownloadUrl('https://evil.com .good.com')).toBeNull()
+  })
+
   it('refuses every scheme that is not http(s), however it resolves', () => {
     expect(safeDownloadUrl('mailto:release@example.com')).toBeNull()
     expect(safeDownloadUrl('file:///etc/passwd')).toBeNull()
@@ -505,6 +562,15 @@ describe('latestDesktopDownloads', () => {
 
     for (const feed of [[stable, rc], [rc, stable]]) {
       expect(latestDesktopDownloads(feed).map((build) => build.download_url)).toEqual(['https://x/stable.exe'])
+    }
+  })
+
+  it('does not read a word that merely starts like a qualifier as one', () => {
+    const older = release({ os: 'windows', app_version: '1.2.2', download_url: 'https://x/old.exe', created_at: '2026-01-01 00:00:00' })
+    const prebuilt = release({ os: 'windows', app_version: '1.2.3-prebuilt', download_url: 'https://x/new.exe', created_at: '2026-02-01 00:00:00' })
+
+    for (const feed of [[older, prebuilt], [prebuilt, older]]) {
+      expect(latestDesktopDownloads(feed).map((build) => build.download_url)).toEqual(['https://x/new.exe'])
     }
   })
 
@@ -656,6 +722,9 @@ describe('formatVersion', () => {
     expect(formatVersion('1.0.0-rc1')).toBe('1.0.0-rc1')
     expect(formatVersion('2.0.0-beta.2')).toBe('2.0.0-beta.2')
     expect(formatVersion('1.2.3-x64(9)')).toBe('1.2.3-x64(9)')
+    // Build metadata after '+' distinguishes two releases just as a '-' suffix does,
+    // now that formatting alike is what decides whether two installers are one.
+    expect(formatVersion('1.2.3+arm64')).toBe('1.2.3+arm64')
   })
 
   it('hands back a string it cannot read a version out of', () => {
