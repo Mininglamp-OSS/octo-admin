@@ -30,8 +30,8 @@ import 'dayjs/locale/zh-cn'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import api from '../../api'
 import { colors, radius, space, font } from '../../styles/tokens'
-import { parseUpdateDesc, getVersionSeverity, formatVersion, parseContributors, detectViewerOS, groupReleases, orderBuilds, noteBlocks, safeDownloadUrl, desktopPlatforms } from './utils'
-import type { VersionSeverity, ChangeCategory, Contributor, ViewerOS, AppVersion, DesktopBuild, NoteBlock, ReleaseEntry } from './utils'
+import { parseUpdateDesc, getVersionSeverity, formatVersion, parseContributors, detectViewerOS, groupReleases, orderBuilds, noteBlocks, latestDesktopDownloads, offerVersionLabel, offeredAbove, safeDownloadUrl, desktopPlatforms } from './utils'
+import type { VersionSeverity, ChangeCategory, Contributor, ViewerOS, AppVersion, DesktopBuild, DesktopDownload, NoteBlock, ReleaseEntry } from './utils'
 import type { PlatformKey } from '../../styles/tokens'
 import { AnalyticsPanel } from './AnalyticsPanel'
 import { useTheme } from '../../hooks/useTheme'
@@ -79,6 +79,11 @@ const tabItems = [
 ]
 
 const css = `
+.download-link:focus-visible {
+  outline: 2px solid var(--brand-solid);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
 @keyframes fadeSlideIn {
   from { opacity: 0; transform: translateY(12px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -541,7 +546,7 @@ function EntryBadges({ entry }: { entry: ReleaseEntry }) {
  * leads and is the only filled button; otherwise every build is offered with
  * equal weight rather than guessing at them.
  */
-function DesktopDownloads({ builds, compact }: { builds: DesktopBuild[]; compact?: boolean }) {
+function DesktopDownloads({ builds, compact, large }: { builds: DesktopBuild[]; compact?: boolean; large?: boolean }) {
   const ordered = orderBuilds(builds, viewerOS)
     .map((build) => ({ ...build, href: safeDownloadUrl(build.download_url) }))
     .filter((build): build is typeof build & { href: string } => build.href !== null)
@@ -561,25 +566,29 @@ function DesktopDownloads({ builds, compact }: { builds: DesktopBuild[]; compact
         const base: React.CSSProperties = {
           display: 'inline-flex',
           alignItems: 'center',
-          gap: 4,
-          fontSize: font.size.sm,
+          gap: large ? 6 : 4,
+          fontSize: large ? font.size.base : font.size.sm,
           fontWeight: isLead ? font.weight.semibold : font.weight.medium,
           textDecoration: 'none',
           whiteSpace: 'nowrap',
         }
-        const quiet: React.CSSProperties = { color: colors.text.secondary, textDecoration: 'underline' }
+        // Underline carries the affordance inline; at button size a border reads
+        // better next to the filled one.
+        const quiet: React.CSSProperties = large
+          ? { color: colors.text.secondary, background: colors.surface.card, border: `1px solid ${colors.surface.border}`, borderRadius: radius.md }
+          : { color: colors.text.secondary, textDecoration: 'underline' }
         const style: React.CSSProperties = compact
           ? isLead || !knowsViewer
             ? { ...base, color: 'var(--brand-solid)' }
             : { ...base, ...quiet }
           : isLead
-            ? { ...base, color: 'var(--brand-contrast)', background: 'var(--brand-solid)', border: '1px solid var(--brand-solid)', padding: '5px 14px', borderRadius: radius.sm }
+            ? { ...base, color: 'var(--brand-contrast)', background: 'var(--brand-solid)', border: '1px solid var(--brand-solid)', padding: large ? '10px 22px' : '5px 14px', borderRadius: large ? radius.md : radius.sm }
             : knowsViewer
-              ? { ...base, ...quiet, padding: '5px 10px' }
-              : { ...base, color: 'var(--brand-solid)', border: '1px solid var(--brand-solid)', padding: '4px 12px', borderRadius: radius.sm }
+              ? { ...base, ...quiet, padding: large ? '10px 14px' : '5px 10px' }
+              : { ...base, color: 'var(--brand-solid)', border: '1px solid var(--brand-solid)', padding: large ? '9px 20px' : '4px 12px', borderRadius: large ? radius.md : radius.sm }
 
         return (
-          <a key={build.os} href={build.href} target="_blank" rel="noopener noreferrer" style={style}>
+          <a key={build.os} className="download-link" href={build.href} target="_blank" rel="noopener noreferrer" style={style}>
             <DownloadOutlined />
             下载 {platformConfig[build.os]?.label ?? build.os}
           </a>
@@ -730,6 +739,68 @@ function StructuredChanges({ desc }: { desc: string }) {
         )
       })}
     </div>
+  )
+}
+
+/**
+ * Get-the-app strip above the timeline. The desktop card sinks below a week of web
+ * deploys within days, so the installer cannot only live where its release sits —
+ * one button per OS that has a build, the visitor's own promoted.
+ */
+export function DesktopDownloadBar({ downloads }: { downloads: DesktopDownload[] }) {
+  if (downloads.length === 0) return null
+
+  const versionLabel = offerVersionLabel(downloads)
+  // Same order the buttons take, so the line does not read "Windows、macOS" above a
+  // macOS-first row.
+  const platforms = orderBuilds(downloads, viewerOS).map((build) => platformConfig[build.os]?.label ?? build.os).join('、')
+
+  return (
+    // Labelled: these are the first focusable things on the page, ahead of its <h1>.
+    <section aria-label="下载 Octo 桌面端" style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: space[5],
+      flexWrap: 'wrap',
+      padding: space[6],
+      marginBottom: space[8],
+      background: 'var(--brand-bg)',
+      border: '1px solid color-mix(in srgb, var(--brand) 24%, transparent)',
+      borderRadius: radius.xl,
+    }}>
+      <span style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 48,
+        height: 48,
+        flexShrink: 0,
+        borderRadius: radius.lg,
+        background: colors.surface.card,
+        border: '1px solid color-mix(in srgb, var(--brand) 18%, transparent)',
+      }}>
+        <DesktopOutlined style={{ fontSize: 22, color: 'var(--brand-text-on-bg)' }} />
+      </span>
+
+      <div style={{ minWidth: 0 }}>
+        <h2 style={{
+          margin: 0,
+          fontSize: font.size.lg,
+          fontWeight: font.weight.bold,
+          color: colors.text.primary,
+          letterSpacing: '-0.01em',
+          lineHeight: 1.3,
+        }}>
+          Octo 桌面端
+        </h2>
+        <div style={{ fontSize: font.size.base, color: colors.text.secondary, marginTop: 2 }}>
+          {versionLabel && `${versionLabel} · `}支持 {platforms}
+        </div>
+      </div>
+
+      <span style={{ flex: 1, minWidth: space[4] }} />
+      <DesktopDownloads builds={downloads} large />
+    </section>
   )
 }
 
@@ -990,7 +1061,7 @@ function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: Re
   )
 }
 
-function LatestReleaseSpotlight({ item, severity }: { item: ReleaseEntry; severity: VersionSeverity }) {
+function LatestReleaseSpotlight({ item, severity, hideDownloads }: { item: ReleaseEntry; severity: VersionSeverity; hideDownloads?: boolean }) {
   const isWeb = item.os === 'web'
   const dateObj = dayjs(item.created_at)
   const blocks = useMemo(() => noteBlocks(item, viewerOS), [item])
@@ -1067,6 +1138,7 @@ function LatestReleaseSpotlight({ item, severity }: { item: ReleaseEntry; severi
         <ReleaseNotes blocks={blocks} />
       </div>
 
+      {(stats.added > 0 || stats.fixed > 0 || stats.changed > 0 || !hideDownloads) && (
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -1094,7 +1166,7 @@ function LatestReleaseSpotlight({ item, severity }: { item: ReleaseEntry; severi
           </span>
         )}
         <span style={{ flex: 1 }} />
-        {item.builds ? (
+        {hideDownloads ? null : item.builds ? (
           <DesktopDownloads builds={item.builds} />
         ) : downloadHref ? (
           <a
@@ -1120,6 +1192,7 @@ function LatestReleaseSpotlight({ item, severity }: { item: ReleaseEntry; severi
           </a>
         ) : null}
       </div>
+      )}
     </div>
   )
 }
@@ -1153,8 +1226,19 @@ export default function Changelog() {
     return groupReleases(raw)
   }, [data, activePlatform])
 
+  // Deliberately from `data`, not `filtered`: switching to the iOS tab should not
+  // take the desktop installer away.
+  const desktopDownloads = useMemo(() => latestDesktopDownloads(data), [data])
+
   const latestItem = filtered[0] ?? null
   const restItems = filtered.slice(1)
+
+  // When the newest release is the one the bar above is already offering, the card
+  // would repeat the same two buttons half a screen apart.
+  const spotlightOfferedAbove = useMemo(
+    () => (latestItem ? offeredAbove(latestItem, desktopDownloads) : false),
+    [latestItem, desktopDownloads],
+  )
 
   const prevVersionMap = useMemo(() => {
     const map = new Map<number, string>()
@@ -1238,6 +1322,8 @@ export default function Changelog() {
 
         <main style={{ width: '100%', maxWidth: 1040, margin: '0 auto', padding: `${space[8]}px ${space[6]}px ${space[8]}px`, boxSizing: 'border-box' }}>
 
+          {!loading && <DesktopDownloadBar downloads={desktopDownloads} />}
+
           <div style={{ marginBottom: space[6] }}>
             <h1 style={{
               fontSize: font.size['2xl'],
@@ -1258,6 +1344,7 @@ export default function Changelog() {
             <LatestReleaseSpotlight
               item={latestItem}
               severity={getVersionSeverity(latestItem.app_version, prevVersionMap.get(0))}
+              hideDownloads={spotlightOfferedAbove}
             />
           )}
 

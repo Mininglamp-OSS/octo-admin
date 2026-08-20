@@ -230,6 +230,150 @@ export interface ReleaseEntry extends AppVersion {
   builds?: DesktopBuild[]
 }
 
+/**
+ * A version whose suffix says it is not the final build: 2.0.0-beta, 1.0.0-rc1,
+ * Octo 2.0.0-rc.2.
+ *
+ * Only recognised tokens count. Not every hyphen means prerelease — `1.2.3-x64` and
+ * `1.2.3-20260115` are an arch and a date stamp, and ranking those below a stable
+ * release would offer an older installer than the one they name.
+ *
+ * The triple is matched as leniently as parseSemVer does, which finds one anywhere
+ * in the string: if that recognises `Octo 2.0.0` as a version, this has to recognise
+ * `Octo 2.0.0-beta` as a prerelease, or the pair compares as stable-versus-nothing
+ * and the beta wins.
+ */
+const VERSION_SUFFIX = /\d+\.\d+(?:\.\d+)?-([0-9A-Za-z]+)/
+const PRERELEASE_TOKEN = /^(alpha|beta|rc|pre|preview|dev|snapshot|canary|nightly)/i
+
+export function isPrerelease(version: string): boolean {
+  const suffix = VERSION_SUFFIX.exec(version.replace(/\(.*\)/, ''))
+  return suffix !== null && PRERELEASE_TOKEN.test(suffix[1])
+}
+
+/** Ranked so a stable release outranks any prerelease, and both outrank a version
+ *  string we cannot read at all. */
+const STABLE = 2
+const PRERELEASE = 1
+const UNREADABLE = 0
+
+interface VersionRank {
+  tier: number
+  triple: [number, number, number]
+  build: number
+}
+
+function rankVersion(version: string): VersionRank {
+  const triple = parseSemVer(version)
+  if (!triple) return { tier: UNREADABLE, triple: [0, 0, 0], build: 0 }
+  return {
+    tier: isPrerelease(version) ? PRERELEASE : STABLE,
+    triple,
+    build: parseBuildNumber(version) ?? 0,
+  }
+}
+
+/**
+ * Which of two rows for one OS the page should offer.
+ *
+ * A total order — tier, then version, then build, then upload time — because
+ * latestDesktopDownloads() folds this over the feed, and a fold over a comparator
+ * that mixes incomparable rules returns whichever answer the arrival order happens
+ * to produce. The API sorts by updated_at, so that order changes whenever a row is
+ * re-saved.
+ *
+ * Tier comes first because a prerelease is normally numbered ahead of the stable it
+ * precedes — 2.0.1-beta exists before 2.0.1 does — so comparing numbers first would
+ * hand out a beta for as long as it is the highest-numbered row. It is still offered
+ * when nothing else is: something installable beats nothing.
+ */
+function supersedes(candidate: AppVersion, current: DesktopDownload): boolean {
+  const a = rankVersion(candidate.app_version)
+  const b = rankVersion(current.app_version)
+  if (a.tier !== b.tier) return a.tier > b.tier
+  for (let i = 0; i < 3; i++) {
+    if (a.triple[i] !== b.triple[i]) return a.triple[i] > b.triple[i]
+  }
+  if (a.build !== b.build) return a.build > b.build
+  if (candidate.created_at !== current.created_at) return candidate.created_at > current.created_at
+  // Rows alike down to the second still need one answer, or the fold returns
+  // whichever arrived first and the order-independence above is only most of a
+  // total order.
+  return candidate.download_url > current.download_url
+}
+
+/** An installer the page can offer outright, with the version it belongs to. */
+export interface DesktopDownload extends DesktopBuild {
+  app_version: string
+}
+
+/**
+ * The version line for the offer, or null when the installers do not share one.
+ *
+ * formatVersion() drops a `-suffix`, so a prerelease would be badged as the stable
+ * release it is not — above a button that hands over the prerelease. Prereleases
+ * therefore keep their version string verbatim. (formatVersion itself is left alone:
+ * the timeline cards badge the same way, and moving them apart would be worse than
+ * moving them together later.)
+ */
+export function offerVersionLabel(offers: DesktopDownload[]): string | null {
+  // Written the same way, modulo a `v` prefix: label it.
+  const raw = Array.from(new Set(offers.map((offer) => offer.app_version.trim().replace(/^v/i, ''))))
+  if (raw.length === 1) return isPrerelease(raw[0]) ? raw[0] : `v${formatVersion(raw[0])}`
+
+  // Written differently with a prerelease among them: say nothing. formatVersion()
+  // drops a `-suffix`, so comparing formatted versions here would collapse Windows
+  // on 1.0.0 and macOS on 1.0.0-rc1 into one version and badge the RC as stable —
+  // above the button that hands it over.
+  if (offers.some((offer) => isPrerelease(offer.app_version))) return null
+
+  // All stable and formatting alike (1.0 and 1.0.0) — one version, said once.
+  const formatted = Array.from(new Set(offers.map((offer) => formatVersion(offer.app_version))))
+  return formatted.length === 1 ? `v${formatted[0]}` : null
+}
+
+/**
+ * The newest usable installer for each desktop OS across the whole feed.
+ *
+ * The timeline answers "what changed"; this answers "give me the app". A desktop
+ * release sinks below a week of web deploys within days, so the offer cannot be
+ * tied to where its card happens to sit. Rows whose URL the browser should not be
+ * handed are skipped rather than rendered as a dead button.
+ */
+export function latestDesktopDownloads(raw: AppVersion[]): DesktopDownload[] {
+  const newestByOS = new Map<string, DesktopDownload>()
+
+  for (const item of raw) {
+    if (!desktopPlatforms.has(item.os)) continue
+    if (!safeDownloadUrl(item.download_url)) continue
+    const current = newestByOS.get(item.os)
+    if (current && !supersedes(item, current)) continue
+    newestByOS.set(item.os, {
+      os: item.os,
+      app_version: item.app_version,
+      download_url: item.download_url,
+      created_at: item.created_at,
+      is_force: item.is_force,
+      update_desc: item.update_desc,
+    })
+  }
+
+  return desktopOrder.map((os) => newestByOS.get(os)).filter((build): build is DesktopDownload => build !== undefined)
+}
+
+/**
+ * Whether every installer this card links is already on offer above it, so the card
+ * can drop its own download row instead of repeating the same buttons half a screen
+ * apart. Keyed by platform as well as URL: two platforms sharing one URL must not
+ * cover for each other.
+ */
+export function offeredAbove(entry: ReleaseEntry, offers: DesktopDownload[]): boolean {
+  if (!entry.builds) return false
+  const offered = new Set(offers.map((offer) => `${offer.os}\u0000${offer.download_url}`))
+  const links = entry.builds.filter((build) => safeDownloadUrl(build.download_url))
+  return links.length > 0 && links.every((build) => offered.has(`${build.os}\u0000${build.download_url}`))
+}
+
 /** A block of release notes as one OS filed them. */
 export interface NoteBlock {
   /** Platforms sharing these notes. Empty when the card has one set of notes. */
