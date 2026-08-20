@@ -22,6 +22,8 @@ import {
   SunOutlined,
   MoonOutlined,
   DesktopOutlined,
+  WindowsOutlined,
+  LinuxOutlined,
 } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import 'dayjs/locale/zh-cn'
@@ -60,19 +62,26 @@ const ChromeIcon = () => (
   </svg>
 )
 
-const platformConfig: Record<string, { label: string; icon: React.ReactNode; color: string; colorDark: string }> = {
-  android: { label: 'Android', icon: <AndroidOutlined />, color: '#22c55e', colorDark: '#4ade80' },
-  ios: { label: 'iOS', icon: <AppleOutlined />, color: '#334155', colorDark: '#cbd5e1' },
-  web: { label: 'Web', icon: <GlobalOutlined />, color: '#0ea5e9', colorDark: '#38bdf8' },
-  'openclaw-plugin': { label: 'OpenClaw Plugin', icon: <ApiOutlined />, color: '#f97316', colorDark: '#fb923c' },
-  chrome: { label: 'Chrome 扩展', icon: <ChromeIcon />, color: '#4285f4', colorDark: '#60a5fa' },
+const platformConfig: Record<string, { label: string; icon: React.ReactNode; tone: PlatformKey; color: string; colorDark: string }> = {
+  android: { label: 'Android', icon: <AndroidOutlined />, tone: 'android', color: '#22c55e', colorDark: '#4ade80' },
+  ios: { label: 'iOS', icon: <AppleOutlined />, tone: 'ios', color: '#334155', colorDark: '#cbd5e1' },
+  web: { label: 'Web', icon: <GlobalOutlined />, tone: 'web', color: '#0ea5e9', colorDark: '#38bdf8' },
+  windows: { label: 'Windows', icon: <WindowsOutlined />, tone: 'desktop', color: '#0d9488', colorDark: '#2dd4bf' },
+  macos: { label: 'macOS', icon: <AppleOutlined />, tone: 'desktop', color: '#0d9488', colorDark: '#2dd4bf' },
+  linux: { label: 'Linux', icon: <LinuxOutlined />, tone: 'desktop', color: '#0d9488', colorDark: '#2dd4bf' },
+  'openclaw-plugin': { label: 'OpenClaw Plugin', icon: <ApiOutlined />, tone: 'openclaw-plugin', color: '#f97316', colorDark: '#fb923c' },
+  chrome: { label: 'Chrome 扩展', icon: <ChromeIcon />, tone: 'chrome', color: '#4285f4', colorDark: '#60a5fa' },
 }
 
-const webPlatforms = new Set(['windows', 'macos', 'linux', 'web'])
+/* Desktop builds are versioned, downloadable artifacts — one card per OS with its
+   own installer link. Only `web` collapses into a per-day card, since web ships
+   several times a day and has nothing to download. */
+const desktopPlatforms = new Set(['windows', 'macos', 'linux'])
 
 const tabItems = [
   { key: 'all', label: '全部', icon: <UnorderedListOutlined />, color: '', colorDark: '' },
   { key: 'web', label: 'Web', icon: <GlobalOutlined />, color: '#0ea5e9', colorDark: '#38bdf8' },
+  { key: 'desktop', label: '桌面端', icon: <DesktopOutlined />, color: '#0d9488', colorDark: '#2dd4bf' },
   { key: 'android', label: 'Android', icon: <AndroidOutlined />, color: '#22c55e', colorDark: '#4ade80' },
   { key: 'ios', label: 'iOS', icon: <AppleOutlined />, color: '#334155', colorDark: '#cbd5e1' },
   { key: 'openclaw-plugin', label: 'OpenClaw Plugin', icon: <ApiOutlined />, color: '#f97316', colorDark: '#fb923c' },
@@ -500,7 +509,7 @@ function ContributorAvatars({ contributors, showLabel }: { contributors: Contrib
 
 function PlatformBadge({ platform }: { platform: string }) {
   const cfg = platformConfig[platform]
-  const platformColors = colors.platform[platform as PlatformKey]
+  const platformColors = cfg ? colors.platform[cfg.tone] : undefined
   if (!cfg || !platformColors) {
     return <Tag style={{ margin: 0, fontSize: font.size.xs, borderRadius: radius.pill }}>{platform}</Tag>
   }
@@ -738,7 +747,8 @@ const DOT_BORDER = 3
 const TIME_COL_WIDTH = 72
 
 function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: AppVersion; isFirst?: boolean; prevVersion?: string; prevTimeLabel?: string }) {
-  const normalized = webPlatforms.has(item.os) ? 'web' : item.os
+  const isWeb = item.os === 'web'
+  const isDesktop = desktopPlatforms.has(item.os)
   const severity = getVersionSeverity(item.app_version, prevVersion)
   const isForce = item.is_force === 1
   const contributors = useMemo(() => parseContributors(item.update_desc), [item.update_desc])
@@ -748,7 +758,7 @@ function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: Ap
   const dateLabel = dateObj.format('YYYY年M月D日 HH:mm')
   const relativeLabel = formatTimeLabel(dateObj, prevTimeLabel)
 
-  const isWebMerged = normalized === 'web' && TIME_TAG_PATTERN.test(item.update_desc)
+  const isWebMerged = isWeb && TIME_TAG_PATTERN.test(item.update_desc)
   const stats = useMemo(() => isWebMerged ? getChangeStats(item.update_desc) : null, [item.update_desc, isWebMerged])
 
   const severityStyle = getSeverityStyle(severity)
@@ -820,18 +830,18 @@ function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: Ap
                 </span>
               )}
               <span style={{
-                fontSize: normalized === 'web'
+                fontSize: isWeb
                   ? font.size.md
                   : (severity === 'major' || severity === 'initial') ? font.size.xl : font.size.lg,
-                fontWeight: normalized === 'web'
+                fontWeight: isWeb
                   ? font.weight.semibold
                   : severity === 'patch' ? font.weight.bold : font.weight.black,
-                color: normalized === 'web' ? colors.text.secondary : colors.text.primary,
+                color: isWeb ? colors.text.secondary : colors.text.primary,
                 letterSpacing: '-0.02em',
               }}>
-                {normalized === 'web' ? `${item.created_at.slice(5, 10)} 更新` : `v${formatVersion(item.app_version)}`}
+                {isWeb ? `${item.created_at.slice(5, 10)} 更新` : `v${formatVersion(item.app_version)}`}
               </span>
-              <PlatformBadge platform={normalized} />
+              <PlatformBadge platform={item.os} />
               {isWebMerged && stats && (
                 <span style={{ fontSize: font.size.xs, color: colors.text.tertiary }}>
                   {[
@@ -862,6 +872,27 @@ function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: Ap
             </div>
 
             <StructuredChanges desc={item.update_desc} />
+
+            {isDesktop && item.download_url && (
+              <a
+                href={item.download_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  marginTop: space[3],
+                  fontSize: font.size.sm,
+                  fontWeight: font.weight.medium,
+                  color: 'var(--brand)',
+                  textDecoration: 'none',
+                }}
+              >
+                <DownloadOutlined />
+                下载 {platformConfig[item.os]?.label ?? item.os}
+              </a>
+            )}
           </div>
         </div>
       </div>
@@ -870,11 +901,11 @@ function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: Ap
 }
 
 function LatestReleaseSpotlight({ item, severity }: { item: AppVersion; severity: VersionSeverity }) {
-  const normalized = webPlatforms.has(item.os) ? 'web' : item.os
+  const isWeb = item.os === 'web'
   const dateObj = dayjs(item.created_at)
   const stats = useMemo(() => getChangeStats(item.update_desc), [item.update_desc])
   const contributors = useMemo(() => parseContributors(item.update_desc), [item.update_desc])
-  const isWebMerged = normalized === 'web' && TIME_TAG_PATTERN.test(item.update_desc)
+  const isWebMerged = isWeb && TIME_TAG_PATTERN.test(item.update_desc)
 
   return (
     <div style={{
@@ -923,10 +954,10 @@ function LatestReleaseSpotlight({ item, severity }: { item: AppVersion; severity
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: space[3], marginBottom: space[3], flexWrap: 'wrap' }}>
-        <span style={{ fontSize: normalized === 'web' ? 22 : 28, fontWeight: normalized === 'web' ? font.weight.semibold : font.weight.black, color: normalized === 'web' ? colors.text.secondary : colors.text.primary, letterSpacing: '-0.03em' }}>
-          {normalized === 'web' ? `${item.created_at.slice(5, 10)} 更新` : `v${formatVersion(item.app_version)}`}
+        <span style={{ fontSize: isWeb ? 22 : 28, fontWeight: isWeb ? font.weight.semibold : font.weight.black, color: isWeb ? colors.text.secondary : colors.text.primary, letterSpacing: '-0.03em' }}>
+          {isWeb ? `${item.created_at.slice(5, 10)} 更新` : `v${formatVersion(item.app_version)}`}
         </span>
-        <PlatformBadge platform={normalized} />
+        <PlatformBadge platform={item.os} />
         {isWebMerged && (
           <span style={{ fontSize: font.size.xs, color: colors.text.tertiary }}>
             {[
@@ -991,7 +1022,7 @@ function LatestReleaseSpotlight({ item, severity }: { item: AppVersion; severity
             }}
           >
             <DownloadOutlined />
-            Download
+            {desktopPlatforms.has(item.os) ? `下载 ${platformConfig[item.os]?.label ?? item.os}` : 'Download'}
           </a>
         )}
       </div>
@@ -1022,17 +1053,13 @@ export default function Changelog() {
   const filtered = useMemo(() => {
     const raw = activePlatform === 'all'
       ? data
-      : activePlatform === 'web'
-        ? data.filter((v) => webPlatforms.has(v.os))
-        : activePlatform === 'openclaw-plugin'
-          ? data.filter((v) => v.os === 'openclaw-plugin')
-          : activePlatform === 'chrome'
-            ? data.filter((v) => v.os === 'chrome')
-            : data.filter((v) => v.os === activePlatform)
+      : activePlatform === 'desktop'
+        ? data.filter((v) => desktopPlatforms.has(v.os))
+        : data.filter((v) => v.os === activePlatform)
 
     const result: AppVersion[] = []
     for (const item of raw) {
-      const isWeb = webPlatforms.has(item.os)
+      const isWeb = item.os === 'web'
       if (!isWeb) {
         result.push(item)
         continue
@@ -1041,7 +1068,7 @@ export default function Changelog() {
       const time = item.created_at.slice(11, 16)
       const taggedDesc = `@@TIME:${time}@@\n${item.update_desc}`
       const prev = result.length > 0 ? result[result.length - 1] : null
-      if (prev && webPlatforms.has(prev.os) && prev.created_at.slice(0, 10) === date) {
+      if (prev && prev.os === 'web' && prev.created_at.slice(0, 10) === date) {
         result[result.length - 1] = {
           ...prev,
           created_at: prev.created_at > item.created_at ? prev.created_at : item.created_at,
@@ -1063,11 +1090,12 @@ export default function Changelog() {
     const lastSeenByPlatform: Record<string, string> = {}
     for (let i = filtered.length - 1; i >= 0; i--) {
       const item = filtered[i]
-      const platform = webPlatforms.has(item.os) ? 'web' : item.os
-      if (lastSeenByPlatform[platform] !== undefined) {
-        map.set(i, lastSeenByPlatform[platform])
+      // Per-OS history: a Windows build compares against the previous Windows
+      // build, so severity never diffs across platforms.
+      if (lastSeenByPlatform[item.os] !== undefined) {
+        map.set(i, lastSeenByPlatform[item.os])
       }
-      lastSeenByPlatform[platform] = item.app_version
+      lastSeenByPlatform[item.os] = item.app_version
     }
     return map
   }, [filtered])

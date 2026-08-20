@@ -14,3 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Changelog viewer with platform analytics
 - Download and release management
 - Dark mode with system-preference auto-detection
+- Desktop platform lane in the changelog: Windows / macOS / Linux builds get their
+  own tab, badge, version headline, and per-OS installer link
+
+### Fixed
+- Desktop releases were folded into the Web lane, which hid their version number
+  and merged Windows and macOS builds into one card offering a single installer

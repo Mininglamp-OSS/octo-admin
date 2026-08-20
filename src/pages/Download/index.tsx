@@ -19,6 +19,8 @@ import {
   AppleOutlined,
   GlobalOutlined,
   ApiOutlined,
+  WindowsOutlined,
+  LinuxOutlined,
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { useTranslation } from 'react-i18next'
@@ -36,7 +38,7 @@ interface AppVersion {
   created_at: string
 }
 
-type PlatformFilter = 'all' | 'android' | 'ios' | 'web' | 'openclaw-plugin'
+type PlatformFilter = 'all' | 'android' | 'ios' | 'web' | 'desktop' | 'openclaw-plugin'
 type ForceFilter = 'all' | 'yes' | 'no'
 
 const osOptions = [
@@ -48,21 +50,21 @@ const osOptions = [
   { label: 'Linux', value: 'linux' },
 ]
 
-const WEB_PLATFORMS = new Set(['windows', 'macos', 'linux', 'web'])
+const DESKTOP_PLATFORMS = new Set(['windows', 'macos', 'linux'])
 
 interface PlatformMeta {
   label: string
   icon: React.ReactNode
-  tone: 'ios' | 'android' | 'web' | 'plugin' | 'neutral'
+  tone: 'ios' | 'android' | 'web' | 'desktop' | 'plugin' | 'neutral'
 }
 
 function platformMeta(os: string): PlatformMeta {
   if (os === 'ios') return { label: 'iOS', icon: <AppleOutlined />, tone: 'ios' }
   if (os === 'android') return { label: 'Android', icon: <AndroidOutlined />, tone: 'android' }
   if (os === 'web') return { label: 'Web', icon: <GlobalOutlined />, tone: 'web' }
-  if (os === 'windows') return { label: 'Windows', icon: <GlobalOutlined />, tone: 'web' }
-  if (os === 'macos') return { label: 'macOS', icon: <GlobalOutlined />, tone: 'web' }
-  if (os === 'linux') return { label: 'Linux', icon: <GlobalOutlined />, tone: 'web' }
+  if (os === 'windows') return { label: 'Windows', icon: <WindowsOutlined />, tone: 'desktop' }
+  if (os === 'macos') return { label: 'macOS', icon: <AppleOutlined />, tone: 'desktop' }
+  if (os === 'linux') return { label: 'Linux', icon: <LinuxOutlined />, tone: 'desktop' }
   if (os === 'openclaw-plugin') return { label: 'OpenClaw', icon: <ApiOutlined />, tone: 'plugin' }
   return { label: os.toUpperCase(), icon: null, tone: 'neutral' }
 }
@@ -117,7 +119,7 @@ export default function Download() {
       if (forceFilter === 'yes' && v.is_force !== 1) return false
       if (forceFilter === 'no' && v.is_force === 1) return false
       if (platformFilter === 'all') return true
-      if (platformFilter === 'web') return WEB_PLATFORMS.has(v.os)
+      if (platformFilter === 'desktop') return DESKTOP_PLATFORMS.has(v.os)
       return v.os === platformFilter
     })
   }, [data, platformFilter, forceFilter])
@@ -286,7 +288,8 @@ export default function Download() {
             { value: 'all', label: t('filter.platform.all') },
             { value: 'ios', label: 'iOS' },
             { value: 'android', label: 'Android' },
-            { value: 'web', label: t('filter.platform.webDesktop') },
+            { value: 'web', label: 'Web' },
+            { value: 'desktop', label: t('filter.platform.desktop') },
             { value: 'openclaw-plugin', label: 'OpenClaw' },
           ]}
         />

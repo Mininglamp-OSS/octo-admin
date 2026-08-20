@@ -8,7 +8,7 @@
   "filter": {
     "platform": {
       "all": "全部平台",
-      "webDesktop": "Web / 桌面"
+      "desktop": "桌面端"
     },
     "force": {
       "all": "全部更新",

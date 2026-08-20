@@ -42,6 +42,9 @@ const CATEGORY_PATTERNS: [ChangeCategory, RegExp][] = [
   ['fixed', /^(修复|修正|解决|fix[：:]?\s|bug)/i],
   ['added', /^(新增|新功能[：:]?\s?|新加|添加|支持|feat(ure)?[：:]?\s?|\+\s)/i],
   ['changed', /^(优化|改进|提升|更新|调整|升级|重构|改为|改善|chore[：:]?\s?|refactor|perf)/i],
+  // Release announcements ("Windows 桌面端 1.0.0 版本发布") name the platform first,
+  // so they only match at the end of the line. Kept last so an explicit prefix wins.
+  ['added', /(?:正式|首次|版本)?(?:发布|上线)$/],
 ]
 
 const PREFIX_STRIP = /^(安全|漏洞|CVE|security|移除|删除|废弃|下线|remove|deprecat\w*|修复|修正|解决|fix|bug|新增|新功能|新加|添加|支持|feat(?:ure)?|优化|改进|提升|更新|调整|升级|重构|改为|改善|chore|refactor|perf)[：:：]?\s*/i
@@ -164,7 +167,8 @@ export function getVersionSeverity(version: string, prevVersion?: string): Versi
   const build = parseBuildNumber(version)
   if (build === 1) return 'initial'
 
-  if (!prevVersion) return 'patch'
+  // 1.0.0 with nothing before it is a first stable release, not a patch.
+  if (!prevVersion) return cur[0] === 1 && cur[1] === 0 && cur[2] === 0 ? 'initial' : 'patch'
 
   const prev = parseSemVer(prevVersion)
   if (!prev) return 'patch'
