@@ -70,6 +70,17 @@ describe('parseUpdateDesc', () => {
     }
   })
 
+  it('marks an announcement whichever separator its version carries', () => {
+    // Unmarked meant counted: a release announcing itself was reported as a feature
+    // whenever the version was spelled with a separator this rule did not read.
+    for (const version of ['1.0.0-rc1', '1.0.0_rc1', '1.0.0.rc1', '1.0.0+arm64']) {
+      const parsed = parseUpdateDesc(`Windows 桌面端 ${version} 版本发布`)
+      const items = [...parsed.added, ...parsed.other]
+      expect(items).toHaveLength(1)
+      expect(items[0].announces?.version).toBe(version)
+    }
+  })
+
   it('keeps an announcement that names a feature rather than a version', () => {
     expect(parseUpdateDesc('深色模式正式发布').added).toEqual([{ text: '深色模式正式发布', group: undefined }])
     // A number in a feature's name is not the sentence announcing a release: the
@@ -748,11 +759,23 @@ describe('formatVersion', () => {
     expect(formatVersion('1.0.1_rc1')).toBe('1.0.1_rc1')
   })
 
+  it('reads a qualifier the same way whichever separator opens it', () => {
+    // Three expressions used to read a qualifier and had drifted into three
+    // alphabets, so the same build was a prerelease to the ranking, a stable
+    // release to the title, and a feature to the counter.
+    expect(formatVersion('1.0.1_rc1')).toBe('1.0.1_rc1')
+    expect(formatVersion('1.0.1.rc1')).toBe('1.0.1.rc1')
+    expect(formatVersion('1.0.1-rc1')).toBe('1.0.1-rc1')
+  })
+
   it('does not read the separator of a date-shaped version as a qualifier', () => {
     // isPrerelease splits on the dot as well, but a version is written with dots:
     // accepting one here renders a 2026.04.16 web version as 2026.4.16.16.
     expect(formatVersion('2026.04.16')).toBe('2026.4.16')
     expect(formatVersion('2026.08.03')).toBe('2026.8.3')
+    // A dot opener is only a qualifier when a letter follows it. The fourth part of
+    // a Windows-style version is a number and stays part of the number.
+    expect(formatVersion('1.0.0.1')).toBe('1.0.0')
   })
 
   it('hands back a string it cannot read a version out of', () => {
@@ -783,8 +806,12 @@ describe('offerVersionLabel', () => {
     }
   })
 
-  it('still labels a lone prerelease, which misdescribes nothing', () => {
+  it('still labels a lone prerelease, in the spelling it was written in', () => {
+    // Not just v1.0.0: the label sits above the button handing that build over, so
+    // dropping the qualifier names a release the visitor is not being given.
     expect(offerVersionLabel([offer('1.0.0-rc1')])).toBe('v1.0.0-rc1')
+    expect(offerVersionLabel([offer('1.0.0_rc1')])).toBe('v1.0.0_rc1')
+    expect(offerVersionLabel([offer('1.0.0.rc1')])).toBe('v1.0.0.rc1')
     expect(offerVersionLabel([offer('1.0.0-rc1'), { ...offer('1.0.0-rc1'), os: 'macos' }])).toBe('v1.0.0-rc1')
   })
 

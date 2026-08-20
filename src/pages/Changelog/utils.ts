@@ -94,8 +94,24 @@ const RELEASE_ANNOUNCEMENT = /(?:正式|首次|版本)(?:发布|上线)$/
  * the fix away. A run of non-space characters is not decoration in a language that
  * does not separate words.
  */
-const VERSION_ANNOUNCEMENT =
-  /^([^\d，。；、,;:：]*?)(\d+\.\d+(?:\.\d+)?(?:[-+][0-9A-Za-z][0-9A-Za-z._+-]*)?)\s*(?:正式|首次|版本)(?:发布|上线)$/
+/**
+ * One definition of what a version qualifier looks like, for every reader of one.
+ *
+ * There were three, and they had drifted into three different alphabets — ranking
+ * accepted `-._`, display accepted `-+_`, the announcement rule accepted `-+` — so
+ * each disagreement surfaced as a version the page named wrongly: a lone 1.0.0.rc1
+ * labelled v1.0.0 above the button handing out the candidate, and a 1.0.0_rc1
+ * announcement counted as a feature. Widening them one at a time is what produced
+ * the drift; they share the expression now.
+ *
+ * A `.` opener must be letter-led, and that is the whole subtlety: the dot is also
+ * the version separator, so `.rc1` is a qualifier while the `.16` of a 2026.04.16
+ * web version and the `.1` of a four-part Windows version are part of the number.
+ */
+const QUALIFIER = String.raw`(?:[-+_][0-9A-Za-z]|\.[A-Za-z])[0-9A-Za-z._+-]*`
+
+const VERSION_ANNOUNCEMENT = new RegExp(
+  String.raw`^([^\d，。；、,;:：]*?)(\d+\.\d+(?:\.\d+)?(?:${QUALIFIER})?)\s*(?:正式|首次|版本)(?:发布|上线)$`)
 
 /* Trailing sentence punctuation is common in these notes and says nothing about
    what the line is; both announcement rules anchor on the verb at the end. */
@@ -299,7 +315,7 @@ export interface ReleaseEntry extends AppVersion {
  * `Octo 2.0.0-beta` as a prerelease, or the pair compares as stable-versus-nothing
  * and the beta wins.
  */
-const VERSION_SUFFIX = /\d+\.\d+(?:\.\d+)?((?:[-._][0-9A-Za-z]+)+)/
+const VERSION_SUFFIX = new RegExp(String.raw`\d+\.\d+(?:\.\d+)?(${QUALIFIER})`)
 /* Anchored at both ends of the token: a qualifier is the word itself, optionally
    numbered (-rc1, -beta.2). Matching on prefix alone reads -prebuilt as a
    prerelease and ranks a finished build below the release before it. */
@@ -831,15 +847,8 @@ export function parseContributors(desc: string): Contributor[] {
   return []
 }
 
-/* Everything after the triple that a semver qualifier can carry: -rc1, -beta.2,
-   -x64, +arm64, _rc1. Kept rather than dropped, so a card titled v1.0.0 is never a
-   1.0.0-rc1.
-
-   The opener stops at `-+_` deliberately, though isPrerelease() also splits on `.`:
-   the dot is the version separator itself, so accepting it here reads the ".16" of
-   a 2026.04.16 web version as a qualifier and renders it as 2026.4.16.16. Ranking
-   can afford to be lenient about a separator; display cannot. */
-const VERSION_QUALIFIER = /\d+\.\d+(?:\.\d+)?([-+_][0-9A-Za-z][0-9A-Za-z._+-]*)/
+/* The same expression ranking reads, under the name display uses it by. */
+const VERSION_QUALIFIER = VERSION_SUFFIX
 
 export function formatVersion(raw: string): string {
   const semver = parseSemVer(raw)
