@@ -16,6 +16,8 @@ export interface LoginChallengeResponse {
   challenge_id: string
   email: string
   expires_in: number
+  code_sent: boolean
+  resend_after: number
 }
 
 export type ManagerLoginResult = ManagerLoginResponse | LoginChallengeResponse
@@ -36,6 +38,11 @@ interface ManagerMeOptions {
 
 export const login = (params: LoginParams) =>
   api.post<ManagerLoginResult>('/v1/manager/login', params).then((res) => res.data)
+
+export const sendLoginCode = (challenge_id: string) =>
+  api
+    .post<LoginChallengeResponse>('/v1/manager/login/send', { challenge_id })
+    .then((res) => res.data)
 
 export const verifyLogin = (params: VerifyLoginParams) =>
   api.post<ManagerLoginResponse>('/v1/manager/login/verify', params).then((res) => res.data)

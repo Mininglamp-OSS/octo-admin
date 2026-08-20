@@ -55,6 +55,30 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Manager login, including its MFA send/resend/verify steps, is intentionally
+ * unauthenticated. A 401 from one of these endpoints is a login-flow error,
+ * not an expired bearer session, so the global session redirect must not
+ * destroy the challenge state before Login can render its error message.
+ */
+export function isManagerLoginRequest(url?: string): boolean {
+  if (!url) return false
+  const path = url.split(/[?#]/, 1)[0]
+  return /(?:^|\/)v1\/manager\/login(?:\/|$)/.test(path)
+}
+
+export function shouldRedirectToLogin(
+  error: AxiosError<unknown>,
+  hasSessionToken: boolean = Boolean(useAuthStore.getState().token),
+): boolean {
+  return (
+    error.response?.status === 401 &&
+    hasSessionToken &&
+    !error.config?.skipAuthRedirect &&
+    !isManagerLoginRequest(error.config?.url)
+  )
+}
+
 const API_BASE = import.meta.env.VITE_API_BASE || '/api'
 
 const api = axios.create({
@@ -73,8 +97,8 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use(
   (response) => response,
-  (error: AxiosError<{ msg?: string; error?: { code?: string; http_status?: number; message?: string } }>) => {
-    if (error.response?.status === 401 && !error.config?.skipAuthRedirect) {
+  (error: AxiosError<{ msg?: string; error?: { code?: string; http_status?: number; message?: string; details?: Record<string, unknown> } }>) => {
+    if (shouldRedirectToLogin(error)) {
       useAuthStore.getState().logout()
       window.location.href = '/admin/login'
     }
@@ -82,7 +106,7 @@ api.interceptors.response.use(
     const message = errorEnvelope?.message || error.response?.data?.msg || error.message
     const status = errorEnvelope?.http_status ?? error.response?.status
     return Promise.reject(
-      new ApiError(message, status, errorEnvelope?.code, undefined, error.response?.status),
+      new ApiError(message, status, errorEnvelope?.code, errorEnvelope?.details, error.response?.status),
     )
   }
 )

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Form, Input, Button, Card, Spin, Alert, message } from 'antd'
 import { ArrowLeftOutlined, LockOutlined, MailOutlined, SafetyCertificateOutlined, UserOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
-import { login, resendLoginCode, verifyLogin, type LoginChallengeResponse, type ManagerLoginResult } from '../../api/auth'
+import { login, resendLoginCode, sendLoginCode, verifyLogin, type LoginChallengeResponse, type ManagerLoginResult } from '../../api/auth'
 import { ApiError } from '../../api'
 import { useAuthStore } from '../../store/auth'
 import LanguageSwitcher from '../../components/LanguageSwitcher'
@@ -127,10 +127,18 @@ interface VerificationForm {
   code: string
 }
 
+const resendCooldownSeconds = 2 * 60
+
 function formatRemainingTime(seconds: number) {
   const minutes = Math.floor(seconds / 60)
   const remainingSeconds = seconds % 60
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
+}
+
+function retryAfterFromError(error: unknown) {
+  if (!(error instanceof ApiError)) return null
+  const retryAfter = Number(error.details?.retry_after)
+  return Number.isFinite(retryAfter) && retryAfter > 0 ? Math.ceil(retryAfter) : null
 }
 
 function isManagerLoginChallenge(data: ManagerLoginResult): data is LoginChallengeResponse {
@@ -139,9 +147,10 @@ function isManagerLoginChallenge(data: ManagerLoginResult): data is LoginChallen
 
 function CredentialsForm() {
   const [loading, setLoading] = useState(false)
-  const [resendLoading, setResendLoading] = useState(false)
+  const [sendLoading, setSendLoading] = useState(false)
   const [challenge, setChallenge] = useState<LoginChallengeResponse | null>(null)
   const [remainingSeconds, setRemainingSeconds] = useState(0)
+  const [resendSeconds, setResendSeconds] = useState(0)
   const [loginForm] = Form.useForm<LoginForm>()
   const [verificationForm] = Form.useForm<VerificationForm>()
   const navigate = useNavigate()
@@ -151,12 +160,14 @@ function CredentialsForm() {
   useEffect(() => {
     if (!challenge) {
       setRemainingSeconds(0)
+      setResendSeconds(0)
       return
     }
 
     setRemainingSeconds(challenge.expires_in)
     const timer = window.setInterval(() => {
       setRemainingSeconds((seconds) => Math.max(seconds - 1, 0))
+      setResendSeconds((seconds) => Math.max(seconds - 1, 0))
     }, 1000)
 
     return () => window.clearInterval(timer)
@@ -170,7 +181,7 @@ function CredentialsForm() {
         setChallenge(data)
         loginForm.resetFields()
         verificationForm.resetFields()
-        message.success(t('verification.sent'))
+        message.success(t('verification.challengeCreated'))
         return
       }
       authLogin(data.token, data.name, data.role)
@@ -183,8 +194,40 @@ function CredentialsForm() {
     }
   }
 
+  const onSendCode = async () => {
+    if (!challenge || remainingSeconds <= 0 || resendSeconds > 0) return
+
+    const isResend = challenge.code_sent
+    setSendLoading(true)
+    try {
+      const data = isResend
+        ? await resendLoginCode(challenge.challenge_id)
+        : await sendLoginCode(challenge.challenge_id)
+      setChallenge(data)
+      setResendSeconds(resendCooldownSeconds)
+      verificationForm.resetFields()
+      message.success(t(isResend ? 'verification.resent' : 'verification.sent'))
+    } catch (error) {
+      if (error instanceof ApiError && error.code === 'err.server.user.manager_login_challenge_invalid') {
+        resetChallenge()
+        message.error(t('verification.invalid'))
+        return
+      }
+      const retryAfter = retryAfterFromError(error)
+      if (retryAfter !== null) {
+        const cooldown = Math.max(resendCooldownSeconds, retryAfter)
+        setResendSeconds(cooldown)
+        message.error(t('verification.rateLimited', { time: formatRemainingTime(cooldown) }))
+        return
+      }
+      message.error((error as Error).message || t('verification.sendFailure'))
+    } finally {
+      setSendLoading(false)
+    }
+  }
+
   const onVerify = async (values: VerificationForm) => {
-    if (!challenge) return
+    if (!challenge || !challenge.code_sent || remainingSeconds <= 0) return
 
     setLoading(true)
     try {
@@ -207,27 +250,6 @@ function CredentialsForm() {
     }
   }
 
-  const onResend = async () => {
-    if (!challenge) return
-
-    setResendLoading(true)
-    try {
-      const data = await resendLoginCode(challenge.challenge_id)
-      setChallenge(data)
-      verificationForm.resetFields()
-      message.success(t('verification.resent'))
-    } catch (error) {
-      if (error instanceof ApiError && error.code === 'err.server.user.manager_login_challenge_invalid') {
-        resetChallenge()
-        message.error(t('verification.invalid'))
-        return
-      }
-      message.error((error as Error).message || t('verification.resendFailure'))
-    } finally {
-      setResendLoading(false)
-    }
-  }
-
   const backToLogin = () => {
     resetChallenge()
   }
@@ -236,6 +258,7 @@ function CredentialsForm() {
     setChallenge(null)
     verificationForm.resetFields()
     loginForm.resetFields()
+    setResendSeconds(0)
   }
 
   return (
@@ -244,43 +267,72 @@ function CredentialsForm() {
         <>
           <div style={{ textAlign: 'center', marginBottom: 20, color: 'var(--a-text-secondary)' }}>
             <MailOutlined style={{ marginRight: 6 }} />
-            {t('verification.description', { email: challenge.email })}
+            {t(
+              challenge.code_sent ? 'verification.description' : 'verification.readyDescription',
+              { email: challenge.email },
+            )}
           </div>
           <Form form={verificationForm} onFinish={onVerify} size="large">
-            <Form.Item
-              name="code"
-              rules={[
-                { required: true, message: t('verification.code.required') },
-                { pattern: /^\d{6}$/, message: t('verification.code.invalid') },
-              ]}
-            >
-              <Input
-                prefix={<SafetyCertificateOutlined />}
-                placeholder={t('verification.code.placeholder')}
-                inputMode="numeric"
-                maxLength={6}
-              />
-            </Form.Item>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              <Form.Item
+                name="code"
+                rules={[
+                  { required: true, message: t('verification.code.required') },
+                  { pattern: /^\d{6}$/, message: t('verification.code.invalid') },
+                ]}
+                style={{ flex: 1, marginBottom: 12 }}
+              >
+                <Input
+                  prefix={<SafetyCertificateOutlined />}
+                  placeholder={t('verification.code.placeholder')}
+                  inputMode="numeric"
+                  maxLength={6}
+                  disabled={!challenge.code_sent || remainingSeconds <= 0}
+                />
+              </Form.Item>
+              <Button
+                type={challenge.code_sent ? 'default' : 'primary'}
+                onClick={onSendCode}
+                loading={sendLoading}
+                disabled={
+                  loading || sendLoading || remainingSeconds <= 0 ||
+                  resendSeconds > 0
+                }
+                style={{ minWidth: 136 }}
+              >
+                {resendSeconds > 0
+                  ? t(
+                    challenge.code_sent ? 'verification.resendAfter' : 'verification.sendAfter',
+                    { time: formatRemainingTime(resendSeconds) },
+                  )
+                  : challenge.code_sent
+                    ? t('verification.resend')
+                    : t('verification.send')}
+              </Button>
+            </div>
             <Form.Item style={{ marginBottom: 12 }}>
-              <Button type="primary" htmlType="submit" loading={loading} block>
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={loading}
+                disabled={!challenge.code_sent || remainingSeconds <= 0}
+                block
+              >
                 {t('verification.submit')}
               </Button>
             </Form.Item>
           </Form>
-          <div style={{ textAlign: 'center', color: 'var(--a-text-tertiary)', fontSize: 13 }}>
-            {remainingSeconds > 0
-              ? t('verification.expiresIn', { time: formatRemainingTime(remainingSeconds) })
-              : t('verification.expired')}
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 12 }}>
-            <Button type="link" onClick={onResend} loading={resendLoading} disabled={loading}>
-              {t('verification.resend')}
-            </Button>
+          {remainingSeconds <= 0 && (
+            <div style={{ textAlign: 'center', color: 'var(--a-text-tertiary)', fontSize: 13 }}>
+              {t('verification.expired')}
+            </div>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
             <Button
               type="link"
               icon={<ArrowLeftOutlined />}
               onClick={backToLogin}
-              disabled={loading || resendLoading}
+              disabled={loading || sendLoading}
             >
               {t('verification.back')}
             </Button>

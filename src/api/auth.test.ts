@@ -6,7 +6,7 @@ vi.mock('./index', () => ({
   default: { post: (...args: unknown[]) => post(...args) },
 }))
 
-import { login, resendLoginCode, verifyLogin } from './auth'
+import { login, resendLoginCode, sendLoginCode, verifyLogin } from './auth'
 
 describe('manager login API', () => {
   beforeEach(() => {
@@ -18,6 +18,8 @@ describe('manager login API', () => {
       challenge_id: 'challenge-1',
       email: 'a****@example.com',
       expires_in: 300,
+      code_sent: false,
+      resend_after: 0,
     }
     post.mockResolvedValue({ data: challenge })
 
@@ -41,11 +43,29 @@ describe('manager login API', () => {
     })
   })
 
+  it('sends the first code only after an explicit request', async () => {
+    const challenge = {
+      challenge_id: 'challenge-1',
+      email: 'a****@example.com',
+      expires_in: 299,
+      code_sent: true,
+      resend_after: 60,
+    }
+    post.mockResolvedValue({ data: challenge })
+
+    await expect(sendLoginCode('challenge-1')).resolves.toEqual(challenge)
+    expect(post).toHaveBeenCalledWith('/v1/manager/login/send', {
+      challenge_id: 'challenge-1',
+    })
+  })
+
   it('resends a code for the current challenge', async () => {
     const challenge = {
       challenge_id: 'challenge-1',
       email: 'a****@example.com',
       expires_in: 300,
+      code_sent: true,
+      resend_after: 60,
     }
     post.mockResolvedValue({ data: challenge })
 
