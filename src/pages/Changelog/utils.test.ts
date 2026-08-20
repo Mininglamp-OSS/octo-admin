@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { detectViewerOS, getVersionSeverity, groupReleases, latestDesktopDownloads, noteBlocks, offeredAbove, orderBuilds, parseContributors, parseUpdateDesc, safeDownloadUrl } from './utils'
+import { detectViewerOS, getVersionSeverity, groupReleases, latestDesktopDownloads, noteBlocks, offerVersionLabel, offeredAbove, orderBuilds, parseContributors, parseUpdateDesc, safeDownloadUrl } from './utils'
 import type { AppVersion } from './utils'
 
 describe('parseContributors', () => {
@@ -385,6 +385,51 @@ describe('latestDesktopDownloads', () => {
     expect(offers.map((build) => build.app_version)).toEqual(['1.1.0'])
   })
 
+  it('does not let a prerelease displace a stable release, whatever it is numbered', () => {
+    // A prerelease is normally numbered ahead of the stable it precedes — 2.0.1-beta
+    // exists before 2.0.1 does — so comparing numbers first hands out a beta for as
+    // long as it is the highest-numbered row.
+    const stable = release({ os: 'windows', app_version: '2.0.0', download_url: 'https://x/stable.exe', created_at: '2026-01-01 00:00:00' })
+    const laterBeta = release({ os: 'windows', app_version: '2.0.1-beta', download_url: 'https://x/beta.exe', created_at: '2026-01-02 00:00:00' })
+
+    for (const feed of [[stable, laterBeta], [laterBeta, stable]]) {
+      expect(latestDesktopDownloads(feed).map((build) => build.app_version)).toEqual(['2.0.0'])
+    }
+  })
+
+  it('reads a prefixed version the same way for the triple and the suffix', () => {
+    const offers = latestDesktopDownloads([
+      release({ os: 'macos', app_version: 'Octo 2.0.0', download_url: 'https://x/stable.dmg', created_at: '2026-01-01 00:00:00' }),
+      release({ os: 'macos', app_version: 'Octo 2.0.0-beta', download_url: 'https://x/beta.dmg', created_at: '2026-01-10 00:00:00' }),
+    ])
+
+    expect(offers.map((build) => build.download_url)).toEqual(['https://x/stable.dmg'])
+  })
+
+  it('returns the same installer whatever order the feed arrives in', () => {
+    // The API sorts by updated_at, so re-saving any row reshuffles the feed.
+    const rows = [
+      release({ os: 'windows', app_version: '1.0.0(5)', download_url: 'https://x/a.exe', created_at: '2026-01-10 00:00:00' }),
+      release({ os: 'windows', app_version: '1.0.0(9)', download_url: 'https://x/b.exe', created_at: '2026-01-02 00:00:00' }),
+      release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/c.exe', created_at: '2026-01-05 00:00:00' }),
+      release({ os: 'windows', app_version: 'latest', download_url: 'https://x/d.exe', created_at: '2026-01-03 00:00:00' }),
+    ]
+    const orders = [rows, [...rows].reverse(), [rows[2], rows[3], rows[0], rows[1]], [rows[3], rows[1], rows[2], rows[0]]]
+
+    for (const feed of orders) {
+      expect(latestDesktopDownloads(feed).map((build) => build.download_url)).toEqual(['https://x/b.exe'])
+    }
+  })
+
+  it('never lets a version it cannot read outrank one it can', () => {
+    const offers = latestDesktopDownloads([
+      release({ os: 'windows', app_version: 'latest', download_url: 'https://x/latest.exe', created_at: '2026-01-09 00:00:00' }),
+      release({ os: 'windows', app_version: '2.0.0', download_url: 'https://x/2.0.0.exe', created_at: '2026-01-01 00:00:00' }),
+    ])
+
+    expect(offers.map((build) => build.download_url)).toEqual(['https://x/2.0.0.exe'])
+  })
+
   it('does not let a prerelease displace the stable release it shares a number with', () => {
     const stable = release({ os: 'windows', app_version: '2.0.0', download_url: 'https://x/stable.exe', created_at: '2026-09-01 10:00:00' })
     const beta = release({ os: 'windows', app_version: '2.0.0-beta', download_url: 'https://x/beta.exe', created_at: '2026-09-10 10:00:00' })
@@ -436,5 +481,27 @@ describe('offeredAbove', () => {
   it('is false for a card that has no builds at all', () => {
     const [entry] = groupReleases([release({ os: 'ios', app_version: '3.4.1', download_url: 'https://apps.apple.com/x' })])
     expect(offeredAbove(entry, [offer('windows', 'https://x/a.exe')])).toBe(false)
+  })
+})
+
+describe('offerVersionLabel', () => {
+  const offer = (app_version: string) => ({ os: 'windows', app_version, download_url: 'https://x/a.exe', created_at: '2026-08-20 16:00:00', is_force: 0, update_desc: '' })
+
+  it('labels a shared stable version', () => {
+    expect(offerVersionLabel([offer('1.0.0'), { ...offer('1.0.0'), os: 'macos' }])).toBe('v1.0.0')
+  })
+
+  it('keeps a prerelease verbatim rather than badging it as the stable it is not', () => {
+    // formatVersion drops the suffix, so this would otherwise read "v1.0.0" above a
+    // button handing over the release candidate.
+    expect(offerVersionLabel([offer('1.0.0-rc1')])).toBe('1.0.0-rc1')
+  })
+
+  it('says nothing when the installers do not share a version', () => {
+    expect(offerVersionLabel([offer('1.1.0'), { ...offer('1.0.0'), os: 'macos' }])).toBeNull()
+  })
+
+  it('treats versions that format alike as shared', () => {
+    expect(offerVersionLabel([offer('1.0.0'), { ...offer('v1.0.0'), os: 'macos' }])).toBe('v1.0.0')
   })
 })

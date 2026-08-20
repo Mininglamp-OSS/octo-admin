@@ -30,7 +30,7 @@ import 'dayjs/locale/zh-cn'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import api from '../../api'
 import { colors, radius, space, font } from '../../styles/tokens'
-import { parseUpdateDesc, getVersionSeverity, formatVersion, parseContributors, detectViewerOS, groupReleases, orderBuilds, noteBlocks, latestDesktopDownloads, offeredAbove, safeDownloadUrl, desktopPlatforms } from './utils'
+import { parseUpdateDesc, getVersionSeverity, formatVersion, parseContributors, detectViewerOS, groupReleases, orderBuilds, noteBlocks, latestDesktopDownloads, offerVersionLabel, offeredAbove, safeDownloadUrl, desktopPlatforms } from './utils'
 import type { VersionSeverity, ChangeCategory, Contributor, ViewerOS, AppVersion, DesktopBuild, DesktopDownload, NoteBlock, ReleaseEntry } from './utils'
 import type { PlatformKey } from '../../styles/tokens'
 import { AnalyticsPanel } from './AnalyticsPanel'
@@ -745,17 +745,17 @@ function StructuredChanges({ desc }: { desc: string }) {
 function DesktopDownloadBar({ downloads }: { downloads: DesktopDownload[] }) {
   if (downloads.length === 0) return null
 
-  const versions = Array.from(new Set(downloads.map((build) => build.app_version)))
-  const sharedVersion = versions.length === 1 ? versions[0] : null
+  const versionLabel = offerVersionLabel(downloads)
   const platforms = downloads.map((build) => platformConfig[build.os]?.label ?? build.os).join('、')
 
   return (
-    <div style={{
+    // Labelled: these are the first focusable things on the page, ahead of its <h1>.
+    <section aria-label="下载 Octo 桌面端" style={{
       display: 'flex',
       alignItems: 'center',
       gap: space[5],
       flexWrap: 'wrap',
-      padding: `${space[6]}px ${space[6]}px`,
+      padding: space[6],
       marginBottom: space[8],
       background: 'var(--brand-bg)',
       border: '1px solid color-mix(in srgb, var(--brand) 24%, transparent)',
@@ -786,13 +786,13 @@ function DesktopDownloadBar({ downloads }: { downloads: DesktopDownload[] }) {
           Octo 桌面端
         </div>
         <div style={{ fontSize: font.size.base, color: colors.text.secondary, marginTop: 2 }}>
-          {sharedVersion && `v${formatVersion(sharedVersion)} · `}支持 {platforms}
+          {versionLabel && `${versionLabel} · `}支持 {platforms}
         </div>
       </div>
 
       <span style={{ flex: 1, minWidth: space[4] }} />
       <DesktopDownloads builds={downloads} large />
-    </div>
+    </section>
   )
 }
 

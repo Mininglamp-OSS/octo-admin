@@ -230,44 +230,86 @@ export interface ReleaseEntry extends AppVersion {
   builds?: DesktopBuild[]
 }
 
-/** A numeric version carrying a `-suffix`: 2.0.0-beta, 1.0.0-rc1. */
-const PRERELEASE_SUFFIX = /^v?\d+\.\d+(?:\.\d+)?-/
+/**
+ * A numeric version carrying a `-suffix`: 2.0.0-beta, 1.0.0-rc1, Octo 2.0.0-rc.
+ *
+ * Deliberately as lenient as parseSemVer, which matches a triple anywhere in the
+ * string: if one recognises `Octo 2.0.0` as a version, the other has to recognise
+ * `Octo 2.0.0-beta` as a prerelease, or the prefixed pair compares as stable vs
+ * nothing and the beta wins.
+ */
+const PRERELEASE_SUFFIX = /\d+\.\d+(?:\.\d+)?-[0-9A-Za-z.-]+/
 
-function isPrerelease(version: string): boolean {
-  return PRERELEASE_SUFFIX.test(version.replace(/\(.*\)/, '').trim())
+export function isPrerelease(version: string): boolean {
+  return PRERELEASE_SUFFIX.test(version.replace(/\(.*\)/, ''))
+}
+
+/** Ranked so a stable release outranks any prerelease, and both outrank a version
+ *  string we cannot read at all. */
+const STABLE = 2
+const PRERELEASE = 1
+const UNREADABLE = 0
+
+interface VersionRank {
+  tier: number
+  triple: [number, number, number]
+  build: number
+}
+
+function rankVersion(version: string): VersionRank {
+  const triple = parseSemVer(version)
+  if (!triple) return { tier: UNREADABLE, triple: [0, 0, 0], build: 0 }
+  return {
+    tier: isPrerelease(version) ? PRERELEASE : STABLE,
+    triple,
+    build: parseBuildNumber(version) ?? 0,
+  }
 }
 
 /**
- * Which of two rows for one OS the page should offer. Version wins over upload
- * time — a hotfix row for an older version added later must not displace the
- * newer build — and the timestamp only settles versions that compare equal or
- * cannot be parsed.
+ * Which of two rows for one OS the page should offer.
+ *
+ * A total order — tier, then version, then build, then upload time — because
+ * latestDesktopDownloads() folds this over the feed, and a fold over a comparator
+ * that mixes incomparable rules returns whichever answer the arrival order happens
+ * to produce. The API sorts by updated_at, so that order changes whenever a row is
+ * re-saved.
+ *
+ * Tier comes first because a prerelease is normally numbered ahead of the stable it
+ * precedes — 2.0.1-beta exists before 2.0.1 does — so comparing numbers first would
+ * hand out a beta for as long as it is the highest-numbered row. It is still offered
+ * when nothing else is: something installable beats nothing.
  */
 function supersedes(candidate: AppVersion, current: DesktopDownload): boolean {
-  const a = parseSemVer(candidate.app_version)
-  const b = parseSemVer(current.app_version)
-  if (a && b) {
-    for (let i = 0; i < 3; i++) {
-      if (a[i] !== b[i]) return a[i] > b[i]
-    }
-    // parseSemVer reads the triple out of a prerelease by design, so 2.0.0-beta ties
-    // with 2.0.0 and the timestamp would hand out whichever was uploaded later. The
-    // strip labels by that same numeric version, so offering the prerelease would
-    // give everyone a beta badged as v2.0.0.
-    const candidatePrerelease = isPrerelease(candidate.app_version)
-    const currentPrerelease = isPrerelease(current.app_version)
-    if (candidatePrerelease !== currentPrerelease) return currentPrerelease
-
-    const buildA = parseBuildNumber(candidate.app_version)
-    const buildB = parseBuildNumber(current.app_version)
-    if (buildA !== null && buildB !== null && buildA !== buildB) return buildA > buildB
+  const a = rankVersion(candidate.app_version)
+  const b = rankVersion(current.app_version)
+  if (a.tier !== b.tier) return a.tier > b.tier
+  for (let i = 0; i < 3; i++) {
+    if (a.triple[i] !== b.triple[i]) return a.triple[i] > b.triple[i]
   }
+  if (a.build !== b.build) return a.build > b.build
   return candidate.created_at > current.created_at
 }
 
 /** An installer the page can offer outright, with the version it belongs to. */
 export interface DesktopDownload extends DesktopBuild {
   app_version: string
+}
+
+/**
+ * The version line for the offer, or null when the installers do not share one.
+ *
+ * formatVersion() drops a `-suffix`, so a prerelease would be badged as the stable
+ * release it is not — above a button that hands over the prerelease. Prereleases
+ * therefore keep their version string verbatim. (formatVersion itself is left alone:
+ * the timeline cards badge the same way, and moving them apart would be worse than
+ * moving them together later.)
+ */
+export function offerVersionLabel(offers: DesktopDownload[]): string | null {
+  const versions = Array.from(new Set(offers.map((offer) => formatVersion(offer.app_version))))
+  if (versions.length !== 1) return null
+  const offered = offers[0].app_version.trim()
+  return isPrerelease(offered) ? offered : `v${versions[0]}`
 }
 
 /**
