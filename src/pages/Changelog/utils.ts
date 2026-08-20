@@ -179,15 +179,12 @@ export function getVersionSeverity(version: string, prevVersion?: string): Versi
   const build = parseBuildNumber(version)
   if (build === 1) return 'initial'
 
-  // 1.0.0 with nothing before it is a first stable release — unless it carries a
-  // build number past the first, which says the opposite. A stream that sits on
-  // 1.0.0 and only advances its build would otherwise have the oldest row in any
-  // window stamped "Initial Release" on the strength of the semver alone.
-  // Any other version with no predecessor is simply the oldest one we know about.
-  if (!prevVersion) {
-    const isFirstStable = cur[0] === 1 && cur[1] === 0 && cur[2] === 0 && build === null
-    return isFirstStable ? 'initial' : 'unknown'
-  }
+  // Exactly "1.0.0" with nothing before it is a first stable release. parseSemVer
+  // is lenient — it reads 1.0.0 out of both 1.0.0(62) and 1.0.0-rc1 — and each of
+  // those says the opposite: a stream sitting on 1.0.0 while its build number
+  // advances, and a release candidate. Any other version with no predecessor is
+  // simply the oldest one we know about.
+  if (!prevVersion) return /^v?1\.0\.0$/.test(version.trim()) ? 'initial' : 'unknown'
 
   const prev = parseSemVer(prevVersion)
   if (!prev) return 'unknown'
@@ -233,6 +230,26 @@ export interface ReleaseEntry extends AppVersion {
   builds?: DesktopBuild[]
 }
 
+/**
+ * Which of two rows for one OS the page should offer. Version wins over upload
+ * time — a hotfix row for an older version added later must not displace the
+ * newer build — and the timestamp only settles versions that compare equal or
+ * cannot be parsed.
+ */
+function supersedes(candidate: AppVersion, current: DesktopDownload): boolean {
+  const a = parseSemVer(candidate.app_version)
+  const b = parseSemVer(current.app_version)
+  if (a && b) {
+    for (let i = 0; i < 3; i++) {
+      if (a[i] !== b[i]) return a[i] > b[i]
+    }
+    const buildA = parseBuildNumber(candidate.app_version)
+    const buildB = parseBuildNumber(current.app_version)
+    if (buildA !== null && buildB !== null && buildA !== buildB) return buildA > buildB
+  }
+  return candidate.created_at > current.created_at
+}
+
 /** An installer the page can offer outright, with the version it belongs to. */
 export interface DesktopDownload extends DesktopBuild {
   app_version: string
@@ -253,7 +270,7 @@ export function latestDesktopDownloads(raw: AppVersion[]): DesktopDownload[] {
     if (!desktopPlatforms.has(item.os)) continue
     if (!safeDownloadUrl(item.download_url)) continue
     const current = newestByOS.get(item.os)
-    if (current && current.created_at >= item.created_at) continue
+    if (current && !supersedes(item, current)) continue
     newestByOS.set(item.os, {
       os: item.os,
       app_version: item.app_version,
@@ -265,6 +282,19 @@ export function latestDesktopDownloads(raw: AppVersion[]): DesktopDownload[] {
   }
 
   return desktopOrder.map((os) => newestByOS.get(os)).filter((build): build is DesktopDownload => build !== undefined)
+}
+
+/**
+ * Whether every installer this card links is already on offer above it, so the card
+ * can drop its own download row instead of repeating the same buttons half a screen
+ * apart. Keyed by platform as well as URL: two platforms sharing one URL must not
+ * cover for each other.
+ */
+export function offeredAbove(entry: ReleaseEntry, offers: DesktopDownload[]): boolean {
+  if (!entry.builds) return false
+  const offered = new Set(offers.map((offer) => `${offer.os}\u0000${offer.download_url}`))
+  const links = entry.builds.filter((build) => safeDownloadUrl(build.download_url))
+  return links.length > 0 && links.every((build) => offered.has(`${build.os}\u0000${build.download_url}`))
 }
 
 /** A block of release notes as one OS filed them. */
@@ -304,8 +334,12 @@ export function noteBlocks(entry: ReleaseEntry, viewerOS: ViewerOS | null = null
     blocks.push(block)
   }
 
-  // Every build said the same thing — the card speaks for the release as a whole.
-  if (blocks.length === 1) blocks[0].os = []
+  // Unlabel only when every build actually filed these notes. One block can also
+  // mean the others said nothing, and presenting one platform's notes — a
+  // platform-specific security fix among them — as release-wide is the same
+  // misattribution this function exists to prevent.
+  const spoke = blocks.reduce((count, block) => count + block.os.length, 0)
+  if (blocks.length === 1 && spoke === entry.builds.length) blocks[0].os = []
   return blocks
 }
 
@@ -340,24 +374,34 @@ const URL_SCHEME = /^([a-z][a-z0-9+.-]*):/i
 
 /**
  * download_url is admin-entered and lands in an `href` on the public What's New
- * page, so only a plain http(s) link — or a path-relative one, which cannot execute
- * script — is ever handed to the browser. Control characters are stripped before
- * sniffing the scheme, since browsers ignore them ("java\tscript:" runs), and
- * network-path references (`//host`, `\\host`) are refused: they carry no scheme
- * but still resolve to another origin, so they are not the relative path they look
- * like.
+ * page, so only a plain http(s) link — or a path-relative one, which stays on this
+ * origin and cannot execute script — is ever handed to the browser.
+ *
+ * Three things browsers do that a naive check misses:
+ *   - control characters are ignored, so "java\tscript:" runs;
+ *   - `\` is folded to `/` against an http(s) base, so `//host`, `\\host`, `/\host`
+ *     and `\/host` are all network-path references that resolve to another origin
+ *     despite carrying no scheme;
+ *   - a scheme with no authority is still absolute, so `http:host` on an https page
+ *     navigates to http://host rather than to a path.
  *
  * Returns the original string when it is safe to link, null when it is not.
  */
 export function safeDownloadUrl(url: string | null | undefined): string | null {
   const trimmed = (url ?? '').trim()
   if (!trimmed) return null
+
   const probe = trimmed.replace(/[\u0000-\u0020\u007F]/g, '')
-  if (probe.startsWith('//') || probe.startsWith('\\\\')) return null
+  // No relative download path starts with a backslash, and any pair of leading
+  // slashes in either direction is an authority, not a path.
+  if (probe.startsWith('\\') || /^[/\\][/\\]/.test(probe)) return null
+
   const scheme = URL_SCHEME.exec(probe)
   if (!scheme) return trimmed
+
   const protocol = scheme[1].toLowerCase()
-  return protocol === 'http' || protocol === 'https' ? trimmed : null
+  if (protocol !== 'http' && protocol !== 'https') return null
+  return probe.toLowerCase().startsWith(`${protocol}://`) ? trimmed : null
 }
 
 function byNewestFirst(a: { created_at: string }, b: { created_at: string }): number {

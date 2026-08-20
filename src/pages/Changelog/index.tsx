@@ -30,7 +30,7 @@ import 'dayjs/locale/zh-cn'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import api from '../../api'
 import { colors, radius, space, font } from '../../styles/tokens'
-import { parseUpdateDesc, getVersionSeverity, formatVersion, parseContributors, detectViewerOS, groupReleases, orderBuilds, noteBlocks, latestDesktopDownloads, safeDownloadUrl, desktopPlatforms } from './utils'
+import { parseUpdateDesc, getVersionSeverity, formatVersion, parseContributors, detectViewerOS, groupReleases, orderBuilds, noteBlocks, latestDesktopDownloads, offeredAbove, safeDownloadUrl, desktopPlatforms } from './utils'
 import type { VersionSeverity, ChangeCategory, Contributor, ViewerOS, AppVersion, DesktopBuild, DesktopDownload, NoteBlock, ReleaseEntry } from './utils'
 import type { PlatformKey } from '../../styles/tokens'
 import { AnalyticsPanel } from './AnalyticsPanel'
@@ -1207,12 +1207,10 @@ export default function Changelog() {
 
   // When the newest release is the one the bar above is already offering, the card
   // would repeat the same two buttons half a screen apart.
-  const spotlightOfferedAbove = useMemo(() => {
-    if (!latestItem?.builds) return false
-    const offered = new Set(desktopDownloads.map((build) => build.download_url))
-    const urls = latestItem.builds.map((build) => build.download_url).filter((url) => safeDownloadUrl(url))
-    return urls.length > 0 && urls.every((url) => offered.has(url))
-  }, [latestItem, desktopDownloads])
+  const spotlightOfferedAbove = useMemo(
+    () => (latestItem ? offeredAbove(latestItem, desktopDownloads) : false),
+    [latestItem, desktopDownloads],
+  )
 
   const prevVersionMap = useMemo(() => {
     const map = new Map<number, string>()

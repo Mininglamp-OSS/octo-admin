@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { detectViewerOS, getVersionSeverity, groupReleases, latestDesktopDownloads, noteBlocks, orderBuilds, parseContributors, parseUpdateDesc, safeDownloadUrl } from './utils'
+import { detectViewerOS, getVersionSeverity, groupReleases, latestDesktopDownloads, noteBlocks, offeredAbove, orderBuilds, parseContributors, parseUpdateDesc, safeDownloadUrl } from './utils'
 import type { AppVersion } from './utils'
 
 describe('parseContributors', () => {
@@ -272,9 +272,21 @@ describe('safeDownloadUrl', () => {
     expect(safeDownloadUrl(undefined)).toBeNull()
   })
 
-  it('refuses a network-path reference, which is not the relative path it looks like', () => {
+  it('refuses a network-path reference in every shape the browser folds to one', () => {
+    // Against an http(s) base a backslash is folded to a slash, so all four of these
+    // are an authority rather than the relative path they look like.
     expect(safeDownloadUrl('//attacker.example/x.exe')).toBeNull()
+    expect(safeDownloadUrl('///attacker.example/x.exe')).toBeNull()
     expect(safeDownloadUrl('\\\\attacker.example\\x.exe')).toBeNull()
+    expect(safeDownloadUrl('/\\attacker.example/x.exe')).toBeNull()
+    expect(safeDownloadUrl('\\/attacker.example/x.exe')).toBeNull()
+  })
+
+  it('refuses an http(s) scheme with no authority, which is still absolute', () => {
+    // "http:attacker.example" on an https page navigates off-origin, not to a path.
+    expect(safeDownloadUrl('http:attacker.example')).toBeNull()
+    expect(safeDownloadUrl('https:attacker.example')).toBeNull()
+    expect(safeDownloadUrl('HTTPS://cdn.example.com/a.exe')).toBe('HTTPS://cdn.example.com/a.exe')
   })
 })
 
@@ -322,6 +334,16 @@ describe('noteBlocks', () => {
     ])
   })
 
+  it('does not present one platform\'s notes as release-wide when a sibling filed none', () => {
+    const [entry] = groupReleases([
+      release({ os: 'windows', app_version: '1.0.0', update_desc: '', created_at: '2026-08-20 16:00:00' }),
+      release({ os: 'macos', app_version: '1.0.0', update_desc: '【安全】\n修复 Gatekeeper 绕过', created_at: '2026-08-20 14:00:00' }),
+    ])
+
+    // One block, but only because Windows said nothing — it stays labelled.
+    expect(noteBlocks(entry)).toEqual([{ os: ['macos'], desc: '【安全】\n修复 Gatekeeper 绕过' }])
+  })
+
   it('passes a non-desktop card through as a single block', () => {
     const [entry] = groupReleases([release({ os: 'ios', app_version: '3.4.1', update_desc: '修复：推送角标' })])
     expect(noteBlocks(entry)).toEqual([{ os: [], desc: '修复：推送角标' }])
@@ -353,6 +375,16 @@ describe('latestDesktopDownloads', () => {
     expect(latestDesktopDownloads([release({ os: 'android', download_url: 'https://x/a.apk' })])).toEqual([])
   })
 
+  it('offers the higher version, not the row uploaded most recently', () => {
+    // A hotfix row for an older version, added after the newer build shipped.
+    const offers = latestDesktopDownloads([
+      release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/1.0.0.exe', created_at: '2026-09-05 10:00:00' }),
+      release({ os: 'windows', app_version: '1.1.0', download_url: 'https://x/1.1.0.exe', created_at: '2026-09-01 10:00:00' }),
+    ])
+
+    expect(offers.map((build) => build.app_version)).toEqual(['1.1.0'])
+  })
+
   it('skips a build whose URL should never reach an href, rather than offering a dead button', () => {
     const offers = latestDesktopDownloads([
       release({ os: 'windows', app_version: '1.1.0', download_url: 'javascript:alert(1)', created_at: '2026-09-01 10:00:00' }),
@@ -361,5 +393,34 @@ describe('latestDesktopDownloads', () => {
     ])
 
     expect(offers.map((build) => [build.os, build.download_url])).toEqual([['windows', 'https://x/1.0.0.exe']])
+  })
+})
+
+describe('offeredAbove', () => {
+  const offer = (os: string, url: string) => ({ os, download_url: url, created_at: '2026-08-20 16:00:00', is_force: 0, update_desc: '', app_version: '1.0.0' })
+
+  it('is true only when every installer the card links is already offered', () => {
+    const [entry] = groupReleases([
+      release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/a.exe' }),
+      release({ os: 'macos', app_version: '1.0.0', download_url: 'https://x/a.dmg' }),
+    ])
+
+    expect(offeredAbove(entry, [offer('windows', 'https://x/a.exe'), offer('macos', 'https://x/a.dmg')])).toBe(true)
+    expect(offeredAbove(entry, [offer('windows', 'https://x/a.exe')])).toBe(false)
+    expect(offeredAbove(entry, [])).toBe(false)
+  })
+
+  it('does not let one platform cover for another that shares its URL', () => {
+    const [entry] = groupReleases([
+      release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/universal.zip' }),
+      release({ os: 'macos', app_version: '1.0.0', download_url: 'https://x/universal.zip' }),
+    ])
+
+    expect(offeredAbove(entry, [offer('windows', 'https://x/universal.zip')])).toBe(false)
+  })
+
+  it('is false for a card that has no builds at all', () => {
+    const [entry] = groupReleases([release({ os: 'ios', app_version: '3.4.1', download_url: 'https://apps.apple.com/x' })])
+    expect(offeredAbove(entry, [offer('windows', 'https://x/a.exe')])).toBe(false)
   })
 })
