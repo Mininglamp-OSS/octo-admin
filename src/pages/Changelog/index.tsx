@@ -460,8 +460,15 @@ const MAX_VISIBLE_CONTRIBUTORS = 10
 const MAX_VISIBLE_CONTRIBUTORS_NARROW = 5
 const NARROW_SCREEN = '(max-width: 420px)'
 
+/* Resolved once and shared: getSnapshot runs on every render of every card, and
+   matchMedia hands back a new object each call. */
+let narrowScreenMedia: MediaQueryList | null | undefined
+
 function narrowScreenQuery(): MediaQueryList | null {
-  return typeof window === 'undefined' || !window.matchMedia ? null : window.matchMedia(NARROW_SCREEN)
+  if (narrowScreenMedia === undefined) {
+    narrowScreenMedia = typeof window === 'undefined' || !window.matchMedia ? null : window.matchMedia(NARROW_SCREEN)
+  }
+  return narrowScreenMedia
 }
 
 function subscribeToWidth(notify: () => void): () => void {
@@ -1298,11 +1305,10 @@ export default function Changelog() {
   const latestItem = filtered[0] ?? null
   const restItems = filtered.slice(1)
 
-  // When the newest release is the one the bar above is already offering, the card
-  // would repeat the same two buttons half a screen apart.
-  // Only true when the band actually rendered the buttons: on a handheld it does
-  // not, and the card must keep its own links rather than defer to an offer that
-  // is not there.
+  // When the newest release is the one the band above is already offering, the card
+  // would repeat the same two buttons half a screen apart. Only where the band
+  // actually rendered them: on a handheld it does not, and the card must keep its
+  // own links rather than defer to an offer that is not there.
   const spotlightOfferedAbove = useMemo(
     () => (latestItem && !viewerIsHandheld ? offeredAbove(latestItem, desktopDownloads) : false),
     [latestItem, desktopDownloads],

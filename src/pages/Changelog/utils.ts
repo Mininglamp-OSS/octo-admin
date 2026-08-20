@@ -1,7 +1,5 @@
 export type ChangeCategory = 'security' | 'removed' | 'fixed' | 'added' | 'changed' | 'other'
 
-const CHANGE_CATEGORIES: readonly ChangeCategory[] = ['security', 'removed', 'fixed', 'added', 'changed', 'other']
-
 export interface ChangeItem {
   text: string
   group?: string
@@ -58,18 +56,19 @@ const CATEGORY_PATTERNS: [ChangeCategory, RegExp][] = [
 const RELEASE_ANNOUNCEMENT = /(?:正式|首次|版本)(?:发布|上线)$/
 
 /**
- * A line that announces the release itself and nothing else: it names a version,
- * optionally behind a platform, and stops.
+ * The same announcement, naming a version: "Windows 桌面端 1.0.0 版本发布".
  *
  * The card header already carries every word of it — the version, the platform
  * badges, the severity tag — so the line adds nothing, and filing it under 新增
  * additionally claims that shipping is a feature, which the per-card counters then
- * add up ("新增 2" for a release with no features at all).
+ * add up ("新增 2" for a release with no features at all). Such a line is dropped.
  *
- * The version number is what makes it droppable. "深色模式正式发布" ends the same
- * way but names a feature, so it has no version and stays where it was.
+ * The version has to be adjacent to the announcement, not merely somewhere in the
+ * sentence: "1.5x 倍速播放正式上线" announces a feature that has a number in its
+ * name, and stays under 新增 where the rule above puts it. So does "深色模式正式
+ * 发布", which names no version at all.
  */
-const VERSION_ANNOUNCEMENT = /\d+\.\d+(?:\.\d+)?\S*\s*(?:版本)?(?:正式|首次)?(?:发布|上线)$/
+const VERSION_ANNOUNCEMENT = /\d+\.\d+(?:\.\d+)?\S*\s*(?:正式|首次|版本)(?:发布|上线)$/
 
 const PREFIX_STRIP = /^(安全|漏洞|CVE|security|移除|删除|废弃|下线|remove|deprecat\w*|修复|修正|解决|fix|bug|新增|新功能|新加|添加|支持|feat(?:ure)?|优化|改进|提升|更新|调整|升级|重构|改为|改善|chore|refactor|perf)[：:：]?\s*/i
 
@@ -429,8 +428,9 @@ export function forcedPlatforms(entry: ReleaseEntry): string[] {
 
 /** Whether a note still says anything once release announcements are dropped. */
 export function hasVisibleChanges(desc: string): boolean {
-  const parsed = parseUpdateDesc(desc)
-  return CHANGE_CATEGORIES.some((category) => parsed[category].length > 0)
+  // Read off the parse result rather than a second list of categories to keep in
+  // step with the first one.
+  return Object.values(parseUpdateDesc(desc)).some((items) => items.length > 0)
 }
 
 /**
@@ -610,6 +610,11 @@ export function groupReleases(raw: AppVersion[]): ReleaseEntry[] {
           // change that was never made to what shipped.
           update_desc: build.update_desc.trim() ? build.update_desc : sameOS.update_desc,
         })
+      } else if (!sameOS.update_desc.trim()) {
+        // The same rule read from the other side. The feed arrives in updated_at
+        // order, so the blank re-upload can be the row seen first, and then it is
+        // the superseded row that carries the only notes this release has.
+        sameOS.update_desc = build.update_desc
       }
       continue
     }
@@ -663,6 +668,19 @@ export function groupReleases(raw: AppVersion[]): ReleaseEntry[] {
  * matching installer. Returns null whenever we cannot be sure — mobile, ChromeOS,
  * anything unrecognised — and the page then shows every build with equal weight.
  */
+export function detectViewerOS(userAgent: string, maxTouchPoints = 0): ViewerOS | null {
+  if (/Android/i.test(userAgent)) return null
+  if (/iPhone|iPod/i.test(userAgent)) return null
+  if (/CrOS/i.test(userAgent)) return null
+  if (/Windows NT/i.test(userAgent)) return 'windows'
+  // iPadOS 13+ ships a desktop Safari UA claiming "Macintosh"; the touch points
+  // are what still give it away.
+  if (/iPad/i.test(userAgent)) return null
+  if (/Mac OS X|Macintosh/i.test(userAgent)) return maxTouchPoints > 1 ? null : 'macos'
+  if (/Linux|X11/i.test(userAgent)) return 'linux'
+  return null
+}
+
 /**
  * Whether the visitor is on a phone or a tablet, where a Windows or macOS installer
  * is not merely unrecognised but unusable.
@@ -677,19 +695,6 @@ export function isHandheld(userAgent: string, maxTouchPoints = 0): boolean {
   // iPadOS 13+ ships a desktop Safari UA claiming "Macintosh"; the touch points are
   // what still give it away.
   return /Mac OS X|Macintosh/i.test(userAgent) && maxTouchPoints > 1
-}
-
-export function detectViewerOS(userAgent: string, maxTouchPoints = 0): ViewerOS | null {
-  if (/Android/i.test(userAgent)) return null
-  if (/iPhone|iPod/i.test(userAgent)) return null
-  if (/CrOS/i.test(userAgent)) return null
-  if (/Windows NT/i.test(userAgent)) return 'windows'
-  // iPadOS 13+ ships a desktop Safari UA claiming "Macintosh"; the touch points
-  // are what still give it away.
-  if (/iPad/i.test(userAgent)) return null
-  if (/Mac OS X|Macintosh/i.test(userAgent)) return maxTouchPoints > 1 ? null : 'macos'
-  if (/Linux|X11/i.test(userAgent)) return 'linux'
-  return null
 }
 
 export interface Contributor {

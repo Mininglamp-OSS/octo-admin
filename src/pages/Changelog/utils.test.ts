@@ -30,8 +30,16 @@ describe('parseUpdateDesc', () => {
 
   it('keeps an announcement that names a feature rather than a version', () => {
     expect(parseUpdateDesc('深色模式正式发布').added).toEqual([{ text: '深色模式正式发布', group: undefined }])
-    // A version buried mid-sentence is not the sentence announcing itself.
-    expect(parseUpdateDesc('支持 1.5x 倍速播放正式上线').added).toHaveLength(1)
+    // A number in a feature's name is not the sentence announcing a release: the
+    // version has to sit next to the announcement, not merely somewhere in the line.
+    expect(parseUpdateDesc('1.5x 倍速播放正式上线').added).toHaveLength(1)
+  })
+
+  it('leaves prose that ends in 上线 without an announcement qualifier alone', () => {
+    // Dropping requires the same 正式/首次/版本 qualifier the rule above requires;
+    // without it a line naming a version is still just a line.
+    expect(parseUpdateDesc('TLS 1.3 通道上线').other).toHaveLength(1)
+    expect(parseUpdateDesc('TLS 1.3 通道上线').added).toEqual([])
   })
 
   it('keeps an explicit prefix ahead of the release-announcement fallback', () => {
@@ -175,15 +183,19 @@ describe('groupReleases', () => {
   })
 
   it('keeps the notes when the same build is re-uploaded with an empty box', () => {
-    const [entry] = groupReleases([
-      release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/typo.exe', created_at: '2026-08-20 10:00:00', update_desc: '修复：启动白屏' }),
-      release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/fixed.exe', created_at: '2026-08-20 18:00:00', update_desc: '   ' }),
-    ])
+    const notes = release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/typo.exe', created_at: '2026-08-20 10:00:00', update_desc: '修复：启动白屏' })
+    const blank = release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/fixed.exe', created_at: '2026-08-20 18:00:00', update_desc: '   ' })
 
-    // The link follows the re-upload; what shipped did not change, so the notes do
-    // not either.
-    expect(entry.builds?.[0].download_url).toBe('https://x/fixed.exe')
-    expect(noteBlocks(entry)).toEqual([{ os: [], desc: '修复：启动白屏' }])
+    // Both arrival orders: the feed is sorted by updated_at, so the blank re-upload
+    // is as likely to be seen first as second, and only in one of those orders is
+    // it the row being written over.
+    for (const feed of [[notes, blank], [blank, notes]]) {
+      const [entry] = groupReleases(feed)
+      // The link follows the re-upload; what shipped did not change, so the notes
+      // do not either.
+      expect(entry.builds?.[0].download_url).toBe('https://x/fixed.exe')
+      expect(noteBlocks(entry)).toEqual([{ os: [], desc: '修复：启动白屏' }])
+    }
   })
 
   it('does not let a superseded upload force the build the card links', () => {
