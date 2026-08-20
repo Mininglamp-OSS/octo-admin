@@ -30,7 +30,7 @@ import 'dayjs/locale/zh-cn'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import api from '../../api'
 import { colors, radius, space, font } from '../../styles/tokens'
-import { parseUpdateDesc, getVersionSeverity, formatVersion, parseContributors, detectViewerOS, groupReleases, orderBuilds, desktopPlatforms } from './utils'
+import { parseUpdateDesc, getVersionSeverity, formatVersion, parseContributors, detectViewerOS, groupReleases, orderBuilds, safeDownloadUrl, desktopPlatforms } from './utils'
 import type { VersionSeverity, ChangeCategory, Contributor, ViewerOS, AppVersion, DesktopBuild, ReleaseEntry } from './utils'
 import type { PlatformKey } from '../../styles/tokens'
 import { AnalyticsPanel } from './AnalyticsPanel'
@@ -542,7 +542,9 @@ function EntryBadges({ entry }: { entry: ReleaseEntry }) {
  * equal weight rather than guessing at them.
  */
 function DesktopDownloads({ builds, compact }: { builds: DesktopBuild[]; compact?: boolean }) {
-  const ordered = orderBuilds(builds, viewerOS).filter((build) => build.download_url)
+  const ordered = orderBuilds(builds, viewerOS)
+    .map((build) => ({ ...build, href: safeDownloadUrl(build.download_url) }))
+    .filter((build): build is typeof build & { href: string } => build.href !== null)
   if (ordered.length === 0) return null
   const knowsViewer = ordered[0].os === viewerOS
 
@@ -568,16 +570,16 @@ function DesktopDownloads({ builds, compact }: { builds: DesktopBuild[]; compact
         const quiet: React.CSSProperties = { color: colors.text.secondary, textDecoration: 'underline' }
         const style: React.CSSProperties = compact
           ? isLead || !knowsViewer
-            ? { ...base, color: 'var(--brand)' }
+            ? { ...base, color: 'var(--brand-solid)' }
             : { ...base, ...quiet }
           : isLead
             ? { ...base, color: 'var(--brand-contrast)', background: 'var(--brand-solid)', border: '1px solid var(--brand-solid)', padding: '5px 14px', borderRadius: radius.sm }
             : knowsViewer
               ? { ...base, ...quiet, padding: '5px 10px' }
-              : { ...base, color: 'var(--brand)', border: '1px solid var(--brand)', padding: '4px 12px', borderRadius: radius.sm }
+              : { ...base, color: 'var(--brand-solid)', border: '1px solid var(--brand-solid)', padding: '4px 12px', borderRadius: radius.sm }
 
         return (
-          <a key={build.os} href={build.download_url} target="_blank" rel="noopener noreferrer" style={style}>
+          <a key={build.os} href={build.href} target="_blank" rel="noopener noreferrer" style={style}>
             <DownloadOutlined />
             下载 {platformConfig[build.os]?.label ?? build.os}
           </a>
@@ -1037,9 +1039,9 @@ function LatestReleaseSpotlight({ item, severity }: { item: ReleaseEntry; severi
         <span style={{ flex: 1 }} />
         {item.builds ? (
           <DesktopDownloads builds={item.builds} />
-        ) : item.download_url ? (
+        ) : safeDownloadUrl(item.download_url) ? (
           <a
-            href={item.download_url}
+            href={safeDownloadUrl(item.download_url)!}
             target="_blank"
             rel="noopener noreferrer"
             style={{

@@ -212,6 +212,7 @@ export interface DesktopBuild {
   os: string
   download_url: string
   created_at: string
+  is_force: number
 }
 
 /** One card on the timeline. A desktop release carries every OS build of that
@@ -247,14 +248,36 @@ export function orderBuilds(builds: DesktopBuild[], viewerOS: ViewerOS | null): 
   })
 }
 
+const URL_SCHEME = /^([a-z][a-z0-9+.-]*):/i
+
+/**
+ * download_url is admin-entered and lands in an `href` on the public What's New
+ * page, so only a plain http(s) link — or a scheme-less relative path, which has
+ * nothing to abuse — is ever handed to the browser. Control characters are stripped
+ * before sniffing the scheme, since browsers ignore them ("java\tscript:" runs).
+ *
+ * Returns the original string when it is safe to link, null when it is not.
+ */
+export function safeDownloadUrl(url: string): string | null {
+  const trimmed = url.trim()
+  if (!trimmed) return null
+  const scheme = URL_SCHEME.exec(trimmed.replace(/[\u0000-\u0020\u007F]/g, ''))
+  if (!scheme) return trimmed
+  const protocol = scheme[1].toLowerCase()
+  return protocol === 'http' || protocol === 'https' ? trimmed : null
+}
+
 /** Per-OS notes usually repeat verbatim; union them line by line so a shared line
  *  is not duplicated and an OS-specific line is never swallowed. */
 function mergeNotes(existing: string, incoming: string): string {
   const seen = new Set(existing.split('\n').map((line) => line.trim()))
-  const extra = incoming
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line && !seen.has(line))
+  const extra: string[] = []
+  for (const raw of incoming.split('\n')) {
+    const line = raw.trim()
+    if (!line || seen.has(line)) continue
+    seen.add(line)
+    extra.push(line)
+  }
   return extra.length > 0 ? existing + '\n' + extra.join('\n') : existing
 }
 
@@ -262,8 +285,8 @@ function mergeNotes(existing: string, incoming: string): string {
  * Collapse the raw feed into timeline cards: desktop builds group by version,
  * web deploys group by day, everything else stands alone.
  *
- * Card order follows `raw`, which the API returns newest first; which binary a
- * card links is decided by comparing timestamps, not by that order.
+ * Cards come back newest first by their own timestamp, and which binary a card
+ * links is decided the same way — neither depends on the order `raw` arrives in.
  */
 export function groupReleases(raw: AppVersion[]): ReleaseEntry[] {
   const result: ReleaseEntry[] = []
@@ -274,11 +297,19 @@ export function groupReleases(raw: AppVersion[]): ReleaseEntry[] {
 
   for (const item of raw) {
     if (desktopPlatforms.has(item.os)) {
-      const build = { os: item.os, download_url: item.download_url, created_at: item.created_at }
+      const build = {
+        os: item.os,
+        download_url: item.download_url,
+        created_at: item.created_at,
+        is_force: item.is_force,
+      }
       const at = desktopByVersion.get(item.app_version)
       if (at === undefined) {
         desktopByVersion.set(item.app_version, result.length)
-        result.push({ ...item, builds: [build] })
+        // download_url is meaningless once a card carries several installers — the
+        // per-OS links live in `builds`, and leaving the first-seen URL here would
+        // read as authoritative.
+        result.push({ ...item, download_url: '', builds: [build] })
         continue
       }
       const entry = result[at]
@@ -290,9 +321,12 @@ export function groupReleases(raw: AppVersion[]): ReleaseEntry[] {
         // binary, whatever order the feed happens to arrive in.
         sameOS.download_url = item.download_url
         sameOS.created_at = item.created_at
+        sameOS.is_force = item.is_force
       }
       entry.created_at = entry.created_at > item.created_at ? entry.created_at : item.created_at
-      entry.is_force = entry.is_force || item.is_force
+      // 必须升级 follows the builds the card actually links, not every row that ever
+      // carried this version — a superseded upload must not force the new one.
+      entry.is_force = entry.builds!.some((existing) => existing.is_force === 1) ? 1 : 0
       entry.update_desc = mergeNotes(entry.update_desc, item.update_desc)
       continue
     }
@@ -316,7 +350,11 @@ export function groupReleases(raw: AppVersion[]): ReleaseEntry[] {
     entry.is_force = entry.is_force || item.is_force
   }
 
-  return result
+  // Order by the date each card claims rather than by feed position: the API sorts
+  // by updated_at, so re-saving an old row (fixing a typo, swapping a broken
+  // installer URL) would otherwise hoist it — and the day grouped around it — into
+  // the Latest Release slot. Sort is stable, so same-timestamp cards keep feed order.
+  return result.sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0))
 }
 
 /**

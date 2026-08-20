@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { detectViewerOS, getVersionSeverity, groupReleases, orderBuilds, parseContributors, parseUpdateDesc } from './utils'
+import { detectViewerOS, getVersionSeverity, groupReleases, orderBuilds, parseContributors, parseUpdateDesc, safeDownloadUrl } from './utils'
 import type { AppVersion } from './utils'
 
 describe('parseContributors', () => {
@@ -92,8 +92,8 @@ describe('groupReleases', () => {
     expect(rest).toEqual([])
     expect(entry.app_version).toBe('1.0.0')
     expect(entry.builds).toEqual([
-      { os: 'windows', download_url: 'https://x/setup.exe', created_at: '2026-08-20 16:34:04' },
-      { os: 'macos', download_url: 'https://x/octo.dmg', created_at: '2026-08-20 14:18:06' },
+      { os: 'windows', download_url: 'https://x/setup.exe', created_at: '2026-08-20 16:34:04', is_force: 0 },
+      { os: 'macos', download_url: 'https://x/octo.dmg', created_at: '2026-08-20 14:18:06', is_force: 0 },
     ])
     // The card is dated by the newest build, and keeps both sets of notes.
     expect(entry.created_at).toBe('2026-08-20 16:34:04')
@@ -117,11 +117,44 @@ describe('groupReleases', () => {
     for (const feed of [[newest, oldest], [oldest, newest]]) {
       const [entry] = groupReleases(feed)
       expect(entry.builds).toEqual([
-        { os: 'windows', download_url: 'https://x/setup-2.exe', created_at: '2026-08-20 18:00:00' },
+        { os: 'windows', download_url: 'https://x/setup-2.exe', created_at: '2026-08-20 18:00:00', is_force: 1 },
       ])
       expect(entry.created_at).toBe('2026-08-20 18:00:00')
       expect(entry.is_force).toBe(1)
     }
+  })
+
+  it('does not let a superseded upload force the build the card links', () => {
+    const [entry] = groupReleases([
+      release({ os: 'windows', app_version: '3.0.0', download_url: 'https://x/new.exe', created_at: '2026-08-20 18:00:00', is_force: 0 }),
+      release({ os: 'windows', app_version: '3.0.0', download_url: 'https://x/old.exe', created_at: '2026-08-20 10:00:00', is_force: 1 }),
+    ])
+
+    expect(entry.builds?.[0].download_url).toBe('https://x/new.exe')
+    expect(entry.is_force).toBe(0)
+  })
+
+  it('orders cards by their own date, not by the position they arrive in', () => {
+    // The API sorts by updated_at, so re-saving an old row puts it at the head.
+    const entries = groupReleases([
+      release({ os: 'web', update_desc: '优化：旧的一天被重新保存', created_at: '2026-05-03 09:00:00' }),
+      release({ os: 'android', app_version: '3.5.0', created_at: '2026-08-22 12:00:00' }),
+      release({ os: 'web', update_desc: '修复：同一天的另一次部署', created_at: '2026-05-03 18:00:00' }),
+    ])
+
+    expect(entries.map((e) => [e.os, e.created_at])).toEqual([
+      ['android', '2026-08-22 12:00:00'],
+      ['web', '2026-05-03 18:00:00'],
+    ])
+  })
+
+  it('drops a line repeated inside one OS note as well as across two', () => {
+    const [entry] = groupReleases([
+      release({ os: 'windows', app_version: '4.0.0', update_desc: '修复：A' }),
+      release({ os: 'macos', app_version: '4.0.0', update_desc: '新增：B\n新增：B' }),
+    ])
+
+    expect(entry.update_desc.split('\n')).toEqual(['修复：A', '新增：B'])
   })
 
   it('unions per-OS notes line by line instead of dropping a shorter set', () => {
@@ -185,9 +218,9 @@ describe('detectViewerOS', () => {
 
 describe('orderBuilds', () => {
   const builds = [
-    { os: 'windows', download_url: 'a.exe', created_at: '2026-08-20 16:00:00' },
-    { os: 'macos', download_url: 'a.dmg', created_at: '2026-08-20 14:00:00' },
-    { os: 'linux', download_url: 'a.AppImage', created_at: '2026-08-20 12:00:00' },
+    { os: 'windows', download_url: 'a.exe', created_at: '2026-08-20 16:00:00', is_force: 0 },
+    { os: 'macos', download_url: 'a.dmg', created_at: '2026-08-20 14:00:00', is_force: 0 },
+    { os: 'linux', download_url: 'a.AppImage', created_at: '2026-08-20 12:00:00', is_force: 0 },
   ]
 
   it("leads with the visitor's own platform", () => {
@@ -203,5 +236,22 @@ describe('orderBuilds', () => {
     const original = [...builds]
     orderBuilds(builds, 'linux')
     expect(builds).toEqual(original)
+  })
+})
+
+describe('safeDownloadUrl', () => {
+  it('passes through the links a release actually uses', () => {
+    expect(safeDownloadUrl('https://cdn.example.com/OCTO-Setup-1.0.0.exe')).toBe('https://cdn.example.com/OCTO-Setup-1.0.0.exe')
+    expect(safeDownloadUrl('http://cdn.example.com/a.dmg')).toBe('http://cdn.example.com/a.dmg')
+    expect(safeDownloadUrl('/static/desktop/a.exe')).toBe('/static/desktop/a.exe')
+  })
+
+  it('refuses to hand a scripting URL to the browser', () => {
+    expect(safeDownloadUrl('javascript:alert(1)')).toBeNull()
+    expect(safeDownloadUrl('JaVaScRiPt:alert(1)')).toBeNull()
+    // Browsers strip control characters before resolving the scheme; so do we.
+    expect(safeDownloadUrl('java\tscript:alert(1)')).toBeNull()
+    expect(safeDownloadUrl(' data:text/html,<script>alert(1)</script>')).toBeNull()
+    expect(safeDownloadUrl('')).toBeNull()
   })
 })
