@@ -202,7 +202,7 @@ export function getVersionSeverity(version: string, prevVersion?: string): Versi
   // those says the opposite: a stream sitting on 1.0.0 while its build number
   // advances, and a release candidate. Any other version with no predecessor is
   // simply the oldest one we know about.
-  if (!prevVersion) return /^v?1\.0\.0$/.test(version.trim()) ? 'initial' : 'unknown'
+  if (!prevVersion) return /^v?1\.0\.0$/i.test(version.trim()) ? 'initial' : 'unknown'
 
   const prev = parseSemVer(prevVersion)
   if (!prev) return 'unknown'
@@ -261,12 +261,15 @@ export interface ReleaseEntry extends AppVersion {
  * `Octo 2.0.0-beta` as a prerelease, or the pair compares as stable-versus-nothing
  * and the beta wins.
  */
-const VERSION_SUFFIX = /\d+\.\d+(?:\.\d+)?-([0-9A-Za-z]+)/
+const VERSION_SUFFIX = /\d+\.\d+(?:\.\d+)?((?:-[0-9A-Za-z.]+)+)/
 const PRERELEASE_TOKEN = /^(alpha|beta|rc|pre|preview|dev|snapshot|canary|nightly)/i
 
 export function isPrerelease(version: string): boolean {
   const suffix = VERSION_SUFFIX.exec(version.replace(/\(.*\)/, ''))
-  return suffix !== null && PRERELEASE_TOKEN.test(suffix[1])
+  if (!suffix) return false
+  // Every hyphenated token, not just the first: 1.0.0-x86-rc1 names an
+  // architecture before it names the release candidate it is.
+  return suffix[1].split('-').some((token) => token !== '' && PRERELEASE_TOKEN.test(token))
 }
 
 /** Ranked so a stable release outranks any prerelease, and both outrank a version

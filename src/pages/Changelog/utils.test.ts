@@ -78,6 +78,14 @@ describe('getVersionSeverity', () => {
   it('tags nothing when there is no predecessor to diff against', () => {
     expect(getVersionSeverity('3.2.1')).toBe('unknown')
     expect(getVersionSeverity('3.2.1', 'not-a-version')).toBe('unknown')
+    // parseSemVer reads 1.0.0 out of this one, and it is the opposite of a first
+    // stable release.
+    expect(getVersionSeverity('1.0.0-rc1')).toBe('unknown')
+  })
+
+  it('reads the version prefix however it was typed', () => {
+    expect(getVersionSeverity('v1.0.0')).toBe('initial')
+    expect(getVersionSeverity('V1.0.0')).toBe('initial')
   })
 
   it('tags nothing when the comparison does not move forward', () => {
@@ -474,6 +482,26 @@ describe('latestDesktopDownloads', () => {
 
     for (const feed of [[stable, laterBeta], [laterBeta, stable]]) {
       expect(latestDesktopDownloads(feed).map((build) => build.app_version)).toEqual(['2.0.0'])
+    }
+  })
+
+  it('sees a prerelease token behind an architecture that is not one', () => {
+    // 1.0.0-x86-rc1 names the architecture first, so reading only the token after
+    // the triple calls it stable and hands out a release candidate.
+    const stable = release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/stable.exe', created_at: '2026-01-01 00:00:00' })
+    const rc = release({ os: 'windows', app_version: '1.0.1-x86-rc1', download_url: 'https://x/rc.exe', created_at: '2026-02-01 00:00:00' })
+
+    for (const feed of [[stable, rc], [rc, stable]]) {
+      expect(latestDesktopDownloads(feed).map((build) => build.download_url)).toEqual(['https://x/stable.exe'])
+    }
+  })
+
+  it('leaves an architecture that is only an architecture alone', () => {
+    const older = release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/old.exe', created_at: '2026-01-01 00:00:00' })
+    const newer = release({ os: 'windows', app_version: '1.0.1-x64', download_url: 'https://x/new.exe', created_at: '2026-02-01 00:00:00' })
+
+    for (const feed of [[older, newer], [newer, older]]) {
+      expect(latestDesktopDownloads(feed).map((build) => build.download_url)).toEqual(['https://x/new.exe'])
     }
   })
 

@@ -1126,7 +1126,7 @@ function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: Re
   )
 }
 
-function LatestReleaseSpotlight({ item, severity, hideDownloads }: { item: ReleaseEntry; severity: VersionSeverity; hideDownloads?: boolean }) {
+export function LatestReleaseSpotlight({ item, severity, hideDownloads }: { item: ReleaseEntry; severity: VersionSeverity; hideDownloads?: boolean }) {
   const isWeb = item.os === 'web'
   const dateObj = dayjs(item.created_at)
   const blocks = useMemo(() => noteBlocks(item, viewerOS), [item])
