@@ -27,7 +27,7 @@ import { useTranslation } from 'react-i18next'
 import api from '../../api'
 import { hasManagerCapability } from '../../auth/capabilities'
 // Same platform list the public changelog groups by — keep the two pages in step.
-import { desktopPlatforms } from '../Changelog/utils'
+import { desktopPlatforms, safeDownloadUrl } from '../Changelog/utils'
 import { useAuthStore } from '../../store/auth'
 
 interface AppVersion {
@@ -219,11 +219,14 @@ export default function Download() {
       key: 'download_url',
       width: 260,
       ellipsis: true,
-      render: (url) =>
-        url ? (
+      render: (url) => {
+        // Same guard the public changelog uses: this column links a value an
+        // appversion.write holder typed, and nothing validates its scheme on the way in.
+        const href = safeDownloadUrl(url)
+        return href ? (
           <Tooltip title={url} mouseEnterDelay={0.2}>
             <a
-              href={url}
+              href={href}
               target="_blank"
               rel="noopener noreferrer"
               className="mono"
@@ -234,8 +237,9 @@ export default function Download() {
             </a>
           </Tooltip>
         ) : (
-          <span style={{ color: 'var(--a-text-quaternary)' }}>—</span>
-        ),
+          <span style={{ color: 'var(--a-text-quaternary)' }}>{url ? formatUrl(url) : '—'}</span>
+        )
+      },
     },
     {
       title: t('column.createdAt'),

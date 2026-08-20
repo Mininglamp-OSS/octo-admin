@@ -179,9 +179,15 @@ export function getVersionSeverity(version: string, prevVersion?: string): Versi
   const build = parseBuildNumber(version)
   if (build === 1) return 'initial'
 
-  // 1.0.0 with nothing before it is a first stable release; any other version
-  // with no predecessor is simply the oldest one we know about.
-  if (!prevVersion) return cur[0] === 1 && cur[1] === 0 && cur[2] === 0 ? 'initial' : 'unknown'
+  // 1.0.0 with nothing before it is a first stable release — unless it carries a
+  // build number past the first, which says the opposite. A stream that sits on
+  // 1.0.0 and only advances its build would otherwise have the oldest row in any
+  // window stamped "Initial Release" on the strength of the semver alone.
+  // Any other version with no predecessor is simply the oldest one we know about.
+  if (!prevVersion) {
+    const isFirstStable = cur[0] === 1 && cur[1] === 0 && cur[2] === 0 && build === null
+    return isFirstStable ? 'initial' : 'unknown'
+  }
 
   const prev = parseSemVer(prevVersion)
   if (!prev) return 'unknown'
@@ -213,12 +219,60 @@ export interface DesktopBuild {
   download_url: string
   created_at: string
   is_force: number
+  update_desc: string
 }
 
-/** One card on the timeline. A desktop release carries every OS build of that
- *  version, so 1.0.0 is a single entry offering both installers. */
+/**
+ * One card on the timeline. A desktop release carries every OS build of that
+ * version, so 1.0.0 is a single entry offering both installers.
+ *
+ * When `builds` is present it is the authority for installers, notes and force
+ * flags; the inherited scalar fields describe the newest build alone.
+ */
 export interface ReleaseEntry extends AppVersion {
   builds?: DesktopBuild[]
+}
+
+/** A block of release notes as one OS filed them. */
+export interface NoteBlock {
+  /** Platforms sharing these notes. Empty when the card has one set of notes. */
+  os: string[]
+  desc: string
+}
+
+/**
+ * The note blocks a card should render.
+ *
+ * Per-OS notes are NOT merged into one document. parseUpdateDesc() is stateful —
+ * a 【…】 / ## / **bold** heading owns every line after it — so unioning two OSes'
+ * lines files whatever only macOS said under whatever heading Windows happened to
+ * end on, which is how a macOS-only security fix earns a green 新增 badge. Builds
+ * that filed identical notes still collapse into a single unlabelled block, which
+ * is the common case; only genuinely differing notes are shown per OS.
+ */
+export function noteBlocks(entry: ReleaseEntry, viewerOS: ViewerOS | null = null): NoteBlock[] {
+  if (!entry.builds) {
+    return entry.update_desc.trim() ? [{ os: [], desc: entry.update_desc }] : []
+  }
+
+  const blocks: NoteBlock[] = []
+  const byDesc = new Map<string, NoteBlock>()
+  for (const build of orderBuilds(entry.builds, viewerOS)) {
+    const desc = build.update_desc.trim()
+    if (!desc) continue
+    const shared = byDesc.get(desc)
+    if (shared) {
+      shared.os.push(build.os)
+      continue
+    }
+    const block: NoteBlock = { os: [build.os], desc }
+    byDesc.set(desc, block)
+    blocks.push(block)
+  }
+
+  // Every build said the same thing — the card speaks for the release as a whole.
+  if (blocks.length === 1) blocks[0].os = []
+  return blocks
 }
 
 /* Desktop builds are versioned, downloadable artifacts. All builds of one version
@@ -252,33 +306,28 @@ const URL_SCHEME = /^([a-z][a-z0-9+.-]*):/i
 
 /**
  * download_url is admin-entered and lands in an `href` on the public What's New
- * page, so only a plain http(s) link — or a scheme-less relative path, which has
- * nothing to abuse — is ever handed to the browser. Control characters are stripped
- * before sniffing the scheme, since browsers ignore them ("java\tscript:" runs).
+ * page, so only a plain http(s) link — or a path-relative one, which cannot execute
+ * script — is ever handed to the browser. Control characters are stripped before
+ * sniffing the scheme, since browsers ignore them ("java\tscript:" runs), and
+ * network-path references (`//host`, `\\host`) are refused: they carry no scheme
+ * but still resolve to another origin, so they are not the relative path they look
+ * like.
  *
  * Returns the original string when it is safe to link, null when it is not.
  */
-export function safeDownloadUrl(url: string): string | null {
-  const trimmed = url.trim()
+export function safeDownloadUrl(url: string | null | undefined): string | null {
+  const trimmed = (url ?? '').trim()
   if (!trimmed) return null
-  const scheme = URL_SCHEME.exec(trimmed.replace(/[\u0000-\u0020\u007F]/g, ''))
+  const probe = trimmed.replace(/[\u0000-\u0020\u007F]/g, '')
+  if (probe.startsWith('//') || probe.startsWith('\\\\')) return null
+  const scheme = URL_SCHEME.exec(probe)
   if (!scheme) return trimmed
   const protocol = scheme[1].toLowerCase()
   return protocol === 'http' || protocol === 'https' ? trimmed : null
 }
 
-/** Per-OS notes usually repeat verbatim; union them line by line so a shared line
- *  is not duplicated and an OS-specific line is never swallowed. */
-function mergeNotes(existing: string, incoming: string): string {
-  const seen = new Set(existing.split('\n').map((line) => line.trim()))
-  const extra: string[] = []
-  for (const raw of incoming.split('\n')) {
-    const line = raw.trim()
-    if (!line || seen.has(line)) continue
-    seen.add(line)
-    extra.push(line)
-  }
-  return extra.length > 0 ? existing + '\n' + extra.join('\n') : existing
+function byNewestFirst(a: { created_at: string }, b: { created_at: string }): number {
+  return a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0
 }
 
 /**
@@ -294,21 +343,22 @@ export function groupReleases(raw: AppVersion[]): ReleaseEntry[] {
   // landing between two web deploys no longer splits that day in two.
   const desktopByVersion = new Map<string, number>()
   const webByDate = new Map<string, number>()
+  const webMembers = new Map<number, AppVersion[]>()
 
   for (const item of raw) {
     if (desktopPlatforms.has(item.os)) {
-      const build = {
+      const build: DesktopBuild = {
         os: item.os,
         download_url: item.download_url,
         created_at: item.created_at,
         is_force: item.is_force,
+        update_desc: item.update_desc,
       }
       const at = desktopByVersion.get(item.app_version)
       if (at === undefined) {
         desktopByVersion.set(item.app_version, result.length)
-        // download_url is meaningless once a card carries several installers — the
-        // per-OS links live in `builds`, and leaving the first-seen URL here would
-        // read as authoritative.
+        // The per-OS links live in `builds`; a single inherited URL would read as
+        // authoritative for a card that offers several installers.
         result.push({ ...item, download_url: '', builds: [build] })
         continue
       }
@@ -317,17 +367,10 @@ export function groupReleases(raw: AppVersion[]): ReleaseEntry[] {
       if (!sameOS) {
         entry.builds!.push(build)
       } else if (item.created_at > sameOS.created_at) {
-        // Same OS re-uploaded for this version: the link has to point at the newer
-        // binary, whatever order the feed happens to arrive in.
-        sameOS.download_url = item.download_url
-        sameOS.created_at = item.created_at
-        sameOS.is_force = item.is_force
+        // Same OS re-uploaded for this version: the card has to follow the newer
+        // build, whatever order the feed happens to arrive in.
+        Object.assign(sameOS, build)
       }
-      entry.created_at = entry.created_at > item.created_at ? entry.created_at : item.created_at
-      // 必须升级 follows the builds the card actually links, not every row that ever
-      // carried this version — a superseded upload must not force the new one.
-      entry.is_force = entry.builds!.some((existing) => existing.is_force === 1) ? 1 : 0
-      entry.update_desc = mergeNotes(entry.update_desc, item.update_desc)
       continue
     }
 
@@ -337,24 +380,42 @@ export function groupReleases(raw: AppVersion[]): ReleaseEntry[] {
     }
 
     const date = item.created_at.slice(0, 10)
-    const taggedDesc = `@@TIME:${item.created_at.slice(11, 16)}@@\n${item.update_desc}`
     const at = webByDate.get(date)
     if (at === undefined) {
       webByDate.set(date, result.length)
-      result.push({ ...item, update_desc: taggedDesc })
+      webMembers.set(result.length, [item])
+      result.push({ ...item })
       continue
     }
+    webMembers.get(at)!.push(item)
+  }
+
+  for (const at of desktopByVersion.values()) {
     const entry = result[at]
-    entry.created_at = entry.created_at > item.created_at ? entry.created_at : item.created_at
-    entry.update_desc = entry.update_desc + '\n' + taggedDesc
-    entry.is_force = entry.is_force || item.is_force
+    const newest = entry.builds!.reduce((a, b) => (b.created_at > a.created_at ? b : a))
+    entry.created_at = newest.created_at
+    entry.update_desc = newest.update_desc
+    // 必须升级 follows the builds the card actually links, not every row that ever
+    // carried this version — a superseded upload must not force its replacement.
+    entry.is_force = entry.builds!.some((build) => build.is_force === 1) ? 1 : 0
+  }
+
+  for (const [at, members] of webMembers) {
+    // Newest deploy first inside the day card too: arrival order is updated_at order.
+    const ordered = [...members].sort(byNewestFirst)
+    const entry = result[at]
+    entry.created_at = ordered[0].created_at
+    entry.is_force = ordered.some((member) => member.is_force === 1) ? 1 : 0
+    entry.update_desc = ordered
+      .map((member) => `@@TIME:${member.created_at.slice(11, 16)}@@\n${member.update_desc}`)
+      .join('\n')
   }
 
   // Order by the date each card claims rather than by feed position: the API sorts
   // by updated_at, so re-saving an old row (fixing a typo, swapping a broken
   // installer URL) would otherwise hoist it — and the day grouped around it — into
   // the Latest Release slot. Sort is stable, so same-timestamp cards keep feed order.
-  return result.sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0))
+  return result.sort(byNewestFirst)
 }
 
 /**

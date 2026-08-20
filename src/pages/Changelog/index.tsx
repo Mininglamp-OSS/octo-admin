@@ -30,8 +30,8 @@ import 'dayjs/locale/zh-cn'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import api from '../../api'
 import { colors, radius, space, font } from '../../styles/tokens'
-import { parseUpdateDesc, getVersionSeverity, formatVersion, parseContributors, detectViewerOS, groupReleases, orderBuilds, safeDownloadUrl, desktopPlatforms } from './utils'
-import type { VersionSeverity, ChangeCategory, Contributor, ViewerOS, AppVersion, DesktopBuild, ReleaseEntry } from './utils'
+import { parseUpdateDesc, getVersionSeverity, formatVersion, parseContributors, detectViewerOS, groupReleases, orderBuilds, noteBlocks, safeDownloadUrl, desktopPlatforms } from './utils'
+import type { VersionSeverity, ChangeCategory, Contributor, ViewerOS, AppVersion, DesktopBuild, NoteBlock, ReleaseEntry } from './utils'
 import type { PlatformKey } from '../../styles/tokens'
 import { AnalyticsPanel } from './AnalyticsPanel'
 import { useTheme } from '../../hooks/useTheme'
@@ -733,6 +733,60 @@ function StructuredChanges({ desc }: { desc: string }) {
   )
 }
 
+/** Notes as each platform filed them — never merged, so a line keeps the section
+ *  its own author put it under. */
+function ReleaseNotes({ blocks }: { blocks: NoteBlock[] }) {
+  return (
+    <>
+      {blocks.map((block, index) => (
+        <div key={block.os.join('-') || index} style={{ marginTop: index > 0 ? space[5] : 0 }}>
+          {block.os.length > 0 && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              fontSize: font.size.xs,
+              fontWeight: font.weight.semibold,
+              color: colors.text.tertiary,
+              marginBottom: space[2],
+            }}>
+              {block.os.map((os) => platformConfig[os]?.label ?? os).join(' · ')}
+            </div>
+          )}
+          <StructuredChanges desc={block.desc} />
+        </div>
+      ))}
+    </>
+  )
+}
+
+function blockStats(blocks: NoteBlock[]): { added: number; fixed: number; changed: number } {
+  return blocks.reduce(
+    (total, block) => {
+      const stats = getChangeStats(block.desc)
+      return {
+        added: total.added + stats.added,
+        fixed: total.fixed + stats.fixed,
+        changed: total.changed + stats.changed,
+      }
+    },
+    { added: 0, fixed: 0, changed: 0 },
+  )
+}
+
+function blockContributors(blocks: NoteBlock[]): Contributor[] {
+  const seen = new Set<string>()
+  const all: Contributor[] = []
+  for (const block of blocks) {
+    for (const contributor of parseContributors(block.desc)) {
+      if (seen.has(contributor.name)) continue
+      seen.add(contributor.name)
+      all.push(contributor)
+    }
+  }
+  return all
+}
+
 function getChangeStats(desc: string): { added: number; fixed: number; changed: number } {
   const sections = splitByTimeTag(desc)
   let added = 0, fixed = 0, changed = 0
@@ -805,7 +859,8 @@ function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: Re
   const isWeb = item.os === 'web'
   const severity = getVersionSeverity(item.app_version, prevVersion)
   const isForce = item.is_force === 1
-  const contributors = useMemo(() => parseContributors(item.update_desc), [item.update_desc])
+  const blocks = useMemo(() => noteBlocks(item, viewerOS), [item])
+  const contributors = useMemo(() => blockContributors(blocks), [blocks])
   const dotColor = 'var(--timeline-dot-border)'
 
   const dateObj = dayjs(item.created_at)
@@ -813,7 +868,7 @@ function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: Re
   const relativeLabel = formatTimeLabel(dateObj, prevTimeLabel)
 
   const isWebMerged = isWeb && TIME_TAG_PATTERN.test(item.update_desc)
-  const stats = useMemo(() => isWebMerged ? getChangeStats(item.update_desc) : null, [item.update_desc, isWebMerged])
+  const stats = useMemo(() => isWebMerged ? blockStats(blocks) : null, [blocks, isWebMerged])
 
   const severityStyle = getSeverityStyle(severity)
   const forceStyle: React.CSSProperties = isForce ? {
@@ -925,7 +980,7 @@ function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: Re
               <ContributorAvatars contributors={contributors} showLabel />
             </div>
 
-            <StructuredChanges desc={item.update_desc} />
+            <ReleaseNotes blocks={blocks} />
 
             {item.builds && <DesktopDownloads builds={item.builds} compact />}
           </div>
@@ -938,9 +993,11 @@ function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: Re
 function LatestReleaseSpotlight({ item, severity }: { item: ReleaseEntry; severity: VersionSeverity }) {
   const isWeb = item.os === 'web'
   const dateObj = dayjs(item.created_at)
-  const stats = useMemo(() => getChangeStats(item.update_desc), [item.update_desc])
-  const contributors = useMemo(() => parseContributors(item.update_desc), [item.update_desc])
+  const blocks = useMemo(() => noteBlocks(item, viewerOS), [item])
+  const stats = useMemo(() => blockStats(blocks), [blocks])
+  const contributors = useMemo(() => blockContributors(blocks), [blocks])
   const isWebMerged = isWeb && TIME_TAG_PATTERN.test(item.update_desc)
+  const downloadHref = safeDownloadUrl(item.download_url)
 
   return (
     <div style={{
@@ -1007,7 +1064,7 @@ function LatestReleaseSpotlight({ item, severity }: { item: ReleaseEntry; severi
       </div>
 
       <div style={{ marginBottom: space[4] }}>
-        <StructuredChanges desc={item.update_desc} />
+        <ReleaseNotes blocks={blocks} />
       </div>
 
       <div style={{
@@ -1039,9 +1096,9 @@ function LatestReleaseSpotlight({ item, severity }: { item: ReleaseEntry; severi
         <span style={{ flex: 1 }} />
         {item.builds ? (
           <DesktopDownloads builds={item.builds} />
-        ) : safeDownloadUrl(item.download_url) ? (
+        ) : downloadHref ? (
           <a
-            href={safeDownloadUrl(item.download_url)!}
+            href={downloadHref}
             target="_blank"
             rel="noopener noreferrer"
             style={{

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { detectViewerOS, getVersionSeverity, groupReleases, orderBuilds, parseContributors, parseUpdateDesc, safeDownloadUrl } from './utils'
+import { detectViewerOS, getVersionSeverity, groupReleases, noteBlocks, orderBuilds, parseContributors, parseUpdateDesc, safeDownloadUrl } from './utils'
 import type { AppVersion } from './utils'
 
 describe('parseContributors', () => {
@@ -60,6 +60,13 @@ describe('getVersionSeverity', () => {
     expect(getVersionSeverity('1.0.0')).toBe('initial')
   })
 
+  it('does not call the oldest build of a long-lived 1.0.0 an initial release', () => {
+    // Where the semver sits still and only the build number advances, the oldest
+    // row in any window would otherwise be stamped "Initial Release".
+    expect(getVersionSeverity('1.0.0(62)')).toBe('unknown')
+    expect(getVersionSeverity('1.0.0(1)')).toBe('initial')
+  })
+
   it('tags nothing when there is no predecessor to diff against', () => {
     expect(getVersionSeverity('3.2.1')).toBe('unknown')
     expect(getVersionSeverity('3.2.1', 'not-a-version')).toBe('unknown')
@@ -92,13 +99,15 @@ describe('groupReleases', () => {
     expect(rest).toEqual([])
     expect(entry.app_version).toBe('1.0.0')
     expect(entry.builds).toEqual([
-      { os: 'windows', download_url: 'https://x/setup.exe', created_at: '2026-08-20 16:34:04', is_force: 0 },
-      { os: 'macos', download_url: 'https://x/octo.dmg', created_at: '2026-08-20 14:18:06', is_force: 0 },
+      { os: 'windows', download_url: 'https://x/setup.exe', created_at: '2026-08-20 16:34:04', is_force: 0, update_desc: 'Windows 桌面端 1.0.0 版本发布' },
+      { os: 'macos', download_url: 'https://x/octo.dmg', created_at: '2026-08-20 14:18:06', is_force: 0, update_desc: 'Mac 桌面端 1.0.0 版本发布' },
     ])
-    // The card is dated by the newest build, and keeps both sets of notes.
+    // The card is dated by the newest build, and every build's notes are reachable.
     expect(entry.created_at).toBe('2026-08-20 16:34:04')
-    expect(entry.update_desc).toContain('Windows 桌面端 1.0.0 版本发布')
-    expect(entry.update_desc).toContain('Mac 桌面端 1.0.0 版本发布')
+    expect(noteBlocks(entry).map((block) => block.desc)).toEqual([
+      'Windows 桌面端 1.0.0 版本发布',
+      'Mac 桌面端 1.0.0 版本发布',
+    ])
   })
 
   it('keeps identical per-OS notes from being repeated on the card', () => {
@@ -107,7 +116,8 @@ describe('groupReleases', () => {
       release({ os: 'macos', app_version: '2.1.0', update_desc: '新增：全局搜索' }),
     ])
 
-    expect(entry.update_desc).toBe('新增：全局搜索')
+    // One block, unlabelled: both builds said the same thing.
+    expect(noteBlocks(entry)).toEqual([{ os: [], desc: '新增：全局搜索' }])
   })
 
   it('links the newest build when one OS ships the same version twice, in either feed order', () => {
@@ -117,7 +127,7 @@ describe('groupReleases', () => {
     for (const feed of [[newest, oldest], [oldest, newest]]) {
       const [entry] = groupReleases(feed)
       expect(entry.builds).toEqual([
-        { os: 'windows', download_url: 'https://x/setup-2.exe', created_at: '2026-08-20 18:00:00', is_force: 1 },
+        { os: 'windows', download_url: 'https://x/setup-2.exe', created_at: '2026-08-20 18:00:00', is_force: 1, update_desc: '' },
       ])
       expect(entry.created_at).toBe('2026-08-20 18:00:00')
       expect(entry.is_force).toBe(1)
@@ -148,22 +158,27 @@ describe('groupReleases', () => {
     ])
   })
 
-  it('drops a line repeated inside one OS note as well as across two', () => {
+  it('sorts the deploys inside a web day card newest first', () => {
+    // The feed arrives in updated_at order, which says nothing about deploy time.
     const [entry] = groupReleases([
-      release({ os: 'windows', app_version: '4.0.0', update_desc: '修复：A' }),
-      release({ os: 'macos', app_version: '4.0.0', update_desc: '新增：B\n新增：B' }),
+      release({ os: 'web', update_desc: '优化：早上那次', created_at: '2026-08-19 09:00:00' }),
+      release({ os: 'web', update_desc: '修复：晚上那次', created_at: '2026-08-19 20:00:00' }),
     ])
 
-    expect(entry.update_desc.split('\n')).toEqual(['修复：A', '新增：B'])
+    expect(entry.created_at).toBe('2026-08-19 20:00:00')
+    expect(entry.update_desc).toBe('@@TIME:20:00@@\n修复：晚上那次\n@@TIME:09:00@@\n优化：早上那次')
   })
 
-  it('unions per-OS notes line by line instead of dropping a shorter set', () => {
+  it('never loses a line that only one OS filed', () => {
     const [entry] = groupReleases([
       release({ os: 'windows', app_version: '2.1.0', update_desc: '修复：启动崩溃\n新增：全局搜索' }),
       release({ os: 'macos', app_version: '2.1.0', update_desc: '修复：启动崩溃\n新增：菜单栏图标' }),
     ])
 
-    expect(entry.update_desc.split('\n')).toEqual(['修复：启动崩溃', '新增：全局搜索', '新增：菜单栏图标'])
+    expect(noteBlocks(entry)).toEqual([
+      { os: ['windows'], desc: '修复：启动崩溃\n新增：全局搜索' },
+      { os: ['macos'], desc: '修复：启动崩溃\n新增：菜单栏图标' },
+    ])
   })
 
   it('hands back copies, never the objects the caller passed in', () => {
@@ -218,9 +233,9 @@ describe('detectViewerOS', () => {
 
 describe('orderBuilds', () => {
   const builds = [
-    { os: 'windows', download_url: 'a.exe', created_at: '2026-08-20 16:00:00', is_force: 0 },
-    { os: 'macos', download_url: 'a.dmg', created_at: '2026-08-20 14:00:00', is_force: 0 },
-    { os: 'linux', download_url: 'a.AppImage', created_at: '2026-08-20 12:00:00', is_force: 0 },
+    { os: 'windows', download_url: 'a.exe', created_at: '2026-08-20 16:00:00', is_force: 0, update_desc: '' },
+    { os: 'macos', download_url: 'a.dmg', created_at: '2026-08-20 14:00:00', is_force: 0, update_desc: '' },
+    { os: 'linux', download_url: 'a.AppImage', created_at: '2026-08-20 12:00:00', is_force: 0, update_desc: '' },
   ]
 
   it("leads with the visitor's own platform", () => {
@@ -253,5 +268,62 @@ describe('safeDownloadUrl', () => {
     expect(safeDownloadUrl('java\tscript:alert(1)')).toBeNull()
     expect(safeDownloadUrl(' data:text/html,<script>alert(1)</script>')).toBeNull()
     expect(safeDownloadUrl('')).toBeNull()
+    expect(safeDownloadUrl(null)).toBeNull()
+    expect(safeDownloadUrl(undefined)).toBeNull()
+  })
+
+  it('refuses a network-path reference, which is not the relative path it looks like', () => {
+    expect(safeDownloadUrl('//attacker.example/x.exe')).toBeNull()
+    expect(safeDownloadUrl('\\\\attacker.example\\x.exe')).toBeNull()
+  })
+})
+
+
+describe('noteBlocks', () => {
+  it("keeps each platform's lines under the section that platform filed them in", () => {
+    // parseUpdateDesc is stateful: a 【…】 heading owns every line below it. Merging
+    // the two notes into one document filed the macOS-only security fix under
+    // Windows's trailing 新增 heading.
+    const [entry] = groupReleases([
+      release({ os: 'windows', app_version: '1.0.0', created_at: '2026-08-20 16:00:00', update_desc: '【安全】\n升级 Electron 依赖\n【新增】\n托盘菜单' }),
+      release({ os: 'macos', app_version: '1.0.0', created_at: '2026-08-20 14:00:00', update_desc: '【安全】\n升级 Electron 依赖\n修复 Gatekeeper 绕过\n【新增】\n托盘菜单' }),
+    ])
+
+    const blocks = noteBlocks(entry)
+    expect(blocks.map((block) => block.os)).toEqual([['windows'], ['macos']])
+
+    const macOS = parseUpdateDesc(blocks[1].desc)
+    expect(macOS.security.map((c) => c.text)).toEqual(['Electron 依赖', 'Gatekeeper 绕过'])
+    expect(macOS.added.map((c) => c.text)).toEqual(['托盘菜单'])
+    for (const block of blocks) {
+      expect(parseUpdateDesc(block.desc).added.map((c) => c.text)).not.toContain('Gatekeeper 绕过')
+    }
+  })
+
+  it("leads with the visitor's own platform", () => {
+    const [entry] = groupReleases([
+      release({ os: 'windows', app_version: '1.0.0', update_desc: 'Windows 版' }),
+      release({ os: 'macos', app_version: '1.0.0', update_desc: 'Mac 版' }),
+    ])
+
+    expect(noteBlocks(entry, 'macos').map((block) => block.os)).toEqual([['macos'], ['windows']])
+  })
+
+  it('labels a block with every platform sharing it', () => {
+    const [entry] = groupReleases([
+      release({ os: 'windows', app_version: '1.0.0', update_desc: '共同的说明' }),
+      release({ os: 'linux', app_version: '1.0.0', update_desc: '共同的说明' }),
+      release({ os: 'macos', app_version: '1.0.0', update_desc: 'Mac 专属说明' }),
+    ])
+
+    expect(noteBlocks(entry, null)).toEqual([
+      { os: ['windows', 'linux'], desc: '共同的说明' },
+      { os: ['macos'], desc: 'Mac 专属说明' },
+    ])
+  })
+
+  it('passes a non-desktop card through as a single block', () => {
+    const [entry] = groupReleases([release({ os: 'ios', app_version: '3.4.1', update_desc: '修复：推送角标' })])
+    expect(noteBlocks(entry)).toEqual([{ os: [], desc: '修复：推送角标' }])
   })
 })
