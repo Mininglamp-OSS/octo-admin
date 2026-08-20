@@ -30,8 +30,8 @@ import 'dayjs/locale/zh-cn'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import api from '../../api'
 import { colors, radius, space, font } from '../../styles/tokens'
-import { parseUpdateDesc, getVersionSeverity, formatVersion, parseContributors } from './utils'
-import type { VersionSeverity, ChangeCategory, Contributor } from './utils'
+import { parseUpdateDesc, getVersionSeverity, formatVersion, parseContributors, detectViewerOS, groupReleases, desktopPlatforms } from './utils'
+import type { VersionSeverity, ChangeCategory, Contributor, ViewerOS, AppVersion, DesktopBuild, ReleaseEntry } from './utils'
 import type { PlatformKey } from '../../styles/tokens'
 import { AnalyticsPanel } from './AnalyticsPanel'
 import { useTheme } from '../../hooks/useTheme'
@@ -39,15 +39,6 @@ import type { Theme } from '../../hooks/useTheme'
 
 dayjs.locale('zh-cn')
 dayjs.extend(relativeTime)
-
-interface AppVersion {
-  app_version: string
-  os: string
-  is_force: number
-  update_desc: string
-  download_url: string
-  created_at: string
-}
 
 const ChromeIcon = () => (
   <svg width="1em" height="1em" viewBox="0 0 24 24" style={{ verticalAlign: '-0.125em' }}>
@@ -73,10 +64,22 @@ const platformConfig: Record<string, { label: string; icon: React.ReactNode; ton
   chrome: { label: 'Chrome 扩展', icon: <ChromeIcon />, tone: 'chrome', color: '#4285f4', colorDark: '#60a5fa' },
 }
 
-/* Desktop builds are versioned, downloadable artifacts — one card per OS with its
-   own installer link. Only `web` collapses into a per-day card, since web ships
-   several times a day and has nothing to download. */
-const desktopPlatforms = new Set(['windows', 'macos', 'linux'])
+/** Fallback order when we cannot tell what the visitor is running. */
+const desktopOrder = ['windows', 'macos', 'linux']
+
+const viewerOS: ViewerOS | null = typeof navigator === 'undefined'
+  ? null
+  : detectViewerOS(navigator.userAgent, navigator.maxTouchPoints)
+
+/** The visitor's own build first; everything else in a stable order. */
+function orderBuilds(builds: DesktopBuild[]): DesktopBuild[] {
+  return [...builds].sort((a, b) => {
+    if (a.os === b.os) return 0
+    if (a.os === viewerOS) return -1
+    if (b.os === viewerOS) return 1
+    return desktopOrder.indexOf(a.os) - desktopOrder.indexOf(b.os)
+  })
+}
 
 const tabItems = [
   { key: 'all', label: '全部', icon: <UnorderedListOutlined />, color: '', colorDark: '' },
@@ -534,6 +537,66 @@ function PlatformBadge({ platform }: { platform: string }) {
   )
 }
 
+/** Every platform this release covers — desktop shows one badge per installer. */
+function EntryBadges({ entry }: { entry: ReleaseEntry }) {
+  if (!entry.builds) return <PlatformBadge platform={entry.os} />
+  return (
+    <>
+      {orderBuilds(entry.builds).map((build) => (
+        <PlatformBadge key={build.os} platform={build.os} />
+      ))}
+    </>
+  )
+}
+
+/**
+ * One link per desktop installer. When we recognise the visitor's OS their build
+ * leads and is the only filled button; otherwise every build is offered with
+ * equal weight rather than guessing at them.
+ */
+function DesktopDownloads({ builds, compact }: { builds: DesktopBuild[]; compact?: boolean }) {
+  const ordered = orderBuilds(builds).filter((build) => build.download_url)
+  if (ordered.length === 0) return null
+  const knowsViewer = ordered[0].os === viewerOS
+
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: compact ? space[4] : space[2],
+      flexWrap: 'wrap',
+      marginTop: compact ? space[3] : 0,
+    }}>
+      {ordered.map((build, index) => {
+        const isLead = index === 0 && knowsViewer
+        const base: React.CSSProperties = {
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
+          fontSize: font.size.sm,
+          fontWeight: isLead ? font.weight.semibold : font.weight.medium,
+          textDecoration: 'none',
+          whiteSpace: 'nowrap',
+        }
+        const style: React.CSSProperties = compact
+          ? { ...base, color: isLead || !knowsViewer ? 'var(--brand)' : colors.text.tertiary }
+          : isLead
+            ? { ...base, color: 'var(--brand-contrast)', background: 'var(--brand-solid)', border: '1px solid var(--brand-solid)', padding: '5px 14px', borderRadius: radius.sm }
+            : knowsViewer
+              ? { ...base, color: colors.text.secondary, padding: '5px 10px' }
+              : { ...base, color: 'var(--brand)', border: '1px solid var(--brand)', padding: '4px 12px', borderRadius: radius.sm }
+
+        return (
+          <a key={build.os} href={build.download_url} target="_blank" rel="noopener noreferrer" style={style}>
+            <DownloadOutlined />
+            下载 {platformConfig[build.os]?.label ?? build.os}
+          </a>
+        )
+      })}
+    </div>
+  )
+}
+
 const CATEGORY_CONFIG: Record<ChangeCategory, { label: string; icon: React.ReactNode; color: { icon: string; bg: string; text: string } }> = {
   security: { label: '安全', icon: <LockOutlined />, color: colors.category.security },
   removed: { label: '移除', icon: <MinusCircleOutlined />, color: colors.category.removed },
@@ -746,9 +809,8 @@ const DOT_SIZE = 14
 const DOT_BORDER = 3
 const TIME_COL_WIDTH = 72
 
-function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: AppVersion; isFirst?: boolean; prevVersion?: string; prevTimeLabel?: string }) {
+function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: ReleaseEntry; isFirst?: boolean; prevVersion?: string; prevTimeLabel?: string }) {
   const isWeb = item.os === 'web'
-  const isDesktop = desktopPlatforms.has(item.os)
   const severity = getVersionSeverity(item.app_version, prevVersion)
   const isForce = item.is_force === 1
   const contributors = useMemo(() => parseContributors(item.update_desc), [item.update_desc])
@@ -835,13 +897,13 @@ function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: Ap
                   : (severity === 'major' || severity === 'initial') ? font.size.xl : font.size.lg,
                 fontWeight: isWeb
                   ? font.weight.semibold
-                  : severity === 'patch' ? font.weight.bold : font.weight.black,
+                  : severity === 'patch' || severity === 'unknown' ? font.weight.bold : font.weight.black,
                 color: isWeb ? colors.text.secondary : colors.text.primary,
                 letterSpacing: '-0.02em',
               }}>
                 {isWeb ? `${item.created_at.slice(5, 10)} 更新` : `v${formatVersion(item.app_version)}`}
               </span>
-              <PlatformBadge platform={item.os} />
+              <EntryBadges entry={item} />
               {isWebMerged && stats && (
                 <span style={{ fontSize: font.size.xs, color: colors.text.tertiary }}>
                   {[
@@ -873,26 +935,7 @@ function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: Ap
 
             <StructuredChanges desc={item.update_desc} />
 
-            {isDesktop && item.download_url && (
-              <a
-                href={item.download_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  marginTop: space[3],
-                  fontSize: font.size.sm,
-                  fontWeight: font.weight.medium,
-                  color: 'var(--brand)',
-                  textDecoration: 'none',
-                }}
-              >
-                <DownloadOutlined />
-                下载 {platformConfig[item.os]?.label ?? item.os}
-              </a>
-            )}
+            {item.builds && <DesktopDownloads builds={item.builds} compact />}
           </div>
         </div>
       </div>
@@ -900,7 +943,7 @@ function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: Ap
   )
 }
 
-function LatestReleaseSpotlight({ item, severity }: { item: AppVersion; severity: VersionSeverity }) {
+function LatestReleaseSpotlight({ item, severity }: { item: ReleaseEntry; severity: VersionSeverity }) {
   const isWeb = item.os === 'web'
   const dateObj = dayjs(item.created_at)
   const stats = useMemo(() => getChangeStats(item.update_desc), [item.update_desc])
@@ -957,7 +1000,7 @@ function LatestReleaseSpotlight({ item, severity }: { item: AppVersion; severity
         <span style={{ fontSize: isWeb ? 22 : 28, fontWeight: isWeb ? font.weight.semibold : font.weight.black, color: isWeb ? colors.text.secondary : colors.text.primary, letterSpacing: '-0.03em' }}>
           {isWeb ? `${item.created_at.slice(5, 10)} 更新` : `v${formatVersion(item.app_version)}`}
         </span>
-        <PlatformBadge platform={item.os} />
+        <EntryBadges entry={item} />
         {isWebMerged && (
           <span style={{ fontSize: font.size.xs, color: colors.text.tertiary }}>
             {[
@@ -1002,7 +1045,9 @@ function LatestReleaseSpotlight({ item, severity }: { item: AppVersion; severity
           </span>
         )}
         <span style={{ flex: 1 }} />
-        {item.download_url && (
+        {item.builds ? (
+          <DesktopDownloads builds={item.builds} />
+        ) : item.download_url ? (
           <a
             href={item.download_url}
             target="_blank"
@@ -1022,9 +1067,9 @@ function LatestReleaseSpotlight({ item, severity }: { item: AppVersion; severity
             }}
           >
             <DownloadOutlined />
-            {desktopPlatforms.has(item.os) ? `下载 ${platformConfig[item.os]?.label ?? item.os}` : 'Download'}
+            Download
           </a>
-        )}
+        ) : null}
       </div>
     </div>
   )
@@ -1056,30 +1101,7 @@ export default function Changelog() {
       : activePlatform === 'desktop'
         ? data.filter((v) => desktopPlatforms.has(v.os))
         : data.filter((v) => v.os === activePlatform)
-
-    const result: AppVersion[] = []
-    for (const item of raw) {
-      const isWeb = item.os === 'web'
-      if (!isWeb) {
-        result.push(item)
-        continue
-      }
-      const date = item.created_at.slice(0, 10)
-      const time = item.created_at.slice(11, 16)
-      const taggedDesc = `@@TIME:${time}@@\n${item.update_desc}`
-      const prev = result.length > 0 ? result[result.length - 1] : null
-      if (prev && prev.os === 'web' && prev.created_at.slice(0, 10) === date) {
-        result[result.length - 1] = {
-          ...prev,
-          created_at: prev.created_at > item.created_at ? prev.created_at : item.created_at,
-          update_desc: prev.update_desc + '\n' + taggedDesc,
-          is_force: prev.is_force || item.is_force,
-        }
-      } else {
-        result.push({ ...item, update_desc: taggedDesc })
-      }
-    }
-    return result
+    return groupReleases(raw)
   }, [data, activePlatform])
 
   const latestItem = filtered[0] ?? null
@@ -1090,12 +1112,13 @@ export default function Changelog() {
     const lastSeenByPlatform: Record<string, string> = {}
     for (let i = filtered.length - 1; i >= 0; i--) {
       const item = filtered[i]
-      // Per-OS history: a Windows build compares against the previous Windows
-      // build, so severity never diffs across platforms.
-      if (lastSeenByPlatform[item.os] !== undefined) {
-        map.set(i, lastSeenByPlatform[item.os])
+      // Desktop shares one version history — its builds ship together — while every
+      // other platform keeps its own, so severity never diffs across platforms.
+      const platform = desktopPlatforms.has(item.os) ? 'desktop' : item.os
+      if (lastSeenByPlatform[platform] !== undefined) {
+        map.set(i, lastSeenByPlatform[platform])
       }
-      lastSeenByPlatform[item.os] = item.app_version
+      lastSeenByPlatform[platform] = item.app_version
     }
     return map
   }, [filtered])

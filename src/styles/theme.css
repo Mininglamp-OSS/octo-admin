@@ -19,6 +19,8 @@
   --brand-hover: #4f46e5;
   --brand-bg: #eef2ff;
   --brand-text-on-bg: #4338ca;
+  --brand-solid: #4f46e5;
+  --brand-contrast: #ffffff;
 
   --platform-android-base: #3ddc84;
   --platform-android-bg: #ecfdf5;
@@ -137,6 +139,8 @@
   --brand-hover: #a5b4fc;
   --brand-bg: rgba(99, 102, 241, 0.15);
   --brand-text-on-bg: #a5b4fc;
+  --brand-solid: #818cf8;
+  --brand-contrast: #0b1220;
 
   --platform-android-base: #4ade80;
   --platform-android-bg: #064e3b;
@@ -263,6 +267,8 @@
     --brand-hover: #a5b4fc;
     --brand-bg: rgba(99, 102, 241, 0.15);
     --brand-text-on-bg: #a5b4fc;
+    --brand-solid: #818cf8;
+    --brand-contrast: #0b1220;
 
     --platform-android-base: #4ade80;
     --platform-android-bg: #064e3b;

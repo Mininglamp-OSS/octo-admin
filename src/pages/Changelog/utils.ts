@@ -144,7 +144,7 @@ export function parseUpdateDesc(desc: string): ParsedChanges {
   return result
 }
 
-export type VersionSeverity = 'major' | 'minor' | 'patch' | 'build' | 'pre-release' | 'initial'
+export type VersionSeverity = 'major' | 'minor' | 'patch' | 'build' | 'pre-release' | 'initial' | 'unknown'
 
 function parseSemVer(version: string): [number, number, number] | null {
   const cleaned = version.replace(/\(.*\)/, '')
@@ -160,18 +160,21 @@ function parseBuildNumber(version: string): number | null {
 
 export function getVersionSeverity(version: string, prevVersion?: string): VersionSeverity {
   const cur = parseSemVer(version)
-  if (!cur) return 'patch'
+  // 'unknown' means "nothing to compare against" and renders no tag at all —
+  // better than guessing 'patch' for the oldest entry we happen to hold.
+  if (!cur) return 'unknown'
 
   if (cur[0] === 0) return 'pre-release'
 
   const build = parseBuildNumber(version)
   if (build === 1) return 'initial'
 
-  // 1.0.0 with nothing before it is a first stable release, not a patch.
-  if (!prevVersion) return cur[0] === 1 && cur[1] === 0 && cur[2] === 0 ? 'initial' : 'patch'
+  // 1.0.0 with nothing before it is a first stable release; any other version
+  // with no predecessor is simply the oldest one we know about.
+  if (!prevVersion) return cur[0] === 1 && cur[1] === 0 && cur[2] === 0 ? 'initial' : 'unknown'
 
   const prev = parseSemVer(prevVersion)
-  if (!prev) return 'patch'
+  if (!prev) return 'unknown'
 
   if (prev[0] === 0 && cur[0] >= 1 && cur[1] === 0 && cur[2] === 0) return 'initial'
   if (cur[0] > prev[0]) return 'major'
@@ -182,6 +185,108 @@ export function getVersionSeverity(version: string, prevVersion?: string): Versi
   if (build !== null && prevBuild !== null && build > prevBuild) return 'build'
 
   return 'patch'
+}
+
+export interface AppVersion {
+  app_version: string
+  os: string
+  is_force: number
+  update_desc: string
+  download_url: string
+  created_at: string
+}
+
+export interface DesktopBuild {
+  os: string
+  download_url: string
+}
+
+/** One card on the timeline. A desktop release carries every OS build of that
+ *  version, so 1.0.0 is a single entry offering both installers. */
+export interface ReleaseEntry extends AppVersion {
+  builds?: DesktopBuild[]
+}
+
+/* Desktop builds are versioned, downloadable artifacts. All builds of one version
+   share a card — 1.0.0 is a single release that happens to ship two installers —
+   while `web` collapses per day, since it ships several times a day with nothing
+   to download. */
+export const desktopPlatforms = new Set(['windows', 'macos', 'linux'])
+
+/**
+ * Collapse the raw feed into timeline cards: desktop builds group by version,
+ * web deploys group by day, everything else stands alone.
+ *
+ * Expects `raw` newest first — the order the API returns.
+ */
+export function groupReleases(raw: AppVersion[]): ReleaseEntry[] {
+  const result: ReleaseEntry[] = []
+  // Index by grouping key rather than only checking the last entry, so a release
+  // landing between two web deploys no longer splits that day in two.
+  const desktopByVersion = new Map<string, number>()
+  const webByDate = new Map<string, number>()
+
+  for (const item of raw) {
+    if (desktopPlatforms.has(item.os)) {
+      const at = desktopByVersion.get(item.app_version)
+      if (at === undefined) {
+        desktopByVersion.set(item.app_version, result.length)
+        result.push({ ...item, builds: [{ os: item.os, download_url: item.download_url }] })
+        continue
+      }
+      const entry = result[at]
+      // Newest first, so an OS already present holds the newer build of this version.
+      if (entry.builds!.some((build) => build.os === item.os)) continue
+      entry.builds!.push({ os: item.os, download_url: item.download_url })
+      entry.created_at = entry.created_at > item.created_at ? entry.created_at : item.created_at
+      entry.is_force = entry.is_force || item.is_force
+      // Per-OS notes usually repeat; keep whatever this build says on its own.
+      if (!entry.update_desc.includes(item.update_desc)) {
+        entry.update_desc = entry.update_desc + '\n' + item.update_desc
+      }
+      continue
+    }
+
+    if (item.os !== 'web') {
+      result.push(item)
+      continue
+    }
+
+    const date = item.created_at.slice(0, 10)
+    const taggedDesc = `@@TIME:${item.created_at.slice(11, 16)}@@\n${item.update_desc}`
+    const at = webByDate.get(date)
+    if (at === undefined) {
+      webByDate.set(date, result.length)
+      result.push({ ...item, update_desc: taggedDesc })
+      continue
+    }
+    const entry = result[at]
+    entry.created_at = entry.created_at > item.created_at ? entry.created_at : item.created_at
+    entry.update_desc = entry.update_desc + '\n' + taggedDesc
+    entry.is_force = entry.is_force || item.is_force
+  }
+
+  return result
+}
+
+export type ViewerOS = 'windows' | 'macos' | 'linux'
+
+/**
+ * Best-effort sniff of the visitor's desktop OS, used only to promote the
+ * matching installer. Returns null whenever we cannot be sure — mobile, ChromeOS,
+ * anything unrecognised — and the page then shows every build with equal weight.
+ */
+export function detectViewerOS(userAgent: string, maxTouchPoints = 0): ViewerOS | null {
+  if (/Android/i.test(userAgent)) return null
+  if (/iPhone|iPod/i.test(userAgent)) return null
+  if (/CrOS/i.test(userAgent)) return null
+  if (/Windows NT/i.test(userAgent)) return 'windows'
+  // iPadOS 13+ ships a desktop Safari UA claiming "Macintosh"; the touch points
+  // are what still give it away.
+  if (/iPad/i.test(userAgent)) return null
+  if (/Mac OS X|Macintosh/i.test(userAgent)) return maxTouchPoints > 1 ? null : 'macos'
+  if (/Linux|X11/i.test(userAgent)) return 'linux'
+  return null
 }
 
 export interface Contributor {
