@@ -541,7 +541,7 @@ function EntryBadges({ entry }: { entry: ReleaseEntry }) {
  * leads and is the only filled button; otherwise every build is offered with
  * equal weight rather than guessing at them.
  */
-function DesktopDownloads({ builds, compact }: { builds: DesktopBuild[]; compact?: boolean }) {
+function DesktopDownloads({ builds, compact, large }: { builds: DesktopBuild[]; compact?: boolean; large?: boolean }) {
   const ordered = orderBuilds(builds, viewerOS)
     .map((build) => ({ ...build, href: safeDownloadUrl(build.download_url) }))
     .filter((build): build is typeof build & { href: string } => build.href !== null)
@@ -561,22 +561,26 @@ function DesktopDownloads({ builds, compact }: { builds: DesktopBuild[]; compact
         const base: React.CSSProperties = {
           display: 'inline-flex',
           alignItems: 'center',
-          gap: 4,
-          fontSize: font.size.sm,
+          gap: large ? 6 : 4,
+          fontSize: large ? font.size.base : font.size.sm,
           fontWeight: isLead ? font.weight.semibold : font.weight.medium,
           textDecoration: 'none',
           whiteSpace: 'nowrap',
         }
-        const quiet: React.CSSProperties = { color: colors.text.secondary, textDecoration: 'underline' }
+        // Underline carries the affordance inline; at button size a border reads
+        // better next to the filled one.
+        const quiet: React.CSSProperties = large
+          ? { color: colors.text.secondary, background: colors.surface.card, border: `1px solid ${colors.surface.border}`, borderRadius: radius.md }
+          : { color: colors.text.secondary, textDecoration: 'underline' }
         const style: React.CSSProperties = compact
           ? isLead || !knowsViewer
             ? { ...base, color: 'var(--brand-solid)' }
             : { ...base, ...quiet }
           : isLead
-            ? { ...base, color: 'var(--brand-contrast)', background: 'var(--brand-solid)', border: '1px solid var(--brand-solid)', padding: '5px 14px', borderRadius: radius.sm }
+            ? { ...base, color: 'var(--brand-contrast)', background: 'var(--brand-solid)', border: '1px solid var(--brand-solid)', padding: large ? '10px 22px' : '5px 14px', borderRadius: large ? radius.md : radius.sm }
             : knowsViewer
-              ? { ...base, ...quiet, padding: '5px 10px' }
-              : { ...base, color: 'var(--brand-solid)', border: '1px solid var(--brand-solid)', padding: '4px 12px', borderRadius: radius.sm }
+              ? { ...base, ...quiet, padding: large ? '10px 14px' : '5px 10px' }
+              : { ...base, color: 'var(--brand-solid)', border: '1px solid var(--brand-solid)', padding: large ? '9px 20px' : '4px 12px', borderRadius: large ? radius.md : radius.sm }
 
         return (
           <a key={build.os} href={build.href} target="_blank" rel="noopener noreferrer" style={style}>
@@ -743,37 +747,51 @@ function DesktopDownloadBar({ downloads }: { downloads: DesktopDownload[] }) {
 
   const versions = Array.from(new Set(downloads.map((build) => build.app_version)))
   const sharedVersion = versions.length === 1 ? versions[0] : null
+  const platforms = downloads.map((build) => platformConfig[build.os]?.label ?? build.os).join('、')
 
   return (
     <div style={{
       display: 'flex',
       alignItems: 'center',
-      gap: space[4],
+      gap: space[5],
       flexWrap: 'wrap',
-      padding: `${space[4]}px ${space[5]}px`,
-      marginBottom: space[6],
-      background: colors.surface.card,
-      border: `1px solid ${colors.surface.border}`,
-      borderRadius: radius.lg,
+      padding: `${space[6]}px ${space[6]}px`,
+      marginBottom: space[8],
+      background: 'var(--brand-bg)',
+      border: '1px solid color-mix(in srgb, var(--brand) 24%, transparent)',
+      borderRadius: radius.xl,
     }}>
       <span style={{
         display: 'inline-flex',
         alignItems: 'center',
-        gap: space[2],
-        fontSize: font.size.base,
-        fontWeight: font.weight.semibold,
-        color: colors.text.primary,
+        justifyContent: 'center',
+        width: 48,
+        height: 48,
+        flexShrink: 0,
+        borderRadius: radius.lg,
+        background: colors.surface.card,
+        border: '1px solid color-mix(in srgb, var(--brand) 18%, transparent)',
       }}>
-        <DesktopOutlined style={{ color: colors.platform.desktop.base }} />
-        桌面端
-        {sharedVersion && (
-          <span style={{ fontSize: font.size.sm, fontWeight: font.weight.medium, color: colors.text.tertiary }}>
-            v{formatVersion(sharedVersion)}
-          </span>
-        )}
+        <DesktopOutlined style={{ fontSize: 22, color: 'var(--brand-text-on-bg)' }} />
       </span>
-      <span style={{ flex: 1 }} />
-      <DesktopDownloads builds={downloads} />
+
+      <div style={{ minWidth: 0 }}>
+        <div style={{
+          fontSize: font.size.lg,
+          fontWeight: font.weight.bold,
+          color: colors.text.primary,
+          letterSpacing: '-0.01em',
+          lineHeight: 1.3,
+        }}>
+          Octo 桌面端
+        </div>
+        <div style={{ fontSize: font.size.base, color: colors.text.secondary, marginTop: 2 }}>
+          {sharedVersion && `v${formatVersion(sharedVersion)} · `}支持 {platforms}
+        </div>
+      </div>
+
+      <span style={{ flex: 1, minWidth: space[4] }} />
+      <DesktopDownloads builds={downloads} large />
     </div>
   )
 }
