@@ -745,6 +745,14 @@ describe('formatVersion', () => {
     // isPrerelease reads underscores in a qualifier; the two readers have to agree,
     // or a card is titled v1.0.0-x86 for a build called 1.0.0-x86_64.
     expect(formatVersion('1.0.0-x86_64')).toBe('1.0.0-x86_64')
+    expect(formatVersion('1.0.1_rc1')).toBe('1.0.1_rc1')
+  })
+
+  it('does not read the separator of a date-shaped version as a qualifier', () => {
+    // isPrerelease splits on the dot as well, but a version is written with dots:
+    // accepting one here renders a 2026.04.16 web version as 2026.4.16.16.
+    expect(formatVersion('2026.04.16')).toBe('2026.4.16')
+    expect(formatVersion('2026.08.03')).toBe('2026.8.3')
   })
 
   it('hands back a string it cannot read a version out of', () => {
@@ -763,6 +771,21 @@ describe('offerVersionLabel', () => {
     // The band sits above a button handing over the release candidate; "v1.0.0"
     // there would name a release nobody can download yet.
     expect(offerVersionLabel([offer('1.0.0-rc1')])).toBe('v1.0.0-rc1')
+  })
+
+  it('says nothing over a prerelease however its qualifier is spelled', () => {
+    // isPrerelease reads _rc1 and .rc1; formatVersion does not read the dot. Asking
+    // "do these format alike" first therefore badged v1.0.0 over the button handing
+    // out the candidate — the label has to be gated on being one release, not on
+    // formatting alike.
+    for (const rc of ['1.0.0-rc1', '1.0.0_rc1', '1.0.0.rc1']) {
+      expect(offerVersionLabel([offer('1.0.0'), { ...offer(rc), os: 'macos' }])).toBeNull()
+    }
+  })
+
+  it('still labels a lone prerelease, which misdescribes nothing', () => {
+    expect(offerVersionLabel([offer('1.0.0-rc1')])).toBe('v1.0.0-rc1')
+    expect(offerVersionLabel([offer('1.0.0-rc1'), { ...offer('1.0.0-rc1'), os: 'macos' }])).toBe('v1.0.0-rc1')
   })
 
   it('reads two architectures of one version as one release', () => {

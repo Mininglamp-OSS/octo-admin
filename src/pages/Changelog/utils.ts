@@ -409,10 +409,17 @@ export function offerVersionLabel(offers: DesktopDownload[]): string | null {
   if (offers.length === 0) return null
   if (offers.some((offer) => parseSemVer(offer.app_version) === null)) return null
 
+  // Asked before anything else, because "these two format alike" and "these two are
+  // one release" are different claims and only the second is what a label makes. A
+  // qualifier spelled 1.0.0_rc1 is one isPrerelease() reads and formatVersion() does
+  // not, so formatting alike put v1.0.0 over the button handing out the candidate.
+  if (offers.some((offer) => isPrerelease(offer.app_version))) {
+    const single = new Set(offers.map((offer) => offer.app_version.trim().replace(/^v/i, '')))
+    return single.size === 1 ? `v${formatVersion([...single][0])}` : null
+  }
+
   const formatted = new Set(offers.map((offer) => formatVersion(offer.app_version.trim().replace(/^v/i, ''))))
   if (formatted.size === 1) return `v${[...formatted][0]}`
-
-  if (offers.some((offer) => isPrerelease(offer.app_version))) return null
 
   const shared = new Set(offers.map((offer) => {
     const triple = parseSemVer(offer.app_version)!
@@ -825,10 +832,14 @@ export function parseContributors(desc: string): Contributor[] {
 }
 
 /* Everything after the triple that a semver qualifier can carry: -rc1, -beta.2,
-   -x64, +arm64. Kept rather than dropped, so a card titled v1.0.0 is never a
-   1.0.0-rc1 — and, now that formatting alike is what "one release" means, so that
-   two strings only collapse into one label when they really are one release. */
-const VERSION_QUALIFIER = /\d+\.\d+(?:\.\d+)?([-+][0-9A-Za-z][0-9A-Za-z._+-]*)/
+   -x64, +arm64, _rc1. Kept rather than dropped, so a card titled v1.0.0 is never a
+   1.0.0-rc1.
+
+   The opener stops at `-+_` deliberately, though isPrerelease() also splits on `.`:
+   the dot is the version separator itself, so accepting it here reads the ".16" of
+   a 2026.04.16 web version as a qualifier and renders it as 2026.4.16.16. Ranking
+   can afford to be lenient about a separator; display cannot. */
+const VERSION_QUALIFIER = /\d+\.\d+(?:\.\d+)?([-+_][0-9A-Za-z][0-9A-Za-z._+-]*)/
 
 export function formatVersion(raw: string): string {
   const semver = parseSemVer(raw)
