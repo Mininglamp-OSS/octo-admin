@@ -12,8 +12,24 @@ import api, { ApiError } from '../api'
 import { APP_BOTS_TRANSIENT_TTL_MS, APP_BOTS_TTL_MS, useFeatureStore } from './feature'
 
 const apiGet = api.get as unknown as ReturnType<typeof vi.fn>
+const localStorageMock = vi.hoisted(() => {
+  const storageData = new Map<string, string>()
+  const storage: Storage = {
+    get length() {
+      return storageData.size
+    },
+    clear: () => storageData.clear(),
+    getItem: (key) => storageData.get(key) ?? null,
+    key: (index) => [...storageData.keys()][index] ?? null,
+    removeItem: (key) => storageData.delete(key),
+    setItem: (key, value) => storageData.set(key, value),
+  }
+  vi.stubGlobal('localStorage', storage)
+  return storage
+})
 
 beforeEach(() => {
+  vi.stubGlobal('localStorage', localStorageMock)
   localStorage.clear()
   apiGet.mockReset()
   useFeatureStore.getState().resetFeatures()
