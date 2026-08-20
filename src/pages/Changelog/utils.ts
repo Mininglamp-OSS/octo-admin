@@ -578,6 +578,22 @@ export function groupReleases(raw: AppVersion[]): ReleaseEntry[] {
  * matching installer. Returns null whenever we cannot be sure — mobile, ChromeOS,
  * anything unrecognised — and the page then shows every build with equal weight.
  */
+/**
+ * Whether the visitor is on a phone or a tablet, where a Windows or macOS installer
+ * is not merely unrecognised but unusable.
+ *
+ * detectViewerOS() already returns null for these, but null is equally what an
+ * unrecognised desktop returns — and that visitor is precisely the one who still
+ * needs the installer offered. Handheld is therefore asked as its own question
+ * rather than read off the absence of an answer to the other one.
+ */
+export function isHandheld(userAgent: string, maxTouchPoints = 0): boolean {
+  if (/Android|iPhone|iPod|iPad|Windows Phone|IEMobile/i.test(userAgent)) return true
+  // iPadOS 13+ ships a desktop Safari UA claiming "Macintosh"; the touch points are
+  // what still give it away.
+  return /Mac OS X|Macintosh/i.test(userAgent) && maxTouchPoints > 1
+}
+
 export function detectViewerOS(userAgent: string, maxTouchPoints = 0): ViewerOS | null {
   if (/Android/i.test(userAgent)) return null
   if (/iPhone|iPod/i.test(userAgent)) return null

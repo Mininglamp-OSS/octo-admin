@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { detectViewerOS, getVersionSeverity, groupReleases, latestDesktopDownloads, noteBlocks, offerVersionLabel, offeredAbove, orderBuilds, parseContributors, parseUpdateDesc, safeDownloadUrl } from './utils'
+import { detectViewerOS, isHandheld, getVersionSeverity, groupReleases, latestDesktopDownloads, noteBlocks, offerVersionLabel, offeredAbove, orderBuilds, parseContributors, parseUpdateDesc, safeDownloadUrl } from './utils'
 import type { AppVersion } from './utils'
 
 describe('parseContributors', () => {
@@ -228,6 +228,29 @@ describe('detectViewerOS', () => {
     expect(detectViewerOS('Mozilla/5.0 (X11; CrOS x86_64 14541.0.0)')).toBeNull()
     // iPadOS claims to be a Mac; the touch points are the tell.
     expect(detectViewerOS('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15', 5)).toBeNull()
+  })
+})
+
+describe('isHandheld', () => {
+  it('names the devices that cannot run an installer at all', () => {
+    expect(isHandheld('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)')).toBe(true)
+    expect(isHandheld('Mozilla/5.0 (Linux; Android 14; Pixel 8)')).toBe(true)
+    expect(isHandheld('Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X)')).toBe(true)
+    // iPadOS claims to be a Mac; the touch points are the tell.
+    expect(isHandheld('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15', 5)).toBe(true)
+  })
+
+  it('leaves every desktop alone, recognised or not', () => {
+    expect(isHandheld('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')).toBe(false)
+    expect(isHandheld('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36')).toBe(false)
+    expect(isHandheld('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36')).toBe(false)
+    // A Chromebook runs neither installer, but it is a computer: whoever visits
+    // from one is browsing on the class of device the offer is aimed at, and
+    // detectViewerOS staying silent is the whole answer there.
+    expect(isHandheld('Mozilla/5.0 (X11; CrOS x86_64 14541.0.0)')).toBe(false)
+    // The one UA that must not be read as a phone: a desktop nothing recognises,
+    // which is exactly who needs the offer.
+    expect(isHandheld('SomeBrowser/1.0')).toBe(false)
   })
 })
 

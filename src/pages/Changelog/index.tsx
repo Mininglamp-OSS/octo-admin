@@ -30,7 +30,7 @@ import 'dayjs/locale/zh-cn'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import api from '../../api'
 import { colors, radius, space, font } from '../../styles/tokens'
-import { parseUpdateDesc, getVersionSeverity, formatVersion, parseContributors, detectViewerOS, groupReleases, orderBuilds, noteBlocks, latestDesktopDownloads, offerVersionLabel, offeredAbove, safeDownloadUrl, desktopPlatforms } from './utils'
+import { parseUpdateDesc, getVersionSeverity, formatVersion, parseContributors, detectViewerOS, isHandheld, groupReleases, orderBuilds, noteBlocks, latestDesktopDownloads, offerVersionLabel, offeredAbove, safeDownloadUrl, desktopPlatforms } from './utils'
 import type { VersionSeverity, ChangeCategory, Contributor, ViewerOS, AppVersion, DesktopBuild, DesktopDownload, NoteBlock, ReleaseEntry } from './utils'
 import type { PlatformKey } from '../../styles/tokens'
 import { AnalyticsPanel } from './AnalyticsPanel'
@@ -67,6 +67,10 @@ const platformConfig: Record<string, { label: string; icon: React.ReactNode; ton
 const viewerOS: ViewerOS | null = typeof navigator === 'undefined'
   ? null
   : detectViewerOS(navigator.userAgent, navigator.maxTouchPoints)
+
+const viewerIsHandheld: boolean = typeof navigator === 'undefined'
+  ? false
+  : isHandheld(navigator.userAgent, navigator.maxTouchPoints)
 
 const tabItems = [
   { key: 'all', label: '全部', icon: <UnorderedListOutlined />, color: '', colorDark: '' },
@@ -782,13 +786,36 @@ function StructuredChanges({ desc }: { desc: string }) {
  * deploys within days, so the installer cannot only live where its release sits —
  * one button per OS that has a build, the visitor's own promoted.
  */
-export function DesktopDownloadBar({ downloads }: { downloads: DesktopDownload[] }) {
+export function DesktopDownloadBar({ downloads, handheld = viewerIsHandheld }: {
+  downloads: DesktopDownload[]
+  handheld?: boolean
+}) {
   if (downloads.length === 0) return null
 
   const versionLabel = offerVersionLabel(downloads)
   // Same order the buttons take, so the line does not read "Windows、macOS" above a
-  // macOS-first row.
+  // macOS-first row. On a handheld no platform is the visitor's, so the fallback
+  // order applies and the sentence reads the same for everyone.
   const platforms = orderBuilds(downloads, viewerOS).map((build) => platformConfig[build.os]?.label ?? build.os).join('、')
+
+  // A phone cannot run either installer, so the offer is news rather than an
+  // action: one quiet line that says the desktop app exists, instead of a band of
+  // dead buttons between the visitor and the page they came for.
+  if (handheld) {
+    return (
+      // One text flow rather than a flex row: the sentence wraps to two lines on a
+      // phone, and as a flex item it would drag the icon onto a line of its own.
+      <section aria-label="Octo 桌面端" style={{
+        marginBottom: space[5],
+        fontSize: font.size.sm,
+        lineHeight: 1.6,
+        color: colors.text.tertiary,
+      }}>
+        <DesktopOutlined style={{ color: 'var(--brand-text-on-bg)', marginRight: 6 }} />
+        Octo 桌面端{versionLabel && ` ${versionLabel}`} 支持 {platforms}，在电脑上打开本页即可下载
+      </section>
+    )
+  }
 
   return (
     // Labelled: these are the first focusable things on the page, ahead of its <h1>.
@@ -1270,8 +1297,11 @@ export default function Changelog() {
 
   // When the newest release is the one the bar above is already offering, the card
   // would repeat the same two buttons half a screen apart.
+  // Only true when the band actually rendered the buttons: on a handheld it does
+  // not, and the card must keep its own links rather than defer to an offer that
+  // is not there.
   const spotlightOfferedAbove = useMemo(
-    () => (latestItem ? offeredAbove(latestItem, desktopDownloads) : false),
+    () => (latestItem && !viewerIsHandheld ? offeredAbove(latestItem, desktopDownloads) : false),
     [latestItem, desktopDownloads],
   )
 

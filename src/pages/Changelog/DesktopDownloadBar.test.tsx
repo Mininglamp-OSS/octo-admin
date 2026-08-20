@@ -45,8 +45,8 @@ describe('DesktopDownloadBar', () => {
     host.remove()
   })
 
-  const render = (downloads: DesktopDownload[]) => {
-    act(() => root.render(<DesktopDownloadBar downloads={downloads} />))
+  const render = (downloads: DesktopDownload[], handheld = false) => {
+    act(() => root.render(<DesktopDownloadBar downloads={downloads} handheld={handheld} />))
     return host.textContent ?? ''
   }
 
@@ -86,5 +86,17 @@ describe('DesktopDownloadBar', () => {
     expect(Array.from(host.querySelectorAll('a')).map((a) => a.getAttribute('href'))).toEqual([
       'https://cdn.example.com/macos',
     ])
+  })
+
+  it('offers no buttons on a phone, only word that the app exists', () => {
+    const text = render([build('windows', '1.0.0'), build('macos', '1.0.0')], true)
+    expect(host.querySelectorAll('a')).toHaveLength(0)
+    expect(text).toContain('v1.0.0')
+    expect(text).toContain('Windows、macOS')
+    expect(text).toContain('在电脑上打开本页即可下载')
+  })
+
+  it('still says nothing on a phone when there is no build to mention', () => {
+    expect(render([], true)).toBe('')
   })
 })
