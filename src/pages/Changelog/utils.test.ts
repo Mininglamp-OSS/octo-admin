@@ -38,6 +38,21 @@ describe('parseUpdateDesc', () => {
     }
   })
 
+  it('never marks a line that reports a change on its way to the announcement', () => {
+    // Chinese writes without spaces, so any slack in the rule swallows meaning:
+    // these read as bare announcements while the fix they report disappears, and
+    // only the spaced variant — the unusual one — survived.
+    for (const desc of [
+      '2.0.0修复若干问题后正式发布',
+      'Windows 桌面端 1.0.0修复白屏后正式发布。',
+      '1.0.0解决登录崩溃后正式上线',
+    ]) {
+      const items = Object.values(parseUpdateDesc(desc)).flat()
+      expect(items).toHaveLength(1)
+      expect(items[0].announces).toBeUndefined()
+    }
+  })
+
   it('never marks a line that says anything besides the announcement', () => {
     // Marking these would let a card drop them, and a reader cannot tell a note
     // that was never written from one a regex removed.
@@ -776,6 +791,9 @@ describe('formatVersion', () => {
     // Build metadata after '+' distinguishes two releases just as a '-' suffix does,
     // now that formatting alike is what decides whether two installers are one.
     expect(formatVersion('1.2.3+arm64')).toBe('1.2.3+arm64')
+    // isPrerelease reads underscores in a qualifier; the two readers have to agree,
+    // or a card is titled v1.0.0-x86 for a build called 1.0.0-x86_64.
+    expect(formatVersion('1.0.0-x86_64')).toBe('1.0.0-x86_64')
   })
 
   it('hands back a string it cannot read a version out of', () => {

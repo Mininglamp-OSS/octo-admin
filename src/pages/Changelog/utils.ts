@@ -81,9 +81,16 @@ const RELEASE_ANNOUNCEMENT = /(?:正式|首次|版本)(?:发布|上线)$/
  * particular thing — the plugin market can reach 2.0 in the same train that takes
  * the desktop app to 2.0.0 — so the subject is what says which thing shipped, and
  * announcesOnly() reads it before letting a card drop anything.
+ *
+ * Nothing at all is allowed between the version and the verb. There used to be a
+ * `\S*` there to absorb a qualifier, and once the qualifier moved into the capture
+ * above it had no work left — but it went on matching, and Chinese writes without
+ * spaces, so "1.0.0修复白屏后正式发布" read as a bare announcement and a card threw
+ * the fix away. A run of non-space characters is not decoration in a language that
+ * does not separate words.
  */
 const VERSION_ANNOUNCEMENT =
-  /^([^\d，。；、,;:：]*?)(\d+\.\d+(?:\.\d+)?(?:[-+][0-9A-Za-z][0-9A-Za-z._+-]*)?)\S*\s*(?:正式|首次|版本)(?:发布|上线)$/
+  /^([^\d，。；、,;:：]*?)(\d+\.\d+(?:\.\d+)?(?:[-+][0-9A-Za-z][0-9A-Za-z._+-]*)?)\s*(?:正式|首次|版本)(?:发布|上线)$/
 
 /* Trailing sentence punctuation is common in these notes and says nothing about
    what the line is; both announcement rules anchor on the verb at the end. */
@@ -860,7 +867,7 @@ export function parseContributors(desc: string): Contributor[] {
    -x64, +arm64. Kept rather than dropped, so a card titled v1.0.0 is never a
    1.0.0-rc1 — and, now that formatting alike is what "one release" means, so that
    two strings only collapse into one label when they really are one release. */
-const VERSION_QUALIFIER = /\d+\.\d+(?:\.\d+)?([-+][0-9A-Za-z][0-9A-Za-z.+-]*)/
+const VERSION_QUALIFIER = /\d+\.\d+(?:\.\d+)?([-+][0-9A-Za-z][0-9A-Za-z._+-]*)/
 
 export function formatVersion(raw: string): string {
   const semver = parseSemVer(raw)
