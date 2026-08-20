@@ -586,7 +586,13 @@ export function groupReleases(raw: AppVersion[]): ReleaseEntry[] {
         // Same OS re-uploaded for this version: the card has to follow the newer
         // build, whatever order the feed happens to arrive in — and has to pick the
         // same one the band above it offers.
-        Object.assign(sameOS, build)
+        Object.assign(sameOS, build, {
+          // Re-uploading to fix a broken link is done with the notes box left
+          // empty. It is the same release either way, so the notes already on the
+          // card still describe it; taking them away would empty the card over a
+          // change that was never made to what shipped.
+          update_desc: build.update_desc.trim() ? build.update_desc : sameOS.update_desc,
+        })
       }
       continue
     }

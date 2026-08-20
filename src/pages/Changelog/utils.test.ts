@@ -166,6 +166,18 @@ describe('groupReleases', () => {
     }
   })
 
+  it('keeps the notes when the same build is re-uploaded with an empty box', () => {
+    const [entry] = groupReleases([
+      release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/typo.exe', created_at: '2026-08-20 10:00:00', update_desc: '修复：启动白屏' }),
+      release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/fixed.exe', created_at: '2026-08-20 18:00:00', update_desc: '   ' }),
+    ])
+
+    // The link follows the re-upload; what shipped did not change, so the notes do
+    // not either.
+    expect(entry.builds?.[0].download_url).toBe('https://x/fixed.exe')
+    expect(noteBlocks(entry)).toEqual([{ os: [], desc: '修复：启动白屏' }])
+  })
+
   it('does not let a superseded upload force the build the card links', () => {
     const [entry] = groupReleases([
       release({ os: 'windows', app_version: '3.0.0', download_url: 'https://x/new.exe', created_at: '2026-08-20 18:00:00', is_force: 0 }),
