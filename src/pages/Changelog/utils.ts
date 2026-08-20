@@ -344,26 +344,21 @@ export interface DesktopDownload extends DesktopBuild {
 /**
  * The version line for the offer, or null when the installers do not share one.
  *
- * formatVersion() drops a `-suffix`, so a prerelease would be badged as the stable
- * release it is not — above a button that hands over the prerelease. Prereleases
- * therefore keep their version string verbatim. (formatVersion itself is left alone:
- * the timeline cards badge the same way, and moving them apart would be worse than
- * moving them together later.)
+ * One comparison, on formatVersion() output. That was unsafe while formatVersion
+ * dropped a `-suffix`: Windows on 1.0.0 and macOS on 1.0.0-rc1 formatted alike, so
+ * the band badged v1.0.0 above a button handing over the RC. Now that the qualifier
+ * survives formatting, formatting alike is the same question as being one release —
+ * and 1.0 written beside 1.0.0 still is one, said two ways.
+ *
+ * A string no version can be read out of is not labelled at all: a `v` in front of
+ * it would claim more than the string says.
  */
 export function offerVersionLabel(offers: DesktopDownload[]): string | null {
-  // Written the same way, modulo a `v` prefix: label it.
-  const raw = Array.from(new Set(offers.map((offer) => offer.app_version.trim().replace(/^v/i, ''))))
-  if (raw.length === 1) return isPrerelease(raw[0]) ? raw[0] : `v${formatVersion(raw[0])}`
+  if (offers.length === 0) return null
+  if (offers.some((offer) => parseSemVer(offer.app_version) === null)) return null
 
-  // Written differently with a prerelease among them: say nothing. formatVersion()
-  // drops a `-suffix`, so comparing formatted versions here would collapse Windows
-  // on 1.0.0 and macOS on 1.0.0-rc1 into one version and badge the RC as stable —
-  // above the button that hands it over.
-  if (offers.some((offer) => isPrerelease(offer.app_version))) return null
-
-  // All stable and formatting alike (1.0 and 1.0.0) — one version, said once.
-  const formatted = Array.from(new Set(offers.map((offer) => formatVersion(offer.app_version))))
-  return formatted.length === 1 ? `v${formatted[0]}` : null
+  const formatted = new Set(offers.map((offer) => formatVersion(offer.app_version.trim().replace(/^v/i, ''))))
+  return formatted.size === 1 ? `v${[...formatted][0]}` : null
 }
 
 /**
@@ -690,10 +685,16 @@ export function parseContributors(desc: string): Contributor[] {
   return []
 }
 
+/* Everything after the triple that a semver qualifier can carry: -rc1, -beta.2,
+   -x64. Kept rather than dropped, so a card titled v1.0.0 is never a 1.0.0-rc1 and
+   two installers only count as one release when they really are one. */
+const VERSION_QUALIFIER = /\d+\.\d+(?:\.\d+)?(-[0-9A-Za-z][0-9A-Za-z.-]*)/
+
 export function formatVersion(raw: string): string {
   const semver = parseSemVer(raw)
   if (!semver) return raw
   const build = parseBuildNumber(raw)
-  const base = `${semver[0]}.${semver[1]}.${semver[2]}`
+  const qualifier = VERSION_QUALIFIER.exec(raw.replace(/\(.*\)/, ''))
+  const base = `${semver[0]}.${semver[1]}.${semver[2]}${qualifier ? qualifier[1] : ''}`
   return build !== null ? `${base}(${build})` : base
 }

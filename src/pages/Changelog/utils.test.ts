@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { detectViewerOS, isHandheld, getVersionSeverity, groupReleases, latestDesktopDownloads, noteBlocks, offerVersionLabel, offeredAbove, orderBuilds, parseContributors, parseUpdateDesc, safeDownloadUrl } from './utils'
+import { detectViewerOS, formatVersion, isHandheld, getVersionSeverity, groupReleases, latestDesktopDownloads, noteBlocks, offerVersionLabel, offeredAbove, orderBuilds, parseContributors, parseUpdateDesc, safeDownloadUrl } from './utils'
 import type { AppVersion } from './utils'
 
 describe('parseContributors', () => {
@@ -557,6 +557,28 @@ describe('offeredAbove', () => {
   })
 })
 
+describe('formatVersion', () => {
+  it('normalises what is only written differently', () => {
+    expect(formatVersion('1.0')).toBe('1.0.0')
+    expect(formatVersion('v2.3.4')).toBe('2.3.4')
+    expect(formatVersion('1.0.0(62)')).toBe('1.0.0(62)')
+    // A patch number typed as nothing at all.
+    expect(formatVersion('1.0.(63)')).toBe('1.0.0(63)')
+  })
+
+  it('keeps the qualifier that says which release this is', () => {
+    // Dropping it titles a release-candidate card "v1.0.0" — the name of a build
+    // that does not exist yet.
+    expect(formatVersion('1.0.0-rc1')).toBe('1.0.0-rc1')
+    expect(formatVersion('2.0.0-beta.2')).toBe('2.0.0-beta.2')
+    expect(formatVersion('1.2.3-x64(9)')).toBe('1.2.3-x64(9)')
+  })
+
+  it('hands back a string it cannot read a version out of', () => {
+    expect(formatVersion('内测版')).toBe('内测版')
+  })
+})
+
 describe('offerVersionLabel', () => {
   const offer = (app_version: string) => ({ os: 'windows', app_version, download_url: 'https://x/a.exe', created_at: '2026-08-20 16:00:00', is_force: 0, update_desc: '' })
 
@@ -564,10 +586,20 @@ describe('offerVersionLabel', () => {
     expect(offerVersionLabel([offer('1.0.0'), { ...offer('1.0.0'), os: 'macos' }])).toBe('v1.0.0')
   })
 
-  it('keeps a prerelease verbatim rather than badging it as the stable it is not', () => {
-    // formatVersion drops the suffix, so this would otherwise read "v1.0.0" above a
-    // button handing over the release candidate.
-    expect(offerVersionLabel([offer('1.0.0-rc1')])).toBe('1.0.0-rc1')
+  it('keeps the qualifier rather than badging a prerelease as the stable it is not', () => {
+    // The band sits above a button handing over the release candidate; "v1.0.0"
+    // there would name a release nobody can download yet.
+    expect(offerVersionLabel([offer('1.0.0-rc1')])).toBe('v1.0.0-rc1')
+  })
+
+  it('says nothing about a version string it cannot read', () => {
+    // A "v" in front of free text claims the text is a version.
+    expect(offerVersionLabel([offer('内测版')])).toBeNull()
+    expect(offerVersionLabel([offer('1.0.0'), { ...offer('内测版'), os: 'macos' }])).toBeNull()
+  })
+
+  it('reads one release written two ways as one release', () => {
+    expect(offerVersionLabel([offer('1.0'), { ...offer('1.0.0'), os: 'macos' }])).toBe('v1.0.0')
   })
 
   it('says nothing when one platform is on a prerelease and another is not', () => {
