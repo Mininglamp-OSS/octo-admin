@@ -151,6 +151,21 @@ describe('groupReleases', () => {
     }
   })
 
+  it('links the same installer the band offers when two rows tie on the second', () => {
+    // Two uploads of one OS at the same timestamp: the card and the band each pick
+    // a winner, and if they break the tie differently the page shows a version and
+    // hands over a different file.
+    const rows = [
+      release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/a.exe', created_at: '2026-08-20 16:34:04' }),
+      release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/b.exe', created_at: '2026-08-20 16:34:04' }),
+    ]
+
+    for (const feed of [rows, [...rows].reverse()]) {
+      const [entry] = groupReleases(feed)
+      expect(entry.builds?.[0].download_url).toBe(latestDesktopDownloads(feed)[0].download_url)
+    }
+  })
+
   it('does not let a superseded upload force the build the card links', () => {
     const [entry] = groupReleases([
       release({ os: 'windows', app_version: '3.0.0', download_url: 'https://x/new.exe', created_at: '2026-08-20 18:00:00', is_force: 0 }),

@@ -313,10 +313,26 @@ function supersedes(candidate: AppVersion, current: DesktopDownload): boolean {
     if (a.triple[i] !== b.triple[i]) return a.triple[i] > b.triple[i]
   }
   if (a.build !== b.build) return a.build > b.build
+  return supersedesSameVersion(candidate, current)
+}
+
+/**
+ * The tail of that order, for two rows already known to carry one version — which
+ * is how groupReleases() meets them, having keyed the card by app_version.
+ *
+ * Shared rather than restated: the card links a build and the band above it offers
+ * one, and if the two break a tie differently the same visitor is handed two
+ * different installers for the release they are reading about.
+ *
+ * Rows alike down to the second still need an answer, or the fold in
+ * latestDesktopDownloads() returns whichever arrived first and the
+ * order-independence above is only most of a total order.
+ */
+function supersedesSameVersion(
+  candidate: { created_at: string; download_url: string },
+  current: { created_at: string; download_url: string },
+): boolean {
   if (candidate.created_at !== current.created_at) return candidate.created_at > current.created_at
-  // Rows alike down to the second still need one answer, or the fold returns
-  // whichever arrived first and the order-independence above is only most of a
-  // total order.
   return candidate.download_url > current.download_url
 }
 
@@ -547,9 +563,10 @@ export function groupReleases(raw: AppVersion[]): ReleaseEntry[] {
       const sameOS = entry.builds!.find((existing) => existing.os === item.os)
       if (!sameOS) {
         entry.builds!.push(build)
-      } else if (item.created_at > sameOS.created_at) {
+      } else if (supersedesSameVersion(item, sameOS)) {
         // Same OS re-uploaded for this version: the card has to follow the newer
-        // build, whatever order the feed happens to arrive in.
+        // build, whatever order the feed happens to arrive in — and has to pick the
+        // same one the band above it offers.
         Object.assign(sameOS, build)
       }
       continue
