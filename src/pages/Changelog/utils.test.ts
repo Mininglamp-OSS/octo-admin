@@ -385,6 +385,20 @@ describe('latestDesktopDownloads', () => {
     expect(offers.map((build) => build.app_version)).toEqual(['1.1.0'])
   })
 
+  it('does not let a prerelease displace the stable release it shares a number with', () => {
+    const stable = release({ os: 'windows', app_version: '2.0.0', download_url: 'https://x/stable.exe', created_at: '2026-09-01 10:00:00' })
+    const beta = release({ os: 'windows', app_version: '2.0.0-beta', download_url: 'https://x/beta.exe', created_at: '2026-09-10 10:00:00' })
+
+    for (const feed of [[beta, stable], [stable, beta]]) {
+      expect(latestDesktopDownloads(feed).map((build) => build.app_version)).toEqual(['2.0.0'])
+    }
+  })
+
+  it('still offers a prerelease when it is the only build there is', () => {
+    const offers = latestDesktopDownloads([release({ os: 'macos', app_version: '1.0.0-rc1', download_url: 'https://x/rc.dmg' })])
+    expect(offers.map((build) => build.app_version)).toEqual(['1.0.0-rc1'])
+  })
+
   it('skips a build whose URL should never reach an href, rather than offering a dead button', () => {
     const offers = latestDesktopDownloads([
       release({ os: 'windows', app_version: '1.1.0', download_url: 'javascript:alert(1)', created_at: '2026-09-01 10:00:00' }),

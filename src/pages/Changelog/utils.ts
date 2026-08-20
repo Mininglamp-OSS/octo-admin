@@ -230,6 +230,13 @@ export interface ReleaseEntry extends AppVersion {
   builds?: DesktopBuild[]
 }
 
+/** A numeric version carrying a `-suffix`: 2.0.0-beta, 1.0.0-rc1. */
+const PRERELEASE_SUFFIX = /^v?\d+\.\d+(?:\.\d+)?-/
+
+function isPrerelease(version: string): boolean {
+  return PRERELEASE_SUFFIX.test(version.replace(/\(.*\)/, '').trim())
+}
+
 /**
  * Which of two rows for one OS the page should offer. Version wins over upload
  * time — a hotfix row for an older version added later must not displace the
@@ -243,6 +250,14 @@ function supersedes(candidate: AppVersion, current: DesktopDownload): boolean {
     for (let i = 0; i < 3; i++) {
       if (a[i] !== b[i]) return a[i] > b[i]
     }
+    // parseSemVer reads the triple out of a prerelease by design, so 2.0.0-beta ties
+    // with 2.0.0 and the timestamp would hand out whichever was uploaded later. The
+    // strip labels by that same numeric version, so offering the prerelease would
+    // give everyone a beta badged as v2.0.0.
+    const candidatePrerelease = isPrerelease(candidate.app_version)
+    const currentPrerelease = isPrerelease(current.app_version)
+    if (candidatePrerelease !== currentPrerelease) return currentPrerelease
+
     const buildA = parseBuildNumber(candidate.app_version)
     const buildB = parseBuildNumber(current.app_version)
     if (buildA !== null && buildB !== null && buildA !== buildB) return buildA > buildB
