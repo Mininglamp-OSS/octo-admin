@@ -410,6 +410,20 @@ export interface NoteBlock {
   desc: string
 }
 
+/**
+ * The platforms a card forces an upgrade on, when that is fewer than all of them.
+ *
+ * One card carries every OS build of a version and is_force is per build, so a card
+ * can force Windows and not macOS. Empty means the badge needs no qualifier: either
+ * every build forces the upgrade, or the card carries a single build and the
+ * platform badge beside it already says which one.
+ */
+export function forcedPlatforms(entry: ReleaseEntry): string[] {
+  if (!entry.builds || entry.builds.length < 2) return []
+  const forced = entry.builds.filter((build) => build.is_force === 1)
+  return forced.length === entry.builds.length ? [] : forced.map((build) => build.os)
+}
+
 /** Whether a note still says anything once release announcements are dropped. */
 export function hasVisibleChanges(desc: string): boolean {
   const parsed = parseUpdateDesc(desc)

@@ -30,7 +30,7 @@ import 'dayjs/locale/zh-cn'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import api from '../../api'
 import { colors, radius, space, font } from '../../styles/tokens'
-import { parseUpdateDesc, getVersionSeverity, formatVersion, parseContributors, detectViewerOS, isHandheld, groupReleases, orderBuilds, noteBlocks, latestDesktopDownloads, offerVersionLabel, offeredAbove, safeDownloadUrl, desktopPlatforms } from './utils'
+import { parseUpdateDesc, getVersionSeverity, formatVersion, parseContributors, detectViewerOS, isHandheld, forcedPlatforms, groupReleases, orderBuilds, noteBlocks, latestDesktopDownloads, offerVersionLabel, offeredAbove, safeDownloadUrl, desktopPlatforms } from './utils'
 import type { VersionSeverity, ChangeCategory, Contributor, ViewerOS, AppVersion, DesktopBuild, DesktopDownload, NoteBlock, ReleaseEntry } from './utils'
 import type { PlatformKey } from '../../styles/tokens'
 import { AnalyticsPanel } from './AnalyticsPanel'
@@ -992,6 +992,9 @@ function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: Re
   const isWeb = item.os === 'web'
   const severity = getVersionSeverity(item.app_version, prevVersion)
   const isForce = item.is_force === 1
+  // Which platforms are actually being told to upgrade — a card holds every OS
+  // build of one version, and is_force is per build.
+  const forcedOn = forcedPlatforms(item).map((os) => platformConfig[os]?.label ?? os)
   const blocks = useMemo(() => noteBlocks(item, viewerOS), [item])
   const contributors = useMemo(() => blockContributors(blocks), [blocks])
   const dotColor = 'var(--timeline-dot-border)'
@@ -1107,7 +1110,7 @@ function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: Re
                   borderRadius: radius.pill,
                 }}>
                   <WarningOutlined />
-                  必须升级
+                  {forcedOn.length > 0 ? `${forcedOn.join('、')} 必须升级` : '必须升级'}
                 </span>
               )}
               <ContributorAvatars contributors={contributors} showLabel />

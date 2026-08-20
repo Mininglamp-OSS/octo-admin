@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { detectViewerOS, formatVersion, isHandheld, getVersionSeverity, groupReleases, latestDesktopDownloads, noteBlocks, offerVersionLabel, offeredAbove, orderBuilds, parseContributors, parseUpdateDesc, safeDownloadUrl } from './utils'
+import { detectViewerOS, forcedPlatforms, formatVersion, isHandheld, getVersionSeverity, groupReleases, latestDesktopDownloads, noteBlocks, offerVersionLabel, offeredAbove, orderBuilds, parseContributors, parseUpdateDesc, safeDownloadUrl } from './utils'
 import type { AppVersion } from './utils'
 
 describe('parseContributors', () => {
@@ -579,6 +579,25 @@ describe('offeredAbove', () => {
   it('is false for a card that has no builds at all', () => {
     const [entry] = groupReleases([release({ os: 'ios', app_version: '3.4.1', download_url: 'https://apps.apple.com/x' })])
     expect(offeredAbove(entry, [offer('windows', 'https://x/a.exe')])).toBe(false)
+  })
+})
+
+describe('forcedPlatforms', () => {
+  const forced = (rows: [string, 0 | 1][]) =>
+    forcedPlatforms(groupReleases(rows.map(([os, is_force]) =>
+      release({ os, is_force, app_version: '2.0.0', download_url: `https://x/${os}` })))[0])
+
+  it('names the platforms being told to upgrade when the others are not', () => {
+    // A macOS visitor reading an unqualified 必须升级 is being told to do something
+    // nobody is asking of them.
+    expect(forced([['windows', 1], ['macos', 0]])).toEqual(['windows'])
+  })
+
+  it('says nothing to qualify when the card speaks for every platform it holds', () => {
+    expect(forced([['windows', 1], ['macos', 1]])).toEqual([])
+    expect(forced([['windows', 0], ['macos', 0]])).toEqual([])
+    // A single build already has its platform named beside the version.
+    expect(forced([['windows', 1]])).toEqual([])
   })
 })
 
