@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { announcesOnly, detectViewerOS, forcedPlatforms, formatVersion, isHandheld, getVersionSeverity, groupReleases, latestDesktopDownloads, noteBlocks, offerVersionLabel, offeredAbove, orderBuilds, parseContributors, parseUpdateDesc, safeDownloadUrl } from './utils'
+import { detectViewerOS, forcedPlatforms, formatVersion, isHandheld, getVersionSeverity, groupReleases, latestDesktopDownloads, noteBlocks, offerVersionLabel, offeredAbove, orderBuilds, parseContributors, parseUpdateDesc, safeDownloadUrl } from './utils'
 import type { AppVersion } from './utils'
 
 describe('parseContributors', () => {
@@ -113,46 +113,6 @@ describe('parseUpdateDesc', () => {
   })
 })
 
-describe('announcesOnly', () => {
-  it('is true only for a note announcing this release, on this platform', () => {
-    expect(announcesOnly('Windows 桌面端 1.0.0 版本发布', '1.0.0', 'windows')).toBe(true)
-    expect(announcesOnly('Windows 桌面端 1.0.0 版本发布', 'v1.0', 'windows')).toBe(true)
-    // No subject at all can only be about the release it sits on.
-    expect(announcesOnly('1.0.0 版本发布', '1.0.0', 'windows')).toBe(true)
-    // A full stop is punctuation, not a change of meaning.
-    expect(announcesOnly('Windows 桌面端 1.0.0 版本发布。', '1.0.0', 'windows')).toBe(true)
-  })
-
-  it('keeps a note whose subject is something else that reached this number', () => {
-    // A version number names no particular thing: the plugin market can reach 2.0
-    // in the same train that takes the desktop app to 2.0.0. Matching on the number
-    // alone read this as the card repeating itself and deleted the news.
-    expect(announcesOnly('插件市场 2.0 正式上线', '2.0.0', 'windows')).toBe(false)
-    expect(announcesOnly('深色模式 3.0 正式发布', '3.0.0', 'windows')).toBe(false)
-    // And the Windows note on a card does not get to announce macOS.
-    expect(announcesOnly('Mac 桌面端 1.0.0 版本发布', '1.0.0', 'windows')).toBe(false)
-  })
-
-  it('keeps a note announcing anything other than this release', () => {
-    expect(announcesOnly('插件市场 2.0 正式上线', '1.0.0', 'windows')).toBe(false)
-    expect(announcesOnly('白屏崩溃已解决，伴随 1.0.0 版本发布', '1.0.0', 'windows')).toBe(false)
-  })
-
-  it('keeps a note that announces the release and then says something', () => {
-    expect(announcesOnly('Windows 桌面端 1.0.0 版本发布\n修复：启动白屏', '1.0.0', 'windows')).toBe(false)
-  })
-
-  it('is unmoved by a credit line, which the card reads from elsewhere', () => {
-    // The block goes; the credits do not, because entryContributors() reads them
-    // off the entry rather than off the blocks that survived.
-    expect(announcesOnly('Windows 桌面端 1.0.0 版本发布\n@contributors: alice, bob', '1.0.0', 'windows')).toBe(true)
-  })
-
-  it('is false for a note with nothing in it, which has its own handling', () => {
-    expect(announcesOnly('', '1.0.0', 'windows')).toBe(false)
-  })
-})
-
 describe('getVersionSeverity', () => {
   it('marks a 1.0.0 with no predecessor as the initial release', () => {
     expect(getVersionSeverity('1.0.0')).toBe('initial')
@@ -208,21 +168,12 @@ describe('groupReleases', () => {
       { os: 'windows', download_url: 'https://x/setup.exe', created_at: '2026-08-20 16:34:04', is_force: 0, update_desc: 'Windows 桌面端 1.0.0 版本发布' },
       { os: 'macos', download_url: 'https://x/octo.dmg', created_at: '2026-08-20 14:18:06', is_force: 0, update_desc: 'Mac 桌面端 1.0.0 版本发布' },
     ])
-    // The card is dated by the newest build.
+    // The card is dated by the newest build, and every build's notes are reachable.
     expect(entry.created_at).toBe('2026-08-20 16:34:04')
-    // Both notes only announce the release the card is already titled after, so
-    // the card renders no body rather than two platform headings over two lines
-    // that repeat its header.
-    expect(noteBlocks(entry)).toEqual([])
-  })
-
-  it('keeps the platforms that said something when another only announced itself', () => {
-    const [entry] = groupReleases([
-      release({ os: 'windows', app_version: '1.0.0', update_desc: 'Windows 桌面端 1.0.0 版本发布' }),
-      release({ os: 'macos', app_version: '1.0.0', update_desc: '修复：外接显示器下的窗口错位' }),
+    expect(noteBlocks(entry).map((block) => block.desc)).toEqual([
+      'Windows 桌面端 1.0.0 版本发布',
+      'Mac 桌面端 1.0.0 版本发布',
     ])
-
-    expect(noteBlocks(entry)).toEqual([{ os: ['macos'], desc: '修复：外接显示器下的窗口错位' }])
   })
 
   it('keeps identical per-OS notes from being repeated on the card', () => {

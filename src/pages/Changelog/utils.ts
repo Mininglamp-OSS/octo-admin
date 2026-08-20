@@ -64,11 +64,17 @@ const RELEASE_ANNOUNCEMENT = /(?:正式|首次|版本)(?:发布|上线)$/
  * 版本发布". The captured version is what lets a card tell an announcement of
  * itself from an announcement of something else that happens to have a version.
  *
- * Such a line is marked, never dropped. Filing it under 新增 claims that shipping
- * is a feature and the per-card counters then add it up ("新增 2" for a release with
- * no features at all) — but a wrong heading is a labelling bug a reader can see
- * through, while a deleted line leaves nothing to see. Marked lines are shown and
- * not counted.
+ * The mark decides one thing only: counting. Filing such a line under 新增 claims
+ * that shipping is a feature and the per-card counters then add it up ("新增 2" for a
+ * release with no features at all), so a marked line is shown wherever its author
+ * filed it and counted nowhere.
+ *
+ * It used to decide a second thing — whether a card rendered the note at all — and
+ * that is gone. Four rounds of review found four ways for a rule reading free text
+ * to mistake content for an announcement, each one narrower than the last, and the
+ * cost of being wrong was an admin's line vanishing from a public page with nothing
+ * to show a reader that it had. Deciding what to count fails visibly; deciding what
+ * to delete does not.
  *
  * Anchored at both ends, and the run before the version may hold neither digits nor
  * punctuation, so only a line that is an announcement start to finish qualifies:
@@ -77,10 +83,9 @@ const RELEASE_ANNOUNCEMENT = /(?:正式|首次|版本)(?:发布|上线)$/
  *   - "1.5x 倍速播放正式上线" and "深色模式正式发布" announce features, not releases.
  * None of them are announcements of a release, and none are marked.
  *
- * Both the subject and the whole version are captured. A version number names no
+ * The subject and the whole version are captured because a version number names no
  * particular thing — the plugin market can reach 2.0 in the same train that takes
- * the desktop app to 2.0.0 — so the subject is what says which thing shipped, and
- * announcesOnly() reads it before letting a card drop anything.
+ * the desktop app to 2.0.0 — and a reader of the mark should be able to tell which.
  *
  * Nothing at all is allowed between the version and the verb. There used to be a
  * `\S*` there to absorb a qualifier, and once the qualifier moved into the capture
@@ -294,7 +299,7 @@ export interface ReleaseEntry extends AppVersion {
  * `Octo 2.0.0-beta` as a prerelease, or the pair compares as stable-versus-nothing
  * and the beta wins.
  */
-const VERSION_SUFFIX = /\d+\.\d+(?:\.\d+)?((?:-[0-9A-Za-z._]+)+)/
+const VERSION_SUFFIX = /\d+\.\d+(?:\.\d+)?((?:[-._][0-9A-Za-z]+)+)/
 /* Anchored at both ends of the token: a qualifier is the word itself, optionally
    numbered (-rc1, -beta.2). Matching on prefix alone reads -prebuilt as a
    prerelease and ranks a finished build below the release before it. */
@@ -480,46 +485,6 @@ export function forcedPlatforms(entry: ReleaseEntry): string[] {
   return forced.length === entry.builds.length ? [] : forced.map((build) => build.os)
 }
 
-/* What a note may call the platform it is announcing. A card knows which platform
-   each of its notes came from, and that is the half of "which release is this
-   about" that a version number cannot supply. */
-const PLATFORM_NAMED: Record<string, RegExp> = {
-  windows: /windows|视窗/i,
-  macos: /mac\b|macos|苹果/i,
-  linux: /linux/i,
-  web: /web|网页/i,
-  android: /android|安卓/i,
-  ios: /ios|iphone|苹果/i,
-  chrome: /chrome/i,
-  'openclaw-plugin': /openclaw/i,
-}
-
-/**
- * Whether a note says nothing the card it belongs to does not already say: every
- * line in it announces this very release, on this very platform.
- *
- * Both halves are needed. A version number names no particular thing — the plugin
- * market can reach 2.0 in the same train that takes the desktop app to 2.0.0 — so
- * matching on the number alone would read "插件市场 2.0 正式上线" as the 2.0.0 card
- * repeating itself and drop a line that is news. The subject settles it: a note is
- * about this release when it names this platform, or names nothing at all.
- *
- * Credits are not items and are not consulted here: entryContributors() reads them
- * off the entry rather than off the blocks that survive, so dropping a block cannot
- * take a credit with it and this does not have to hold a block open to protect one.
- */
-export function announcesOnly(desc: string, appVersion: string, os: string): boolean {
-  const items = Object.values(parseUpdateDesc(desc)).flat()
-  if (items.length === 0) return false
-
-  const own = formatVersion(appVersion.trim().replace(/^v/i, ''))
-  const platform = PLATFORM_NAMED[os]
-  return items.every(({ announces }) =>
-    announces !== undefined
-    && formatVersion(announces.version) === own
-    && (announces.subject === '' || (platform !== undefined && platform.test(announces.subject))))
-}
-
 /**
  * Everyone credited anywhere in a release, read from the entry itself.
  *
@@ -551,19 +516,15 @@ export function entryContributors(entry: ReleaseEntry): Contributor[] {
  * is the common case; only genuinely differing notes are shown per OS.
  */
 export function noteBlocks(entry: ReleaseEntry, viewerOS: ViewerOS | null = null): NoteBlock[] {
-  const saysNothingNew = (desc: string, os: string) => !desc || announcesOnly(desc, entry.app_version, os)
-
   if (!entry.builds) {
-    return saysNothingNew(entry.update_desc.trim(), entry.os) ? [] : [{ os: [], desc: entry.update_desc }]
+    return entry.update_desc.trim() ? [{ os: [], desc: entry.update_desc }] : []
   }
 
   const blocks: NoteBlock[] = []
   const byDesc = new Map<string, NoteBlock>()
   for (const build of orderBuilds(entry.builds, viewerOS)) {
     const desc = build.update_desc.trim()
-    // A note that only announces this very release would render as a platform
-    // heading over a line repeating the headline above it.
-    if (saysNothingNew(desc, build.os)) continue
+    if (!desc) continue
     const shared = byDesc.get(desc)
     if (shared) {
       shared.os.push(build.os)

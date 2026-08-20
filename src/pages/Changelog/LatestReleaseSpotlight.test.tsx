@@ -71,11 +71,9 @@ describe('LatestReleaseSpotlight', () => {
     expect(host.textContent).toContain('启动白屏')
   })
 
-  it('keeps the credits on a release whose note says nothing else', () => {
-    // The card drops a note that only announces the release it sits on — and the
-    // credits on that note are not part of what it said. Reading them off the
-    // blocks that survived lost the contributors of the very release this card is
-    // for.
+  it('credits everyone named on any build, not only the block it renders first', () => {
+    // Credits are read off the entry rather than off the note blocks, so no
+    // rendering decision about the body can decide who gets attribution.
     const announced: ReleaseEntry = {
       ...entry,
       builds: [
@@ -85,9 +83,6 @@ describe('LatestReleaseSpotlight', () => {
     }
 
     act(() => root.render(<LatestReleaseSpotlight item={announced} severity="initial" hideDownloads />))
-    // The body really is dropped — this is not the credits surviving because the
-    // block did.
-    expect(host.textContent).not.toContain('版本发布')
     expect(Array.from(host.querySelectorAll('img')).map((img) => img.getAttribute('alt'))).toEqual(['alice', 'bob'])
   })
 })
