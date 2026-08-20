@@ -1,5 +1,7 @@
 export type ChangeCategory = 'security' | 'removed' | 'fixed' | 'added' | 'changed' | 'other'
 
+const CHANGE_CATEGORIES: readonly ChangeCategory[] = ['security', 'removed', 'fixed', 'added', 'changed', 'other']
+
 export interface ChangeItem {
   text: string
   group?: string
@@ -54,6 +56,20 @@ const CATEGORY_PATTERNS: [ChangeCategory, RegExp][] = [
  * in 上线 ("问题：功能无法上线") stays where it belongs.
  */
 const RELEASE_ANNOUNCEMENT = /(?:正式|首次|版本)(?:发布|上线)$/
+
+/**
+ * A line that announces the release itself and nothing else: it names a version,
+ * optionally behind a platform, and stops.
+ *
+ * The card header already carries every word of it — the version, the platform
+ * badges, the severity tag — so the line adds nothing, and filing it under 新增
+ * additionally claims that shipping is a feature, which the per-card counters then
+ * add up ("新增 2" for a release with no features at all).
+ *
+ * The version number is what makes it droppable. "深色模式正式发布" ends the same
+ * way but names a feature, so it has no version and stays where it was.
+ */
+const VERSION_ANNOUNCEMENT = /\d+\.\d+(?:\.\d+)?\S*\s*(?:版本)?(?:正式|首次)?(?:发布|上线)$/
 
 const PREFIX_STRIP = /^(安全|漏洞|CVE|security|移除|删除|废弃|下线|remove|deprecat\w*|修复|修正|解决|fix|bug|新增|新功能|新加|添加|支持|feat(?:ure)?|优化|改进|提升|更新|调整|升级|重构|改为|改善|chore|refactor|perf)[：:：]?\s*/i
 
@@ -144,6 +160,8 @@ export function parseUpdateDesc(desc: string): ParsedChanges {
       push(currentSection, stripped || line)
     } else if (cat !== 'other') {
       push(cat, stripped)
+    } else if (VERSION_ANNOUNCEMENT.test(line)) {
+      continue
     } else if (RELEASE_ANNOUNCEMENT.test(line)) {
       push('added', line)
     } else {
@@ -381,6 +399,12 @@ export interface NoteBlock {
   desc: string
 }
 
+/** Whether a note still says anything once release announcements are dropped. */
+export function hasVisibleChanges(desc: string): boolean {
+  const parsed = parseUpdateDesc(desc)
+  return CHANGE_CATEGORIES.some((category) => parsed[category].length > 0)
+}
+
 /**
  * The note blocks a card should render.
  *
@@ -393,14 +417,16 @@ export interface NoteBlock {
  */
 export function noteBlocks(entry: ReleaseEntry, viewerOS: ViewerOS | null = null): NoteBlock[] {
   if (!entry.builds) {
-    return entry.update_desc.trim() ? [{ os: [], desc: entry.update_desc }] : []
+    return hasVisibleChanges(entry.update_desc) ? [{ os: [], desc: entry.update_desc }] : []
   }
 
   const blocks: NoteBlock[] = []
   const byDesc = new Map<string, NoteBlock>()
   for (const build of orderBuilds(entry.builds, viewerOS)) {
     const desc = build.update_desc.trim()
-    if (!desc) continue
+    // A note that was only ever "1.0.0 版本发布" parses to nothing; rendering it
+    // would leave a platform heading standing over an empty list.
+    if (!hasVisibleChanges(desc)) continue
     const shared = byDesc.get(desc)
     if (shared) {
       shared.os.push(build.os)

@@ -20,10 +20,18 @@ describe('parseContributors', () => {
 })
 
 describe('parseUpdateDesc', () => {
-  it('files a platform-first release announcement under added', () => {
+  it('drops a line that only announces the release it belongs to', () => {
+    // The card header says v1.0.0, Windows and Initial Release already. Kept, the
+    // line reads as a feature, and the card's own counter then reports 新增 1.
     const parsed = parseUpdateDesc('Windows 桌面端 1.0.0 版本发布')
-    expect(parsed.added).toEqual([{ text: 'Windows 桌面端 1.0.0 版本发布', group: undefined }])
+    expect(parsed.added).toEqual([])
     expect(parsed.other).toEqual([])
+  })
+
+  it('keeps an announcement that names a feature rather than a version', () => {
+    expect(parseUpdateDesc('深色模式正式发布').added).toEqual([{ text: '深色模式正式发布', group: undefined }])
+    // A version buried mid-sentence is not the sentence announcing itself.
+    expect(parseUpdateDesc('支持 1.5x 倍速播放正式上线').added).toHaveLength(1)
   })
 
   it('keeps an explicit prefix ahead of the release-announcement fallback', () => {
@@ -102,12 +110,21 @@ describe('groupReleases', () => {
       { os: 'windows', download_url: 'https://x/setup.exe', created_at: '2026-08-20 16:34:04', is_force: 0, update_desc: 'Windows 桌面端 1.0.0 版本发布' },
       { os: 'macos', download_url: 'https://x/octo.dmg', created_at: '2026-08-20 14:18:06', is_force: 0, update_desc: 'Mac 桌面端 1.0.0 版本发布' },
     ])
-    // The card is dated by the newest build, and every build's notes are reachable.
+    // The card is dated by the newest build.
     expect(entry.created_at).toBe('2026-08-20 16:34:04')
-    expect(noteBlocks(entry).map((block) => block.desc)).toEqual([
-      'Windows 桌面端 1.0.0 版本发布',
-      'Mac 桌面端 1.0.0 版本发布',
+    // Both notes only announce the release the card is already titled after, so
+    // the card renders no body rather than two platform headings over two lines
+    // that repeat its header.
+    expect(noteBlocks(entry)).toEqual([])
+  })
+
+  it('keeps the platforms that said something when another only announced itself', () => {
+    const [entry] = groupReleases([
+      release({ os: 'windows', app_version: '1.0.0', update_desc: 'Windows 桌面端 1.0.0 版本发布' }),
+      release({ os: 'macos', app_version: '1.0.0', update_desc: '修复：外接显示器下的窗口错位' }),
     ])
+
+    expect(noteBlocks(entry)).toEqual([{ os: ['macos'], desc: '修复：外接显示器下的窗口错位' }])
   })
 
   it('keeps identical per-OS notes from being repeated on the card', () => {
