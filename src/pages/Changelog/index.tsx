@@ -30,8 +30,8 @@ import 'dayjs/locale/zh-cn'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import api from '../../api'
 import { colors, radius, space, font } from '../../styles/tokens'
-import { parseUpdateDesc, getVersionSeverity, formatVersion, parseContributors, detectViewerOS, groupReleases, orderBuilds, noteBlocks, latestDesktopDownloads, offeredAbove, safeDownloadUrl, desktopPlatforms } from './utils'
-import type { VersionSeverity, ChangeCategory, Contributor, ViewerOS, AppVersion, DesktopBuild, DesktopDownload, NoteBlock, ReleaseEntry } from './utils'
+import { parseUpdateDesc, getVersionSeverity, formatVersion, parseContributors, detectViewerOS, groupReleases, orderBuilds, noteBlocks, safeDownloadUrl, desktopPlatforms } from './utils'
+import type { VersionSeverity, ChangeCategory, Contributor, ViewerOS, AppVersion, DesktopBuild, NoteBlock, ReleaseEntry } from './utils'
 import type { PlatformKey } from '../../styles/tokens'
 import { AnalyticsPanel } from './AnalyticsPanel'
 import { useTheme } from '../../hooks/useTheme'
@@ -541,7 +541,7 @@ function EntryBadges({ entry }: { entry: ReleaseEntry }) {
  * leads and is the only filled button; otherwise every build is offered with
  * equal weight rather than guessing at them.
  */
-function DesktopDownloads({ builds, compact, large }: { builds: DesktopBuild[]; compact?: boolean; large?: boolean }) {
+function DesktopDownloads({ builds, compact }: { builds: DesktopBuild[]; compact?: boolean }) {
   const ordered = orderBuilds(builds, viewerOS)
     .map((build) => ({ ...build, href: safeDownloadUrl(build.download_url) }))
     .filter((build): build is typeof build & { href: string } => build.href !== null)
@@ -561,26 +561,22 @@ function DesktopDownloads({ builds, compact, large }: { builds: DesktopBuild[]; 
         const base: React.CSSProperties = {
           display: 'inline-flex',
           alignItems: 'center',
-          gap: large ? 6 : 4,
-          fontSize: large ? font.size.base : font.size.sm,
+          gap: 4,
+          fontSize: font.size.sm,
           fontWeight: isLead ? font.weight.semibold : font.weight.medium,
           textDecoration: 'none',
           whiteSpace: 'nowrap',
         }
-        // Underline carries the affordance inline; at button size a border reads
-        // better next to the filled one.
-        const quiet: React.CSSProperties = large
-          ? { color: colors.text.secondary, background: colors.surface.card, border: `1px solid ${colors.surface.border}`, borderRadius: radius.md }
-          : { color: colors.text.secondary, textDecoration: 'underline' }
+        const quiet: React.CSSProperties = { color: colors.text.secondary, textDecoration: 'underline' }
         const style: React.CSSProperties = compact
           ? isLead || !knowsViewer
             ? { ...base, color: 'var(--brand-solid)' }
             : { ...base, ...quiet }
           : isLead
-            ? { ...base, color: 'var(--brand-contrast)', background: 'var(--brand-solid)', border: '1px solid var(--brand-solid)', padding: large ? '10px 22px' : '5px 14px', borderRadius: large ? radius.md : radius.sm }
+            ? { ...base, color: 'var(--brand-contrast)', background: 'var(--brand-solid)', border: '1px solid var(--brand-solid)', padding: '5px 14px', borderRadius: radius.sm }
             : knowsViewer
-              ? { ...base, ...quiet, padding: large ? '10px 14px' : '5px 10px' }
-              : { ...base, color: 'var(--brand-solid)', border: '1px solid var(--brand-solid)', padding: large ? '9px 20px' : '4px 12px', borderRadius: large ? radius.md : radius.sm }
+              ? { ...base, ...quiet, padding: '5px 10px' }
+              : { ...base, color: 'var(--brand-solid)', border: '1px solid var(--brand-solid)', padding: '4px 12px', borderRadius: radius.sm }
 
         return (
           <a key={build.os} href={build.href} target="_blank" rel="noopener noreferrer" style={style}>
@@ -733,65 +729,6 @@ function StructuredChanges({ desc }: { desc: string }) {
           </div>
         )
       })}
-    </div>
-  )
-}
-
-/**
- * Get-the-app strip above the timeline. The desktop card sinks below a week of web
- * deploys within days, so the installer cannot only live where its release sits —
- * one button per OS that has a build, the visitor's own promoted.
- */
-function DesktopDownloadBar({ downloads }: { downloads: DesktopDownload[] }) {
-  if (downloads.length === 0) return null
-
-  const versions = Array.from(new Set(downloads.map((build) => build.app_version)))
-  const sharedVersion = versions.length === 1 ? versions[0] : null
-  const platforms = downloads.map((build) => platformConfig[build.os]?.label ?? build.os).join('、')
-
-  return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: space[5],
-      flexWrap: 'wrap',
-      padding: `${space[6]}px ${space[6]}px`,
-      marginBottom: space[8],
-      background: 'var(--brand-bg)',
-      border: '1px solid color-mix(in srgb, var(--brand) 24%, transparent)',
-      borderRadius: radius.xl,
-    }}>
-      <span style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        width: 48,
-        height: 48,
-        flexShrink: 0,
-        borderRadius: radius.lg,
-        background: colors.surface.card,
-        border: '1px solid color-mix(in srgb, var(--brand) 18%, transparent)',
-      }}>
-        <DesktopOutlined style={{ fontSize: 22, color: 'var(--brand-text-on-bg)' }} />
-      </span>
-
-      <div style={{ minWidth: 0 }}>
-        <div style={{
-          fontSize: font.size.lg,
-          fontWeight: font.weight.bold,
-          color: colors.text.primary,
-          letterSpacing: '-0.01em',
-          lineHeight: 1.3,
-        }}>
-          Octo 桌面端
-        </div>
-        <div style={{ fontSize: font.size.base, color: colors.text.secondary, marginTop: 2 }}>
-          {sharedVersion && `v${formatVersion(sharedVersion)} · `}支持 {platforms}
-        </div>
-      </div>
-
-      <span style={{ flex: 1, minWidth: space[4] }} />
-      <DesktopDownloads builds={downloads} large />
     </div>
   )
 }
@@ -1053,7 +990,7 @@ function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: Re
   )
 }
 
-function LatestReleaseSpotlight({ item, severity, hideDownloads }: { item: ReleaseEntry; severity: VersionSeverity; hideDownloads?: boolean }) {
+function LatestReleaseSpotlight({ item, severity }: { item: ReleaseEntry; severity: VersionSeverity }) {
   const isWeb = item.os === 'web'
   const dateObj = dayjs(item.created_at)
   const blocks = useMemo(() => noteBlocks(item, viewerOS), [item])
@@ -1157,7 +1094,7 @@ function LatestReleaseSpotlight({ item, severity, hideDownloads }: { item: Relea
           </span>
         )}
         <span style={{ flex: 1 }} />
-        {hideDownloads ? null : item.builds ? (
+        {item.builds ? (
           <DesktopDownloads builds={item.builds} />
         ) : downloadHref ? (
           <a
@@ -1216,19 +1153,8 @@ export default function Changelog() {
     return groupReleases(raw)
   }, [data, activePlatform])
 
-  // Deliberately from `data`, not `filtered`: switching to the iOS tab should not
-  // take the desktop installer away.
-  const desktopDownloads = useMemo(() => latestDesktopDownloads(data), [data])
-
   const latestItem = filtered[0] ?? null
   const restItems = filtered.slice(1)
-
-  // When the newest release is the one the bar above is already offering, the card
-  // would repeat the same two buttons half a screen apart.
-  const spotlightOfferedAbove = useMemo(
-    () => (latestItem ? offeredAbove(latestItem, desktopDownloads) : false),
-    [latestItem, desktopDownloads],
-  )
 
   const prevVersionMap = useMemo(() => {
     const map = new Map<number, string>()
@@ -1312,8 +1238,6 @@ export default function Changelog() {
 
         <main style={{ width: '100%', maxWidth: 1040, margin: '0 auto', padding: `${space[8]}px ${space[6]}px ${space[8]}px`, boxSizing: 'border-box' }}>
 
-          {!loading && <DesktopDownloadBar downloads={desktopDownloads} />}
-
           <div style={{ marginBottom: space[6] }}>
             <h1 style={{
               fontSize: font.size['2xl'],
@@ -1334,7 +1258,6 @@ export default function Changelog() {
             <LatestReleaseSpotlight
               item={latestItem}
               severity={getVersionSeverity(latestItem.app_version, prevVersionMap.get(0))}
-              hideDownloads={spotlightOfferedAbove}
             />
           )}
 
