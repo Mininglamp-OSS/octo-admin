@@ -101,6 +101,11 @@ const css = `
    the timeline row cannot shrink below it, and every screen narrower than the word
    scrolls sideways — the whole page, not just the one line. */
 .changelog-notes {
+  /* word-break first for Safari below 15.4, which drops the anywhere keyword. The
+     deprecated alias is the one that also shrinks min-content there; the
+     break-word value of overflow-wrap does not, and min-content is what set the
+     floor on the page width. */
+  word-break: break-word;
   overflow-wrap: anywhere;
 }
 .contributor-group {
@@ -600,6 +605,11 @@ function EntryBadges({ entry }: { entry: ReleaseEntry }) {
  * equal weight rather than guessing at them.
  */
 function DesktopDownloads({ builds, compact, large }: { builds: DesktopBuild[]; compact?: boolean; large?: boolean }) {
+  // The band above the timeline already told a handheld visitor to open the page on
+  // a computer. Offering them the same installers a few hundred pixels below would
+  // contradict that sentence with the buttons it exists to withdraw.
+  if (viewerIsHandheld) return null
+
   const ordered = orderBuilds(builds, viewerOS)
     .map((build) => ({ ...build, href: safeDownloadUrl(build.download_url) }))
     .filter((build): build is typeof build & { href: string } => build.href !== null)
@@ -1313,11 +1323,10 @@ export default function Changelog() {
   const restItems = filtered.slice(1)
 
   // When the newest release is the one the band above is already offering, the card
-  // would repeat the same two buttons half a screen apart. Only where the band
-  // actually rendered them: on a handheld it does not, and the card must keep its
-  // own links rather than defer to an offer that is not there.
+  // would repeat the same two buttons half a screen apart. The handheld case needs
+  // no exception here: DesktopDownloads renders nothing there either way.
   const spotlightOfferedAbove = useMemo(
-    () => (latestItem && !viewerIsHandheld ? offeredAbove(latestItem, desktopDownloads) : false),
+    () => (latestItem ? offeredAbove(latestItem, desktopDownloads) : false),
     [latestItem, desktopDownloads],
   )
 

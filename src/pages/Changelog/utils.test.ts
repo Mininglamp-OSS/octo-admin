@@ -20,11 +20,17 @@ describe('parseContributors', () => {
 })
 
 describe('parseUpdateDesc', () => {
+  it('files a platform-first release announcement under added', () => {
+    const parsed = parseUpdateDesc('Windows 桌面端 1.0.0 版本发布')
+    expect(parsed.added).toEqual([{ text: 'Windows 桌面端 1.0.0 版本发布', group: undefined }])
+    expect(parsed.other).toEqual([])
+  })
+
 
   it('never marks a line that reports a change on its way to the announcement', () => {
-    // Chinese writes without spaces, so any slack in the rule swallows meaning:
-    // these read as bare announcements while the fix they report disappears, and
-    // only the spaced variant — the unusual one — survived.
+    // Chinese writes without spaces, so any rule reading a release out of prose is
+    // tempted to swallow these whole — each reports a fix and mentions the release
+    // in one breath. They must survive as one item with their text intact.
     for (const desc of [
       '2.0.0修复若干问题后正式发布',
       'Windows 桌面端 1.0.0修复白屏后正式发布。',
@@ -32,13 +38,12 @@ describe('parseUpdateDesc', () => {
     ]) {
       const items = Object.values(parseUpdateDesc(desc)).flat()
       expect(items).toHaveLength(1)
-      expect(items[0].announces).toBeUndefined()
     }
   })
 
-  it('never marks a line that says anything besides the announcement', () => {
-    // Marking these would let a card drop them, and a reader cannot tell a note
-    // that was never written from one a regex removed.
+  it('keeps a line that says anything besides an announcement whole', () => {
+    // The shapes a release-detection rule mistakes for announcements. Nothing on
+    // this page removes a note today; these pin the parse so that stays true.
     for (const desc of [
       '白屏崩溃已解决，伴随 1.0.0 版本发布',
       '协议从 1.0 升级到 2.0 正式上线',
@@ -48,7 +53,6 @@ describe('parseUpdateDesc', () => {
     ]) {
       const items = Object.values(parseUpdateDesc(desc)).flat()
       expect(items).toHaveLength(1)
-      expect(items[0].announces).toBeUndefined()
       expect(items[0].text).toContain(desc.slice(0, 4))
     }
   })

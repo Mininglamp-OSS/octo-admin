@@ -417,26 +417,6 @@ export function forcedPlatforms(entry: ReleaseEntry): string[] {
 }
 
 /**
- * Everyone credited anywhere in a release, read from the entry itself.
- *
- * Not from the note blocks a card ends up rendering: a block can be dropped for
- * saying nothing new, and the credits on it are not part of what it said.
- */
-export function entryContributors(entry: ReleaseEntry): Contributor[] {
-  const descs = entry.builds ? entry.builds.map((build) => build.update_desc) : [entry.update_desc]
-  const seen = new Set<string>()
-  const all: Contributor[] = []
-  for (const desc of descs) {
-    for (const contributor of parseContributors(desc)) {
-      if (seen.has(contributor.name)) continue
-      seen.add(contributor.name)
-      all.push(contributor)
-    }
-  }
-  return all
-}
-
-/**
  * The note blocks a card should render.
  *
  * Per-OS notes are NOT merged into one document. parseUpdateDesc() is stateful —
@@ -509,7 +489,10 @@ const URL_SCHEME = /^([a-z][a-z0-9+.-]*):/i
 const NO_DOCUMENT_BASE = 'https://changelog.invalid/'
 
 function documentBase(): string {
-  return typeof window === 'undefined' || !window.location ? NO_DOCUMENT_BASE : window.location.href
+  // document.baseURI, not location.href: a <base> element changes what the browser
+  // resolves an href against, and the guard has to ask the question the browser
+  // will answer.
+  return typeof document === 'undefined' || !document.baseURI ? NO_DOCUMENT_BASE : document.baseURI
 }
 
 /**
