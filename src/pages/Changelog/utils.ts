@@ -3,9 +3,17 @@ export type ChangeCategory = 'security' | 'removed' | 'fixed' | 'added' | 'chang
 export interface ChangeItem {
   text: string
   group?: string
-  /** What this line announces, when it announces a release rather than anything in
-   *  it: the version, and the subject it names ahead of the version. Counted by
-   *  nothing; still shown. */
+  /**
+   * What this line announces, when it announces a release rather than anything in
+   * it: the version, and the subject it names ahead of the version.
+   *
+   * Only the presence of the mark is read today — a marked line is shown wherever
+   * its author filed it and counted nowhere, whatever it announces. Comparing the
+   * version and subject against the card would count an announcement of something
+   * else, but that comparison is what four rounds of review found ways to get
+   * wrong, and being wrong there used to mean deleting a line. Under-counting a
+   * line that is on the page beats deleting one that is not.
+   */
   announces?: { version: string; subject: string }
 }
 
@@ -324,11 +332,19 @@ const PRERELEASE_TOKEN = /^(alpha|beta|rc|pre|preview|dev|snapshot|canary|nightl
 export function isPrerelease(version: string): boolean {
   const suffix = VERSION_SUFFIX.exec(version.replace(/\(.*\)/, ''))
   if (!suffix) return false
+
+  // Everything from a `+` on is build metadata, which semver reads as belonging to
+  // the release it hangs off rather than as a version of its own — so 2.0.0+x64-rc1
+  // is the stable 2.0.0, however the metadata is worded. Display keeps it (a card
+  // for +arm64 says +arm64); ranking cannot see it, or a stable release would be
+  // held back behind an older one on the strength of a word after the plus.
+  const qualifier = suffix[1].split('+')[0]
+
   // Every token, not just the first: 1.0.0-x86-rc1 names an architecture before it
   // names the release candidate it is. Split on every separator a qualifier is
   // written with — semver's own is the dot (1.0.0-x86.rc1), and an architecture is
   // as likely to be spelled x86_64 as x86.
-  return suffix[1].split(/[-._]/).some((token) => token !== '' && PRERELEASE_TOKEN.test(token))
+  return qualifier.split(/[-._]/).some((token) => token !== '' && PRERELEASE_TOKEN.test(token))
 }
 
 /** Ranked so a stable release outranks any prerelease, and both outrank a version

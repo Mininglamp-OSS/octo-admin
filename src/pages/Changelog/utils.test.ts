@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { detectViewerOS, forcedPlatforms, formatVersion, isHandheld, getVersionSeverity, groupReleases, latestDesktopDownloads, noteBlocks, offerVersionLabel, offeredAbove, orderBuilds, parseContributors, parseUpdateDesc, safeDownloadUrl } from './utils'
+import { detectViewerOS, forcedPlatforms, formatVersion, isHandheld, isPrerelease, getVersionSeverity, groupReleases, latestDesktopDownloads, noteBlocks, offerVersionLabel, offeredAbove, orderBuilds, parseContributors, parseUpdateDesc, safeDownloadUrl } from './utils'
 import type { AppVersion } from './utils'
 
 describe('parseContributors', () => {
@@ -590,6 +590,26 @@ describe('latestDesktopDownloads', () => {
       for (const feed of [[stable, rc], [rc, stable]]) {
         expect(latestDesktopDownloads(feed).map((build) => build.download_url)).toEqual(['https://x/stable.exe'])
       }
+    }
+  })
+
+  it('does not let build metadata after a + decide a release is a candidate', () => {
+    // semver reads everything past the + as belonging to the release it hangs off,
+    // so no wording there makes the release a candidate. Ranking it as one held a
+    // newer stable build back behind an older release.
+    for (const version of ['2.0.0+rc1', '2.0.0+x64-rc1', '2.0.0+win-beta', '2.0.0+build.rc1', '1.2.3+arm64']) {
+      expect(isPrerelease(version)).toBe(false)
+    }
+    // A qualifier ahead of the metadata still counts.
+    expect(isPrerelease('2.0.0-rc1+build5')).toBe(true)
+  })
+
+  it('offers the newest stable build even when its metadata mentions a candidate', () => {
+    const older = release({ os: 'windows', app_version: '1.9.0', download_url: 'https://x/old.exe', created_at: '2026-01-01 00:00:00' })
+    const newer = release({ os: 'windows', app_version: '2.0.0+x64-rc1', download_url: 'https://x/new.exe', created_at: '2026-02-01 00:00:00' })
+
+    for (const feed of [[older, newer], [newer, older]]) {
+      expect(latestDesktopDownloads(feed).map((build) => build.download_url)).toEqual(['https://x/new.exe'])
     }
   })
 
