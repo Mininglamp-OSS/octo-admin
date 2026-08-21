@@ -120,6 +120,11 @@ const MainLayout: React.FC = () => {
     if (appBotsAvailable === true) {
       list.push({ key: '/app-bots', icon: <RobotOutlined />, label: t('nav:appBots'), group: 'management' })
     }
+    if (appBotsAvailable === true) {
+      // 空间级 Bot / 成员 / 邀请在各空间自己的控制台管理，超管这边只能看到平台级。
+      // 没有这个入口时，空间控制台只能靠手敲 URL 进入。
+      list.push({ key: '/space', icon: <AppstoreOutlined />, label: t('nav:spaceConsole'), group: 'management' })
+    }
     if (hasManagerCapability(managerCapabilities, 'system_setting')) {
       list.push({ key: '/system-setting', icon: <SettingOutlined />, label: t('nav:systemSetting'), group: 'system' })
     }

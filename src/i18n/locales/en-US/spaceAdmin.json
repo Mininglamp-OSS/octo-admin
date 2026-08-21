@@ -38,12 +38,19 @@
   "validate.logoTooLong": "Logo cannot exceed {{max}} characters",
   "validate.descriptionTooLong": "Space description cannot exceed {{max}} characters",
   "entry.loading": "Entering space admin…",
-  "entry.noToken.title": "No login session detected",
-  "entry.noToken.subtitle": "Please sign in within the app before entering space admin, or sign in with a super admin account.",
-  "entry.noToken.action": "Go to sign in",
   "entry.noSpace.title": "No manageable spaces",
   "entry.noSpace.subtitle": "You are not an admin or owner of any space yet.",
   "entry.noSpace.action": "Back to sign in",
   "entry.error.title": "Failed to load space",
-  "entry.error.action": "Retry"
+  "entry.error.action": "Retry",
+  "entry.login.title": "Space console",
+  "entry.login.subtitle": "Sign in with your account to manage the spaces you administer.",
+  "entry.login.superNotice": "You are signed in as a super administrator. The space console is a separate identity; signing in here switches you to a space administrator.",
+  "entry.login.username": "Username",
+  "entry.login.password": "Password",
+  "entry.login.usernameRequired": "Enter your username",
+  "entry.login.passwordRequired": "Enter your password",
+  "entry.login.submit": "Sign in",
+  "entry.login.toSuper": "Sign in as super administrator instead",
+  "entry.login.noToken": "Login returned no token"
 }

@@ -93,5 +93,14 @@
   "form.welcome.extra": "用户首次连接时自动发送的消息，留空则使用默认提示",
   "form.welcome.placeholder": "你好！我是 xx 助手，有什么可以帮你的？",
   "edit.title": "编辑 {{name}}",
-  "edit.toast.updated": "已更新"
+  "edit.toast.updated": "已更新",
+  "list.platformOnly.title": "这里只列平台级应用 Bot",
+  "list.platformOnly.desc": "空间级应用 Bot（含从平台移入空间的）在各自空间的控制台管理。",
+  "list.platformOnly.link": "前往空间控制台",
+  "column.ownership": "归属",
+  "list.scopeFilter.platform": "平台级",
+  "list.scopeFilter.space": "空间级",
+  "list.scopeFilter.all": "全部归属",
+  "scope.platform": "平台级",
+  "scope.space": "空间级"
 }

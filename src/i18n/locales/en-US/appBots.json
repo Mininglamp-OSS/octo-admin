@@ -93,5 +93,14 @@
   "form.welcome.extra": "Message automatically sent on a user's first connection; leave empty to use the default prompt",
   "form.welcome.placeholder": "Hi! I'm the xx assistant. How can I help you?",
   "edit.title": "Edit {{name}}",
-  "edit.toast.updated": "Updated"
+  "edit.toast.updated": "Updated",
+  "list.platformOnly.title": "This list shows platform-level app bots only",
+  "list.platformOnly.desc": "Space-level app bots, including any moved from the platform into a space, are managed in that space’s own console.",
+  "list.platformOnly.link": "Open the space console",
+  "column.ownership": "Ownership",
+  "list.scopeFilter.platform": "Platform",
+  "list.scopeFilter.space": "Spaces",
+  "list.scopeFilter.all": "All owners",
+  "scope.platform": "Platform",
+  "scope.space": "Space"
 }
