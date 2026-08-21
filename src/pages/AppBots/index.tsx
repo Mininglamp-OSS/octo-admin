@@ -19,6 +19,7 @@ import type { TFunction } from 'i18next'
 import {
   listAppBots,
   listSpaceAppBots,
+  type AppBotScopeFilter,
   deleteAppBot,
   deleteSpaceAppBot,
   publishAppBot,
@@ -55,6 +56,15 @@ const statusOptions = (t: TFunction) => [
   { value: '2', label: t('status.unpublished') },
 ]
 
+// Ownership filter, platform console only. 'platform' is the default so the page opens on
+// exactly what it has always shown; a server without scope support answers the same way
+// for every option, which degrades to that same platform-only list instead of erroring.
+const scopeOptions = (t: TFunction) => [
+  { value: 'platform', label: t('list.scopeFilter.platform') },
+  { value: 'space', label: t('list.scopeFilter.space') },
+  { value: 'all', label: t('list.scopeFilter.all') },
+]
+
 interface Props {
   spaceId?: string
 }
@@ -67,6 +77,7 @@ export default function AppBotsPage({ spaceId }: Props) {
   const [keyword, setKeyword] = useState('')
   const [debouncedKeyword, setDebouncedKeyword] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [scopeFilter, setScopeFilter] = useState<AppBotScopeFilter>('platform')
   const [loading, setLoading] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [editBot, setEditBot] = useState<AppBot | null>(null)
@@ -98,7 +109,7 @@ export default function AppBotsPage({ spaceId }: Props) {
       }
       const resp = spaceId
         ? await listSpaceAppBots(spaceId, params)
-        : await listAppBots(params)
+        : await listAppBots({ ...params, scope: scopeFilter })
       setData(resp.list || [])
       setTotal(resp.count || 0)
     } catch (err) {
@@ -106,7 +117,7 @@ export default function AppBotsPage({ spaceId }: Props) {
     } finally {
       setLoading(false)
     }
-  }, [page, debouncedKeyword, statusFilter, spaceId])
+  }, [page, debouncedKeyword, statusFilter, scopeFilter, spaceId])
 
   useEffect(() => {
     fetchList()
@@ -169,6 +180,23 @@ export default function AppBotsPage({ spaceId }: Props) {
         <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{uid}</span>
       ),
     },
+    ...(spaceId
+      ? []
+      : [
+          {
+            // Which space owns this bot. Without it, a listing that spans scopes cannot be
+            // read: two bots look identical while only one of them is manageable here.
+            title: t('column.ownership'),
+            key: 'ownership',
+            width: 160,
+            render: (_: unknown, record: AppBot) =>
+              record.scope === 'space' ? (
+                <Tag color="blue">{record.space_name || record.space_id || t('scope.space')}</Tag>
+              ) : (
+                <Tag>{t('scope.platform')}</Tag>
+              ),
+          } as ColumnsType<AppBot>[number],
+        ]),
     {
       title: t('column.status'),
       dataIndex: 'status',
@@ -224,6 +252,14 @@ export default function AppBotsPage({ spaceId }: Props) {
           {spaceId ? t('list.title.space') : t('list.title.platform')}
         </Typography.Title>
         <Space>
+          {!spaceId && (
+            <Select
+              value={scopeFilter}
+              onChange={(v) => { setScopeFilter(v); setPage(1) }}
+              options={scopeOptions(t)}
+              style={{ width: 130 }}
+            />
+          )}
           <Select
             value={statusFilter}
             onChange={(v) => { setStatusFilter(v); setPage(1) }}
@@ -249,7 +285,7 @@ export default function AppBotsPage({ spaceId }: Props) {
         </Space>
       </div>
 
-      {!spaceId && (
+      {!spaceId && scopeFilter === 'platform' && (
         // 这张表只列平台级 Bot（服务端 /v1/admin/app_bot 按 scope 过滤，见 botInRouteScope
         // 的跨租户防护）。空间级 Bot 在各自空间的控制台管理。没有这句提示时，
         // 一个被移到空间的 Bot 会从这页凭空消失，用户无从知道它去哪了。

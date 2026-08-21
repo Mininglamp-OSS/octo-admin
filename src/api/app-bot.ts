@@ -24,6 +24,8 @@ export interface AppBot {
   welcome_msg: string
   scope: AppBotScope
   space_id: string | null
+  /** Only present on a mixed (scope=all / scope=space) platform listing. */
+  space_name?: string
   status: AppBotStatus
   token?: string
   connect?: BotConnectInfo
@@ -68,13 +70,25 @@ export interface ListParams {
   status?: number
 }
 
+/**
+ * Ownership filter for the platform listing. A server that predates the scope parameter
+ * ignores it and answers with platform bots only, which is exactly what the 'platform'
+ * option shows — so an older server degrades to the previous behaviour rather than erroring.
+ */
+export type AppBotScopeFilter = 'platform' | 'space' | 'all'
+
+export interface PlatformListParams extends ListParams {
+  scope?: AppBotScopeFilter
+  space_id?: string
+}
+
 // --- Helpers ---
 
 const unwrap = <T>(p: Promise<{ data: T }>): Promise<T> => p.then((r) => r.data)
 
 // --- Platform App Bot (Super Admin) ---
 
-export const listAppBots = (params: ListParams = {}): Promise<AppBotListResp> =>
+export const listAppBots = (params: PlatformListParams = {}): Promise<AppBotListResp> =>
   unwrap(api.get<AppBotListResp>('/v1/admin/app_bot', { params }))
 
 export const getAppBot = (id: string): Promise<AppBot> =>

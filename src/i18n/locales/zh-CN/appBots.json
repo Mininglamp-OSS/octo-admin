@@ -96,5 +96,11 @@
   "edit.toast.updated": "已更新",
   "list.platformOnly.title": "这里只列平台级应用 Bot",
   "list.platformOnly.desc": "空间级应用 Bot（含从平台移入空间的）在各自空间的控制台管理。",
-  "list.platformOnly.link": "前往空间控制台"
+  "list.platformOnly.link": "前往空间控制台",
+  "column.ownership": "归属",
+  "list.scopeFilter.platform": "平台级",
+  "list.scopeFilter.space": "空间级",
+  "list.scopeFilter.all": "全部归属",
+  "scope.platform": "平台级",
+  "scope.space": "空间级"
 }
