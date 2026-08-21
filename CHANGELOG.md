@@ -30,15 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   they now carry no severity tag instead of a guessed one
 - A release note quoting a long identifier — a dotted config key, a file path —
   made the whole changelog page scroll sideways on a phone; notes now break inside
-  a word, and the contributor row no longer sets a floor on the page width
-- A line that only announced the release ("Windows 桌面端 1.0.0 版本发布") was filed
-  under 新增 and counted as a feature the release did not contain. Such a line is
-  now shown wherever its author filed it and counted nowhere
-- A version qualifier was dropped when a version was displayed, so a card for
-  1.0.0-rc1 was titled v1.0.0
+  a word, and neither the hidden contributor tooltip nor the avatar row sets a floor
+  on the page width any more
 - The release card and the band above it could pick different installers for the
   same version when two uploads shared a timestamp
-- Re-uploading a build with the notes box empty erased the notes already on the card
+- Re-uploading a build with the notes box empty erased the notes already on the
+  card; the link now follows the newest upload and the notes the newest upload that
+  filed any, in any arrival order
 - 必须升级 is set per build, but a card holding several platforms showed it
   unqualified; it now names the platforms it applies to
 

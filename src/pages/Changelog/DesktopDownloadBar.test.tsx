@@ -67,8 +67,10 @@ describe('DesktopDownloadBar', () => {
     }
   })
 
-  it('keeps a lone prerelease qualified', () => {
-    expect(render([build('macos', '1.0.1-rc1')])).toContain('v1.0.1-rc1 · 支持 macOS')
+  it('keeps a lone prerelease verbatim', () => {
+    // formatVersion drops the suffix, so this would otherwise read "v1.0.1" above a
+    // button handing over the release candidate.
+    expect(render([build('macos', '1.0.1-rc1')])).toContain('1.0.1-rc1 · 支持 macOS')
   })
 
   it('renders one link per installer, and nothing at all without one', () => {

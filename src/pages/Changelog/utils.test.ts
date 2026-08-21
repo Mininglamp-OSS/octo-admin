@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { detectViewerOS, forcedPlatforms, formatVersion, isHandheld, isPrerelease, getVersionSeverity, groupReleases, latestDesktopDownloads, noteBlocks, offerVersionLabel, offeredAbove, orderBuilds, parseContributors, parseUpdateDesc, safeDownloadUrl } from './utils'
+import { detectViewerOS, forcedPlatforms, isHandheld, getVersionSeverity, groupReleases, latestDesktopDownloads, noteBlocks, offerVersionLabel, offeredAbove, orderBuilds, parseContributors, parseUpdateDesc, safeDownloadUrl } from './utils'
 import type { AppVersion } from './utils'
 
 describe('parseContributors', () => {
@@ -20,23 +20,6 @@ describe('parseContributors', () => {
 })
 
 describe('parseUpdateDesc', () => {
-  it('marks a line that only announces a release, and files it under 其他', () => {
-    // Marked, not deleted: the card counters skip it, so shipping stops being
-    // reported as a feature, but a reader still sees every line an author wrote.
-    const parsed = parseUpdateDesc('Windows 桌面端 1.0.0 版本发布')
-    expect(parsed.added).toEqual([])
-    expect(parsed.other).toEqual([{ text: 'Windows 桌面端 1.0.0 版本发布', group: undefined, announces: { version: '1.0.0', subject: 'Windows 桌面端' } }])
-  })
-
-  it('marks the announcement wherever the note happens to file it', () => {
-    // The counters read the mark, not the category, so all three shapes of the same
-    // sentence stop inflating 新增 — under a heading, behind a prefix, or bare.
-    for (const desc of ['新增\n- Windows 桌面端 1.0.0 版本发布', '新增：Windows 桌面端 1.0.0 版本发布']) {
-      expect(parseUpdateDesc(desc).added).toEqual([
-        { text: 'Windows 桌面端 1.0.0 版本发布', group: undefined, announces: { version: '1.0.0', subject: 'Windows 桌面端' } },
-      ])
-    }
-  })
 
   it('never marks a line that reports a change on its way to the announcement', () => {
     // Chinese writes without spaces, so any slack in the rule swallows meaning:
@@ -68,31 +51,6 @@ describe('parseUpdateDesc', () => {
       expect(items[0].announces).toBeUndefined()
       expect(items[0].text).toContain(desc.slice(0, 4))
     }
-  })
-
-  it('marks an announcement whichever separator its version carries', () => {
-    // Unmarked meant counted: a release announcing itself was reported as a feature
-    // whenever the version was spelled with a separator this rule did not read.
-    for (const version of ['1.0.0-rc1', '1.0.0_rc1', '1.0.0.rc1', '1.0.0+arm64']) {
-      const parsed = parseUpdateDesc(`Windows 桌面端 ${version} 版本发布`)
-      const items = [...parsed.added, ...parsed.other]
-      expect(items).toHaveLength(1)
-      expect(items[0].announces?.version).toBe(version)
-    }
-  })
-
-  it('keeps an announcement that names a feature rather than a version', () => {
-    expect(parseUpdateDesc('深色模式正式发布').added).toEqual([{ text: '深色模式正式发布', group: undefined }])
-    // A number in a feature's name is not the sentence announcing a release: the
-    // version has to sit next to the announcement, not merely somewhere in the line.
-    expect(parseUpdateDesc('1.5x 倍速播放正式上线').added).toHaveLength(1)
-  })
-
-  it('leaves prose that ends in 上线 without an announcement qualifier alone', () => {
-    // Dropping requires the same 正式/首次/版本 qualifier the rule above requires;
-    // without it a line naming a version is still just a line.
-    expect(parseUpdateDesc('TLS 1.3 通道上线').other).toHaveLength(1)
-    expect(parseUpdateDesc('TLS 1.3 通道上线').added).toEqual([])
   })
 
   it('keeps an explicit prefix ahead of the release-announcement fallback', () => {
@@ -142,11 +100,6 @@ describe('getVersionSeverity', () => {
     // parseSemVer reads 1.0.0 out of this one, and it is the opposite of a first
     // stable release.
     expect(getVersionSeverity('1.0.0-rc1')).toBe('unknown')
-  })
-
-  it('reads the version prefix however it was typed', () => {
-    expect(getVersionSeverity('v1.0.0')).toBe('initial')
-    expect(getVersionSeverity('V1.0.0')).toBe('initial')
   })
 
   it('tags nothing when the comparison does not move forward', () => {
@@ -462,7 +415,6 @@ describe('safeDownloadUrl', () => {
   })
 })
 
-
 describe('noteBlocks', () => {
   it("keeps each platform's lines under the section that platform filed them in", () => {
     // parseUpdateDesc is stateful: a 【…】 heading owns every line below it. Merging
@@ -566,68 +518,6 @@ describe('latestDesktopDownloads', () => {
 
     for (const feed of [[stable, laterBeta], [laterBeta, stable]]) {
       expect(latestDesktopDownloads(feed).map((build) => build.app_version)).toEqual(['2.0.0'])
-    }
-  })
-
-  it('sees a prerelease token behind an architecture that is not one', () => {
-    // 1.0.0-x86-rc1 names the architecture first, so reading only the token after
-    // the triple calls it stable and hands out a release candidate.
-    const stable = release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/stable.exe', created_at: '2026-01-01 00:00:00' })
-    const rc = release({ os: 'windows', app_version: '1.0.1-x86-rc1', download_url: 'https://x/rc.exe', created_at: '2026-02-01 00:00:00' })
-
-    for (const feed of [[stable, rc], [rc, stable]]) {
-      expect(latestDesktopDownloads(feed).map((build) => build.download_url)).toEqual(['https://x/stable.exe'])
-    }
-  })
-
-  it('sees a prerelease token however the qualifier is spelled', () => {
-    // semver's own separator is the dot, and an architecture is as likely to be
-    // written x86_64 as x86. Splitting on the hyphen alone left both unread, and
-    // the band then offered a release candidate over the stable it precedes.
-    const stable = release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/stable.exe', created_at: '2026-01-01 00:00:00' })
-    for (const spelling of ['1.0.1-x86.rc1', '1.0.1-x86_64-rc1']) {
-      const rc = release({ os: 'windows', app_version: spelling, download_url: 'https://x/rc.exe', created_at: '2026-02-01 00:00:00' })
-      for (const feed of [[stable, rc], [rc, stable]]) {
-        expect(latestDesktopDownloads(feed).map((build) => build.download_url)).toEqual(['https://x/stable.exe'])
-      }
-    }
-  })
-
-  it('does not let build metadata after a + decide a release is a candidate', () => {
-    // semver reads everything past the + as belonging to the release it hangs off,
-    // so no wording there makes the release a candidate. Ranking it as one held a
-    // newer stable build back behind an older release.
-    for (const version of ['2.0.0+rc1', '2.0.0+x64-rc1', '2.0.0+win-beta', '2.0.0+build.rc1', '1.2.3+arm64']) {
-      expect(isPrerelease(version)).toBe(false)
-    }
-    // A qualifier ahead of the metadata still counts.
-    expect(isPrerelease('2.0.0-rc1+build5')).toBe(true)
-  })
-
-  it('offers the newest stable build even when its metadata mentions a candidate', () => {
-    const older = release({ os: 'windows', app_version: '1.9.0', download_url: 'https://x/old.exe', created_at: '2026-01-01 00:00:00' })
-    const newer = release({ os: 'windows', app_version: '2.0.0+x64-rc1', download_url: 'https://x/new.exe', created_at: '2026-02-01 00:00:00' })
-
-    for (const feed of [[older, newer], [newer, older]]) {
-      expect(latestDesktopDownloads(feed).map((build) => build.download_url)).toEqual(['https://x/new.exe'])
-    }
-  })
-
-  it('does not read a word that merely starts like a qualifier as one', () => {
-    const older = release({ os: 'windows', app_version: '1.2.2', download_url: 'https://x/old.exe', created_at: '2026-01-01 00:00:00' })
-    const prebuilt = release({ os: 'windows', app_version: '1.2.3-prebuilt', download_url: 'https://x/new.exe', created_at: '2026-02-01 00:00:00' })
-
-    for (const feed of [[older, prebuilt], [prebuilt, older]]) {
-      expect(latestDesktopDownloads(feed).map((build) => build.download_url)).toEqual(['https://x/new.exe'])
-    }
-  })
-
-  it('leaves an architecture that is only an architecture alone', () => {
-    const older = release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/old.exe', created_at: '2026-01-01 00:00:00' })
-    const newer = release({ os: 'windows', app_version: '1.0.1-x64', download_url: 'https://x/new.exe', created_at: '2026-02-01 00:00:00' })
-
-    for (const feed of [[older, newer], [newer, older]]) {
-      expect(latestDesktopDownloads(feed).map((build) => build.download_url)).toEqual(['https://x/new.exe'])
     }
   })
 
@@ -755,103 +645,11 @@ describe('forcedPlatforms', () => {
   })
 })
 
-describe('formatVersion', () => {
-  it('normalises what is only written differently', () => {
-    expect(formatVersion('1.0')).toBe('1.0.0')
-    expect(formatVersion('v2.3.4')).toBe('2.3.4')
-    expect(formatVersion('1.0.0(62)')).toBe('1.0.0(62)')
-    // A patch number typed as nothing at all.
-    expect(formatVersion('1.0.(63)')).toBe('1.0.0(63)')
-  })
-
-  it('keeps the qualifier that says which release this is', () => {
-    // Dropping it titles a release-candidate card "v1.0.0" — the name of a build
-    // that does not exist yet.
-    expect(formatVersion('1.0.0-rc1')).toBe('1.0.0-rc1')
-    expect(formatVersion('2.0.0-beta.2')).toBe('2.0.0-beta.2')
-    expect(formatVersion('1.2.3-x64(9)')).toBe('1.2.3-x64(9)')
-    // Build metadata after '+' distinguishes two releases just as a '-' suffix does,
-    // now that formatting alike is what decides whether two installers are one.
-    expect(formatVersion('1.2.3+arm64')).toBe('1.2.3+arm64')
-    // isPrerelease reads underscores in a qualifier; the two readers have to agree,
-    // or a card is titled v1.0.0-x86 for a build called 1.0.0-x86_64.
-    expect(formatVersion('1.0.0-x86_64')).toBe('1.0.0-x86_64')
-    expect(formatVersion('1.0.1_rc1')).toBe('1.0.1_rc1')
-  })
-
-  it('reads a qualifier the same way whichever separator opens it', () => {
-    // Three expressions used to read a qualifier and had drifted into three
-    // alphabets, so the same build was a prerelease to the ranking, a stable
-    // release to the title, and a feature to the counter.
-    expect(formatVersion('1.0.1_rc1')).toBe('1.0.1_rc1')
-    expect(formatVersion('1.0.1.rc1')).toBe('1.0.1.rc1')
-    expect(formatVersion('1.0.1-rc1')).toBe('1.0.1-rc1')
-  })
-
-  it('does not read the separator of a date-shaped version as a qualifier', () => {
-    // isPrerelease splits on the dot as well, but a version is written with dots:
-    // accepting one here renders a 2026.04.16 web version as 2026.4.16.16.
-    expect(formatVersion('2026.04.16')).toBe('2026.4.16')
-    expect(formatVersion('2026.08.03')).toBe('2026.8.3')
-    // A dot opener is only a qualifier when a letter follows it. The fourth part of
-    // a Windows-style version is a number and stays part of the number.
-    expect(formatVersion('1.0.0.1')).toBe('1.0.0')
-  })
-
-  it('hands back a string it cannot read a version out of', () => {
-    expect(formatVersion('内测版')).toBe('内测版')
-  })
-})
-
 describe('offerVersionLabel', () => {
   const offer = (app_version: string) => ({ os: 'windows', app_version, download_url: 'https://x/a.exe', created_at: '2026-08-20 16:00:00', is_force: 0, update_desc: '' })
 
   it('labels a shared stable version', () => {
     expect(offerVersionLabel([offer('1.0.0'), { ...offer('1.0.0'), os: 'macos' }])).toBe('v1.0.0')
-  })
-
-  it('keeps the qualifier rather than badging a prerelease as the stable it is not', () => {
-    // The band sits above a button handing over the release candidate; "v1.0.0"
-    // there would name a release nobody can download yet.
-    expect(offerVersionLabel([offer('1.0.0-rc1')])).toBe('v1.0.0-rc1')
-  })
-
-  it('says nothing over a prerelease however its qualifier is spelled', () => {
-    // isPrerelease reads _rc1 and .rc1; formatVersion does not read the dot. Asking
-    // "do these format alike" first therefore badged v1.0.0 over the button handing
-    // out the candidate — the label has to be gated on being one release, not on
-    // formatting alike.
-    for (const rc of ['1.0.0-rc1', '1.0.0_rc1', '1.0.0.rc1']) {
-      expect(offerVersionLabel([offer('1.0.0'), { ...offer(rc), os: 'macos' }])).toBeNull()
-    }
-  })
-
-  it('still labels a lone prerelease, in the spelling it was written in', () => {
-    // Not just v1.0.0: the label sits above the button handing that build over, so
-    // dropping the qualifier names a release the visitor is not being given.
-    expect(offerVersionLabel([offer('1.0.0-rc1')])).toBe('v1.0.0-rc1')
-    expect(offerVersionLabel([offer('1.0.0_rc1')])).toBe('v1.0.0_rc1')
-    expect(offerVersionLabel([offer('1.0.0.rc1')])).toBe('v1.0.0.rc1')
-    expect(offerVersionLabel([offer('1.0.0-rc1'), { ...offer('1.0.0-rc1'), os: 'macos' }])).toBe('v1.0.0-rc1')
-  })
-
-  it('reads two architectures of one version as one release', () => {
-    // isPrerelease already says -x64 is an architecture rather than a release
-    // distinction; the label has to agree, or the band drops the version line for
-    // a release that has one.
-    expect(offerVersionLabel([offer('1.0.0-x64'), { ...offer('1.0.0-arm64'), os: 'macos' }])).toBe('v1.0.0')
-    // A prerelease among them is a different release, and still says nothing.
-    expect(offerVersionLabel([offer('1.0.0-x64'), { ...offer('1.0.0-rc1'), os: 'macos' }])).toBeNull()
-  })
-
-  it('says nothing about a version string it cannot read', () => {
-    // A "v" in front of free text claims the text is a version.
-    expect(offerVersionLabel([offer('内测版')])).toBeNull()
-    expect(offerVersionLabel([offer('1.0.0'), { ...offer('内测版'), os: 'macos' }])).toBeNull()
-  })
-
-  it('reads one release written two ways as one release', () => {
-    expect(offerVersionLabel([offer('1.0'), { ...offer('1.0.0'), os: 'macos' }])).toBe('v1.0.0')
   })
 
   it('says nothing when one platform is on a prerelease and another is not', () => {

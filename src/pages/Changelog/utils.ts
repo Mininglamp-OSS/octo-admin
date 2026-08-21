@@ -3,18 +3,6 @@ export type ChangeCategory = 'security' | 'removed' | 'fixed' | 'added' | 'chang
 export interface ChangeItem {
   text: string
   group?: string
-  /**
-   * What this line announces, when it announces a release rather than anything in
-   * it: the version, and the subject it names ahead of the version.
-   *
-   * Only the presence of the mark is read today — a marked line is shown wherever
-   * its author filed it and counted nowhere, whatever it announces. Comparing the
-   * version and subject against the card would count an announcement of something
-   * else, but that comparison is what four rounds of review found ways to get
-   * wrong, and being wrong there used to mean deleting a line. Under-counting a
-   * line that is on the page beats deleting one that is not.
-   */
-  announces?: { version: string; subject: string }
 }
 
 export interface ParsedChanges {
@@ -67,64 +55,6 @@ const CATEGORY_PATTERNS: [ChangeCategory, RegExp][] = [
  */
 const RELEASE_ANNOUNCEMENT = /(?:正式|首次|版本)(?:发布|上线)$/
 
-/**
- * The same announcement, naming the version it announces: "Windows 桌面端 1.0.0
- * 版本发布". The captured version is what lets a card tell an announcement of
- * itself from an announcement of something else that happens to have a version.
- *
- * The mark decides one thing only: counting. Filing such a line under 新增 claims
- * that shipping is a feature and the per-card counters then add it up ("新增 2" for a
- * release with no features at all), so a marked line is shown wherever its author
- * filed it and counted nowhere.
- *
- * It used to decide a second thing — whether a card rendered the note at all — and
- * that is gone. Four rounds of review found four ways for a rule reading free text
- * to mistake content for an announcement, each one narrower than the last, and the
- * cost of being wrong was an admin's line vanishing from a public page with nothing
- * to show a reader that it had. Deciding what to count fails visibly; deciding what
- * to delete does not.
- *
- * Anchored at both ends, and the run before the version may hold neither digits nor
- * punctuation, so only a line that is an announcement start to finish qualifies:
- *   - "白屏崩溃已解决，伴随 1.0.0 版本发布" reports a fix and mentions the release;
- *   - "协议从 1.0 升级到 2.0 正式上线" names two versions and is a change between them;
- *   - "1.5x 倍速播放正式上线" and "深色模式正式发布" announce features, not releases.
- * None of them are announcements of a release, and none are marked.
- *
- * The subject and the whole version are captured because a version number names no
- * particular thing — the plugin market can reach 2.0 in the same train that takes
- * the desktop app to 2.0.0 — and a reader of the mark should be able to tell which.
- *
- * Nothing at all is allowed between the version and the verb. There used to be a
- * `\S*` there to absorb a qualifier, and once the qualifier moved into the capture
- * above it had no work left — but it went on matching, and Chinese writes without
- * spaces, so "1.0.0修复白屏后正式发布" read as a bare announcement and a card threw
- * the fix away. A run of non-space characters is not decoration in a language that
- * does not separate words.
- */
-/**
- * One definition of what a version qualifier looks like, for every reader of one.
- *
- * There were three, and they had drifted into three different alphabets — ranking
- * accepted `-._`, display accepted `-+_`, the announcement rule accepted `-+` — so
- * each disagreement surfaced as a version the page named wrongly: a lone 1.0.0.rc1
- * labelled v1.0.0 above the button handing out the candidate, and a 1.0.0_rc1
- * announcement counted as a feature. Widening them one at a time is what produced
- * the drift; they share the expression now.
- *
- * A `.` opener must be letter-led, and that is the whole subtlety: the dot is also
- * the version separator, so `.rc1` is a qualifier while the `.16` of a 2026.04.16
- * web version and the `.1` of a four-part Windows version are part of the number.
- */
-const QUALIFIER = String.raw`(?:[-+_][0-9A-Za-z]|\.[A-Za-z])[0-9A-Za-z._+-]*`
-
-const VERSION_ANNOUNCEMENT = new RegExp(
-  String.raw`^([^\d，。；、,;:：]*?)(\d+\.\d+(?:\.\d+)?(?:${QUALIFIER})?)\s*(?:正式|首次|版本)(?:发布|上线)$`)
-
-/* Trailing sentence punctuation is common in these notes and says nothing about
-   what the line is; both announcement rules anchor on the verb at the end. */
-const TRAILING_STOP = /[。．.！!、，,;；]+$/
-
 const PREFIX_STRIP = /^(安全|漏洞|CVE|security|移除|删除|废弃|下线|remove|deprecat\w*|修复|修正|解决|fix|bug|新增|新功能|新加|添加|支持|feat(?:ure)?|优化|改进|提升|更新|调整|升级|重构|改为|改善|chore|refactor|perf)[：:：]?\s*/i
 
 function stripPrefix(line: string): string {
@@ -150,8 +80,8 @@ export function parseUpdateDesc(desc: string): ParsedChanges {
   let currentSection: ChangeCategory | null = null
   let currentGroup: string | undefined
 
-  const push = (cat: ChangeCategory, text: string, announces?: ChangeItem['announces']) => {
-    result[cat].push(announces === undefined ? { text, group: currentGroup } : { text, group: currentGroup, announces })
+  const push = (cat: ChangeCategory, text: string) => {
+    result[cat].push({ text, group: currentGroup })
   }
 
   for (const raw of lines) {
@@ -198,12 +128,6 @@ export function parseUpdateDesc(desc: string): ParsedChanges {
     const isHeader = /^.+[：:]\s*$/.test(line)
     const cat = classifyLine(line)
     const stripped = stripPrefix(line)
-    // Asked of the line with any 新增/修复 prefix removed and any full stop trimmed,
-    // and asked before the branches below place it: an announcement is one whether
-    // it was written bare, under a section heading, or behind a prefix of its own,
-    // and all three shapes were inflating the counters.
-    const announced = VERSION_ANNOUNCEMENT.exec((stripped || line).replace(TRAILING_STOP, ''))
-    const announces = announced === null ? undefined : { version: announced[2], subject: announced[1].trim() }
 
     // bare keyword line like "新增" / "修复" — section header, not item
     if (cat !== 'other' && !stripped) {
@@ -217,14 +141,10 @@ export function parseUpdateDesc(desc: string): ParsedChanges {
       currentGroup = undefined
     } else if (currentSection) {
       // explicit section in effect — respect it, ignore per-line prefix classification
-      push(currentSection, stripped || line, announces)
+      push(currentSection, stripped || line)
     } else if (cat !== 'other') {
-      push(cat, stripped, announces)
-    } else if (announces) {
-      // Nobody filed it anywhere, and it announces a release: 其他 is where it
-      // belongs, rather than the 新增 the fallback below would give it.
-      push('other', line, announces)
-    } else if (RELEASE_ANNOUNCEMENT.test(line.replace(TRAILING_STOP, ''))) {
+      push(cat, stripped)
+    } else if (RELEASE_ANNOUNCEMENT.test(line)) {
       push('added', line)
     } else {
       push('other', line)
@@ -264,7 +184,7 @@ export function getVersionSeverity(version: string, prevVersion?: string): Versi
   // those says the opposite: a stream sitting on 1.0.0 while its build number
   // advances, and a release candidate. Any other version with no predecessor is
   // simply the oldest one we know about.
-  if (!prevVersion) return /^v?1\.0\.0$/i.test(version.trim()) ? 'initial' : 'unknown'
+  if (!prevVersion) return /^v?1\.0\.0$/.test(version.trim()) ? 'initial' : 'unknown'
 
   const prev = parseSemVer(prevVersion)
   if (!prev) return 'unknown'
@@ -323,28 +243,12 @@ export interface ReleaseEntry extends AppVersion {
  * `Octo 2.0.0-beta` as a prerelease, or the pair compares as stable-versus-nothing
  * and the beta wins.
  */
-const VERSION_SUFFIX = new RegExp(String.raw`\d+\.\d+(?:\.\d+)?(${QUALIFIER})`)
-/* Anchored at both ends of the token: a qualifier is the word itself, optionally
-   numbered (-rc1, -beta.2). Matching on prefix alone reads -prebuilt as a
-   prerelease and ranks a finished build below the release before it. */
-const PRERELEASE_TOKEN = /^(alpha|beta|rc|pre|preview|dev|snapshot|canary|nightly)(\d|\.|$)/i
+const VERSION_SUFFIX = /\d+\.\d+(?:\.\d+)?-([0-9A-Za-z]+)/
+const PRERELEASE_TOKEN = /^(alpha|beta|rc|pre|preview|dev|snapshot|canary|nightly)/i
 
 export function isPrerelease(version: string): boolean {
   const suffix = VERSION_SUFFIX.exec(version.replace(/\(.*\)/, ''))
-  if (!suffix) return false
-
-  // Everything from a `+` on is build metadata, which semver reads as belonging to
-  // the release it hangs off rather than as a version of its own — so 2.0.0+x64-rc1
-  // is the stable 2.0.0, however the metadata is worded. Display keeps it (a card
-  // for +arm64 says +arm64); ranking cannot see it, or a stable release would be
-  // held back behind an older one on the strength of a word after the plus.
-  const qualifier = suffix[1].split('+')[0]
-
-  // Every token, not just the first: 1.0.0-x86-rc1 names an architecture before it
-  // names the release candidate it is. Split on every separator a qualifier is
-  // written with — semver's own is the dot (1.0.0-x86.rc1), and an architecture is
-  // as likely to be spelled x86_64 as x86.
-  return qualifier.split(/[-._]/).some((token) => token !== '' && PRERELEASE_TOKEN.test(token))
+  return suffix !== null && PRERELEASE_TOKEN.test(suffix[1])
 }
 
 /** Ranked so a stable release outranks any prerelease, and both outrank a version
@@ -427,38 +331,26 @@ export interface DesktopDownload extends DesktopBuild {
 /**
  * The version line for the offer, or null when the installers do not share one.
  *
- * Formatting alike is the first answer, and 1.0 written beside 1.0.0 is one release
- * said two ways. Where the strings differ it is the qualifier that differs, and not
- * every qualifier makes a different release: -x64 beside -arm64 is one version built
- * twice, which isPrerelease() already says in as many words, while -rc1 beside 1.0.0
- * is the release candidate and the release it precedes. So an architecture falls
- * back to the version the two builds share; a prerelease among them does not.
- *
- * A string no version can be read out of is not labelled at all: a `v` in front of
- * it would claim more than the string says.
+ * formatVersion() drops a `-suffix`, so a prerelease would be badged as the stable
+ * release it is not — above a button that hands over the prerelease. Prereleases
+ * therefore keep their version string verbatim. (formatVersion itself is left alone:
+ * the timeline cards badge the same way, and moving them apart would be worse than
+ * moving them together later.)
  */
 export function offerVersionLabel(offers: DesktopDownload[]): string | null {
-  if (offers.length === 0) return null
-  if (offers.some((offer) => parseSemVer(offer.app_version) === null)) return null
+  // Written the same way, modulo a `v` prefix: label it.
+  const raw = Array.from(new Set(offers.map((offer) => offer.app_version.trim().replace(/^v/i, ''))))
+  if (raw.length === 1) return isPrerelease(raw[0]) ? raw[0] : `v${formatVersion(raw[0])}`
 
-  // Asked before anything else, because "these two format alike" and "these two are
-  // one release" are different claims and only the second is what a label makes. A
-  // qualifier spelled 1.0.0_rc1 is one isPrerelease() reads and formatVersion() does
-  // not, so formatting alike put v1.0.0 over the button handing out the candidate.
-  if (offers.some((offer) => isPrerelease(offer.app_version))) {
-    const single = new Set(offers.map((offer) => offer.app_version.trim().replace(/^v/i, '')))
-    return single.size === 1 ? `v${formatVersion([...single][0])}` : null
-  }
+  // Written differently with a prerelease among them: say nothing. formatVersion()
+  // drops a `-suffix`, so comparing formatted versions here would collapse Windows
+  // on 1.0.0 and macOS on 1.0.0-rc1 into one version and badge the RC as stable —
+  // above the button that hands it over.
+  if (offers.some((offer) => isPrerelease(offer.app_version))) return null
 
-  const formatted = new Set(offers.map((offer) => formatVersion(offer.app_version.trim().replace(/^v/i, ''))))
-  if (formatted.size === 1) return `v${[...formatted][0]}`
-
-  const shared = new Set(offers.map((offer) => {
-    const triple = parseSemVer(offer.app_version)!
-    const build = parseBuildNumber(offer.app_version)
-    return `${triple[0]}.${triple[1]}.${triple[2]}${build !== null ? `(${build})` : ''}`
-  }))
-  return shared.size === 1 ? `v${[...shared][0]}` : null
+  // All stable and formatting alike (1.0 and 1.0.0) — one version, said once.
+  const formatted = Array.from(new Set(offers.map((offer) => formatVersion(offer.app_version))))
+  return formatted.length === 1 ? `v${formatted[0]}` : null
 }
 
 /**
@@ -863,14 +755,10 @@ export function parseContributors(desc: string): Contributor[] {
   return []
 }
 
-/* The same expression ranking reads, under the name display uses it by. */
-const VERSION_QUALIFIER = VERSION_SUFFIX
-
 export function formatVersion(raw: string): string {
   const semver = parseSemVer(raw)
   if (!semver) return raw
   const build = parseBuildNumber(raw)
-  const qualifier = VERSION_QUALIFIER.exec(raw.replace(/\(.*\)/, ''))
-  const base = `${semver[0]}.${semver[1]}.${semver[2]}${qualifier ? qualifier[1] : ''}`
+  const base = `${semver[0]}.${semver[1]}.${semver[2]}`
   return build !== null ? `${base}(${build})` : base
 }
