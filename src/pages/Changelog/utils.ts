@@ -295,10 +295,31 @@ function supersedes(candidate: AppVersion, current: DesktopDownload): boolean {
     if (a.triple[i] !== b.triple[i]) return a.triple[i] > b.triple[i]
   }
   if (a.build !== b.build) return a.build > b.build
+  return supersedesSameVersion(candidate, current)
+}
+
+/**
+ * The tail of that order, for two rows already known to carry one version — which
+ * is how groupReleases() meets them, having keyed the card by app_version.
+ *
+ * Shared rather than restated: the card links a build and the band above it offers
+ * one, and if the two break a tie differently the same visitor is handed two
+ * different installers for the release they are reading about.
+ *
+ * Rows alike down to the second still need an answer, or the fold in
+ * latestDesktopDownloads() returns whichever arrived first and the
+ * order-independence above is only most of a total order.
+ *
+ * It stops at the URL rather than going on to is_force and update_desc, and that is
+ * enough: two rows agreeing on version, second and URL are the same installer, and
+ * the notes are no longer decided here — groupReleases() picks those separately, by
+ * the newest row that filed any.
+ */
+function supersedesSameVersion(
+  candidate: { created_at: string; download_url: string },
+  current: { created_at: string; download_url: string },
+): boolean {
   if (candidate.created_at !== current.created_at) return candidate.created_at > current.created_at
-  // Rows alike down to the second still need one answer, or the fold returns
-  // whichever arrived first and the order-independence above is only most of a
-  // total order.
   return candidate.download_url > current.download_url
 }
 
@@ -382,6 +403,20 @@ export interface NoteBlock {
 }
 
 /**
+ * The platforms a card forces an upgrade on, when that is fewer than all of them.
+ *
+ * One card carries every OS build of a version and is_force is per build, so a card
+ * can force Windows and not macOS. Empty means the badge needs no qualifier: either
+ * every build forces the upgrade, or the card carries a single build and the
+ * platform badge beside it already says which one.
+ */
+export function forcedPlatforms(entry: ReleaseEntry): string[] {
+  if (!entry.builds || entry.builds.length < 2) return []
+  const forced = entry.builds.filter((build) => build.is_force === 1)
+  return forced.length === entry.builds.length ? [] : forced.map((build) => build.os)
+}
+
+/**
  * The note blocks a card should render.
  *
  * Per-OS notes are NOT merged into one document. parseUpdateDesc() is stateful —
@@ -449,18 +484,47 @@ export function orderBuilds(builds: DesktopBuild[], viewerOS: ViewerOS | null): 
 
 const URL_SCHEME = /^([a-z][a-z0-9+.-]*):/i
 
+/* A base no page is ever served from, so "does this stay on our own origin" still
+   has an answer where there is no document to ask — a test, a build step. */
+const NO_DOCUMENT_BASE = 'https://changelog.invalid/'
+
+function documentBase(): string {
+  // document.baseURI, not location.href: a <base> element changes what the browser
+  // resolves an href against, and the guard has to ask the question the browser
+  // will answer.
+  return typeof document === 'undefined' || !document.baseURI ? NO_DOCUMENT_BASE : document.baseURI
+}
+
 /**
  * download_url is admin-entered and lands in an `href` on the public What's New
  * page, so only a plain http(s) link — or a path-relative one, which stays on this
  * origin and cannot execute script — is ever handed to the browser.
  *
- * Three things browsers do that a naive check misses:
- *   - control characters are ignored, so "java\tscript:" runs;
- *   - `\` is folded to `/` against an http(s) base, so `//host`, `\\host`, `/\host`
- *     and `\/host` are all network-path references that resolve to another origin
- *     despite carrying no scheme;
- *   - a scheme with no authority is still absolute, so `http:host` on an https page
- *     navigates to http://host rather than to a path.
+ * Where the link goes is settled by resolving it, not by reading the string: the
+ * URL parser is the same one the browser will use on the href, so there is no gap
+ * between the rule and the behaviour for a cleverly written string to live in.
+ * Two things it decides that pattern-matching kept getting wrong:
+ *   - `\` folds to `/` against an http(s) base, so `//host`, `\\host`, `/\host` and
+ *     `\/host` are authorities rather than the paths they look like, and land on
+ *     another origin while carrying no scheme;
+ *   - a scheme need not be http(s) to parse — `javascript:` and `data:` resolve
+ *     perfectly well, and only the resolved protocol says so.
+ *
+ * The value resolved is the value returned, not a cleaned copy of it: the parser
+ * already ignores the tab, newline and carriage return that hide a scheme, so
+ * "java\tscript:" resolves to javascript: and is refused on its protocol. Deciding
+ * on a stripped string and handing back the original would approve one URL and
+ * publish another — and a space, say, is not ignored but percent-encoded, so the two
+ * are not the same link.
+ *
+ * The stripped copy is consulted for one question only, which is about the shape of
+ * the string rather than where it goes: a scheme has to be written in full
+ * (`https://host`, not `https:host`). Both reach the same place, but only one of
+ * them looks like what it does.
+ *
+ * One deliberate relaxation over the pattern-matching this replaces: a single
+ * leading backslash is now allowed. The parser folds `\evil.com` to the same-origin
+ * path `/evil.com`, so refusing it was over-rejection rather than a safety property.
  *
  * Returns the original string when it is safe to link, null when it is not.
  */
@@ -468,17 +532,24 @@ export function safeDownloadUrl(url: string | null | undefined): string | null {
   const trimmed = (url ?? '').trim()
   if (!trimmed) return null
 
+  const base = documentBase()
+
+  let resolved: URL
+  try {
+    resolved = new URL(trimmed, base)
+  } catch {
+    return null
+  }
+
+  if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') return null
+
   const probe = trimmed.replace(/[\u0000-\u0020\u007F]/g, '')
-  // No relative download path starts with a backslash, and any pair of leading
-  // slashes in either direction is an authority, not a path.
-  if (probe.startsWith('\\') || /^[/\\][/\\]/.test(probe)) return null
-
   const scheme = URL_SCHEME.exec(probe)
-  if (!scheme) return trimmed
-
-  const protocol = scheme[1].toLowerCase()
-  if (protocol !== 'http' && protocol !== 'https') return null
-  return probe.toLowerCase().startsWith(`${protocol}://`) ? trimmed : null
+  if (!scheme) {
+    // Carries no scheme of its own, so it may only be a path on this origin.
+    return resolved.origin === new URL(base).origin ? trimmed : null
+  }
+  return probe.toLowerCase().startsWith(`${scheme[1].toLowerCase()}://`) ? trimmed : null
 }
 
 function byNewestFirst(a: { created_at: string }, b: { created_at: string }): number {
@@ -497,6 +568,9 @@ export function groupReleases(raw: AppVersion[]): ReleaseEntry[] {
   // Index by grouping key rather than only checking the last entry, so a release
   // landing between two web deploys no longer splits that day in two.
   const desktopByVersion = new Map<string, number>()
+  // Which row the notes on each build came from, so a later row can be compared
+  // against it rather than against the build the card happens to link.
+  const noteSource = new Map<DesktopBuild, AppVersion>()
   const webByDate = new Map<string, number>()
   const webMembers = new Map<number, AppVersion[]>()
 
@@ -515,16 +589,33 @@ export function groupReleases(raw: AppVersion[]): ReleaseEntry[] {
         // The per-OS links live in `builds`; a single inherited URL would read as
         // authoritative for a card that offers several installers.
         result.push({ ...item, download_url: '', builds: [build] })
+        if (build.update_desc.trim()) noteSource.set(build, item)
         continue
       }
       const entry = result[at]
       const sameOS = entry.builds!.find((existing) => existing.os === item.os)
       if (!sameOS) {
         entry.builds!.push(build)
-      } else if (item.created_at > sameOS.created_at) {
-        // Same OS re-uploaded for this version: the card has to follow the newer
-        // build, whatever order the feed happens to arrive in.
-        Object.assign(sameOS, build)
+        if (build.update_desc.trim()) noteSource.set(build, item)
+        continue
+      }
+
+      // Two questions, answered separately, because one row can win the first and
+      // another the second: a re-upload that only fixes a broken link is saved with
+      // the notes box empty, so the build the card links and the notes it shows do
+      // not have to come from the same row.
+      if (supersedesSameVersion(item, sameOS)) {
+        const keep = sameOS.update_desc
+        Object.assign(sameOS, build, { update_desc: keep })
+      }
+
+      // Whichever row filed the newest notes owns them, whatever order the feed
+      // arrived in. Folding "keep what is there if the new one is blank" instead
+      // would hand the card whichever non-blank row happened to be seen first.
+      const source = noteSource.get(sameOS)
+      if (item.update_desc.trim() && (source === undefined || supersedesSameVersion(item, source))) {
+        sameOS.update_desc = item.update_desc
+        noteSource.set(sameOS, item)
       }
       continue
     }
@@ -589,6 +680,22 @@ export function detectViewerOS(userAgent: string, maxTouchPoints = 0): ViewerOS 
   if (/Mac OS X|Macintosh/i.test(userAgent)) return maxTouchPoints > 1 ? null : 'macos'
   if (/Linux|X11/i.test(userAgent)) return 'linux'
   return null
+}
+
+/**
+ * Whether the visitor is on a phone or a tablet, where a Windows or macOS installer
+ * is not merely unrecognised but unusable.
+ *
+ * detectViewerOS() already returns null for these, but null is equally what an
+ * unrecognised desktop returns — and that visitor is precisely the one who still
+ * needs the installer offered. Handheld is therefore asked as its own question
+ * rather than read off the absence of an answer to the other one.
+ */
+export function isHandheld(userAgent: string, maxTouchPoints = 0): boolean {
+  if (/Android|iPhone|iPod|iPad|Windows Phone|IEMobile/i.test(userAgent)) return true
+  // iPadOS 13+ ships a desktop Safari UA claiming "Macintosh"; the touch points are
+  // what still give it away.
+  return /Mac OS X|Macintosh/i.test(userAgent) && maxTouchPoints > 1
 }
 
 export interface Contributor {

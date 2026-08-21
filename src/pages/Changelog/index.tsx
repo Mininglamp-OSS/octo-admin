@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useSyncExternalStore } from 'react'
 import { Tabs, Spin, Empty, Tag, ConfigProvider, theme as antdTheme } from 'antd'
 import {
   AndroidOutlined,
@@ -30,7 +30,7 @@ import 'dayjs/locale/zh-cn'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import api from '../../api'
 import { colors, radius, space, font } from '../../styles/tokens'
-import { parseUpdateDesc, getVersionSeverity, formatVersion, parseContributors, detectViewerOS, groupReleases, orderBuilds, noteBlocks, latestDesktopDownloads, offerVersionLabel, offeredAbove, safeDownloadUrl, desktopPlatforms } from './utils'
+import { parseUpdateDesc, getVersionSeverity, formatVersion, parseContributors, detectViewerOS, isHandheld, forcedPlatforms, groupReleases, orderBuilds, noteBlocks, latestDesktopDownloads, offerVersionLabel, offeredAbove, safeDownloadUrl, desktopPlatforms } from './utils'
 import type { VersionSeverity, ChangeCategory, Contributor, ViewerOS, AppVersion, DesktopBuild, DesktopDownload, NoteBlock, ReleaseEntry } from './utils'
 import type { PlatformKey } from '../../styles/tokens'
 import { AnalyticsPanel } from './AnalyticsPanel'
@@ -68,6 +68,10 @@ const viewerOS: ViewerOS | null = typeof navigator === 'undefined'
   ? null
   : detectViewerOS(navigator.userAgent, navigator.maxTouchPoints)
 
+const viewerIsHandheld: boolean = typeof navigator === 'undefined'
+  ? false
+  : isHandheld(navigator.userAgent, navigator.maxTouchPoints)
+
 const tabItems = [
   { key: 'all', label: '全部', icon: <UnorderedListOutlined />, color: '', colorDark: '' },
   { key: 'web', label: 'Web', icon: <GlobalOutlined />, color: '#0ea5e9', colorDark: '#38bdf8' },
@@ -90,6 +94,19 @@ const css = `
 }
 .changelog-item {
   animation: fadeSlideIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+/* Release notes quote code: a dotted config key or a file path is one unbreakable
+   word, routinely past 60 characters, and no line-breaking opportunity exists
+   inside it. Left alone such a word sets the min-content width of the note column,
+   the timeline row cannot shrink below it, and every screen narrower than the word
+   scrolls sideways — the whole page, not just the one line. */
+.changelog-notes {
+  /* word-break first for Safari below 15.4, which drops the anywhere keyword. The
+     deprecated alias is the one that also shrinks min-content there; the
+     break-word value of overflow-wrap does not, and min-content is what set the
+     floor on the page width. */
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 .contributor-group {
   display: flex;
@@ -153,8 +170,11 @@ const css = `
   .contributor-avatar:hover img {
     transform: none;
   }
-  .contributor-avatar:hover .contributor-name {
-    opacity: 0;
+  /* Not just transparent: an absolutely positioned tooltip still counts toward the
+     document's scrollable width, and near the right edge of a phone that is enough
+     to make the page scroll sideways to reveal a name nobody can trigger. */
+  .contributor-name {
+    display: none;
   }
 }
 .contributor-name {
@@ -437,22 +457,60 @@ function Heatmap({ data }: { data: AppVersion[] }) {
 // flex row accounts for it — the fan happens inside that reserved box and can
 // never overflow the card (the whole group wraps to its own line if too wide).
 const MAX_VISIBLE_CONTRIBUTORS = 10
+/* The avatar row is the one part of an entry that refuses to shrink: ten 24px
+   avatars and a "+N" badge come to 184px, while a 360px phone leaves the note
+   column about 200px after the page padding, the date gutter and the rail. At the
+   full count the faces — not the prose — decide how wide the page is, and the page
+   scrolls sideways. Show fewer of them there; the badge still counts the rest. */
+const MAX_VISIBLE_CONTRIBUTORS_NARROW = 5
+const NARROW_SCREEN = '(max-width: 420px)'
+
+/* Resolved once and shared: getSnapshot runs on every render of every card, and
+   matchMedia hands back a new object each call. */
+let narrowScreenMedia: MediaQueryList | null | undefined
+
+function narrowScreenQuery(): MediaQueryList | null {
+  if (narrowScreenMedia === undefined) {
+    narrowScreenMedia = typeof window === 'undefined' || !window.matchMedia ? null : window.matchMedia(NARROW_SCREEN)
+  }
+  return narrowScreenMedia
+}
+
+function subscribeToWidth(notify: () => void): () => void {
+  const query = narrowScreenQuery()
+  if (!query) return () => {}
+  // Safari below 14 exposes only the deprecated addListener, and this runs inside
+  // useSyncExternalStore's subscribe: throwing here takes the page down rather than
+  // leaving the avatar row at its wider cap.
+  if (typeof query.addEventListener !== 'function') {
+    query.addListener(notify)
+    return () => query.removeListener(notify)
+  }
+  query.addEventListener('change', notify)
+  return () => query.removeEventListener('change', notify)
+}
+
+function useNarrowScreen(): boolean {
+  return useSyncExternalStore(subscribeToWidth, () => narrowScreenQuery()?.matches ?? false, () => false)
+}
 const AVATAR_SIZE = 24
 // Per-avatar step: 16px at rest (8px overlap, via margin-left:-8px in CSS) →
 // 20px on hover (4px overlap). The group reserves the fanned width below.
 const FAN_STEP = 20
 
 function ContributorAvatars({ contributors, showLabel }: { contributors: Contributor[]; showLabel?: boolean }) {
+  const narrow = useNarrowScreen()
   if (contributors.length === 0) return null
 
-  const visible = contributors.slice(0, MAX_VISIBLE_CONTRIBUTORS)
-  const overflow = contributors.slice(MAX_VISIBLE_CONTRIBUTORS)
+  const cap = narrow ? MAX_VISIBLE_CONTRIBUTORS_NARROW : MAX_VISIBLE_CONTRIBUTORS
+  const visible = contributors.slice(0, cap)
+  const overflow = contributors.slice(cap)
   const itemCount = visible.length + (overflow.length > 0 ? 1 : 0)
   const reservedWidth = (itemCount - 1) * FAN_STEP + AVATAR_SIZE
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      {showLabel && (
+      {showLabel && !narrow && (
         <span style={{ fontSize: font.size.xs, color: colors.text.tertiary, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <TeamOutlined />
           贡献者
@@ -547,6 +605,11 @@ function EntryBadges({ entry }: { entry: ReleaseEntry }) {
  * equal weight rather than guessing at them.
  */
 function DesktopDownloads({ builds, compact, large }: { builds: DesktopBuild[]; compact?: boolean; large?: boolean }) {
+  // The band above the timeline already told a handheld visitor to open the page on
+  // a computer. Offering them the same installers a few hundred pixels below would
+  // contradict that sentence with the buttons it exists to withdraw.
+  if (viewerIsHandheld) return null
+
   const ordered = orderBuilds(builds, viewerOS)
     .map((build) => ({ ...build, href: safeDownloadUrl(build.download_url) }))
     .filter((build): build is typeof build & { href: string } => build.href !== null)
@@ -639,7 +702,7 @@ function StructuredChanges({ desc }: { desc: string }) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+    <div className="changelog-notes" style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
       {sections.map((section, si) => {
         const parsed = parseUpdateDesc(section.content)
         const categories = (['added', 'changed', 'fixed', 'security', 'removed', 'other'] as const).filter((k) => parsed[k].length > 0)
@@ -747,13 +810,36 @@ function StructuredChanges({ desc }: { desc: string }) {
  * deploys within days, so the installer cannot only live where its release sits —
  * one button per OS that has a build, the visitor's own promoted.
  */
-export function DesktopDownloadBar({ downloads }: { downloads: DesktopDownload[] }) {
+export function DesktopDownloadBar({ downloads, handheld = viewerIsHandheld }: {
+  downloads: DesktopDownload[]
+  handheld?: boolean
+}) {
   if (downloads.length === 0) return null
 
   const versionLabel = offerVersionLabel(downloads)
   // Same order the buttons take, so the line does not read "Windows、macOS" above a
-  // macOS-first row.
+  // macOS-first row. On a handheld no platform is the visitor's, so the fallback
+  // order applies and the sentence reads the same for everyone.
   const platforms = orderBuilds(downloads, viewerOS).map((build) => platformConfig[build.os]?.label ?? build.os).join('、')
+
+  // A phone cannot run either installer, so the offer is news rather than an
+  // action: one quiet line that says the desktop app exists, instead of a band of
+  // dead buttons between the visitor and the page they came for.
+  if (handheld) {
+    return (
+      // One text flow rather than a flex row: the sentence wraps to two lines on a
+      // phone, and as a flex item it would drag the icon onto a line of its own.
+      <section aria-label="Octo 桌面端" style={{
+        marginBottom: space[5],
+        fontSize: font.size.sm,
+        lineHeight: 1.6,
+        color: colors.text.tertiary,
+      }}>
+        <DesktopOutlined style={{ color: 'var(--brand-text-on-bg)', marginRight: 6 }} />
+        Octo 桌面端{versionLabel && ` ${versionLabel}`} 支持 {platforms}，在电脑上打开本页即可下载
+      </section>
+    )
+  }
 
   return (
     // Labelled: these are the first focusable things on the page, ahead of its <h1>.
@@ -930,6 +1016,9 @@ function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: Re
   const isWeb = item.os === 'web'
   const severity = getVersionSeverity(item.app_version, prevVersion)
   const isForce = item.is_force === 1
+  // Which platforms are actually being told to upgrade — a card holds every OS
+  // build of one version, and is_force is per build.
+  const forcedOn = forcedPlatforms(item).map((os) => platformConfig[os]?.label ?? os)
   const blocks = useMemo(() => noteBlocks(item, viewerOS), [item])
   const contributors = useMemo(() => blockContributors(blocks), [blocks])
   const dotColor = 'var(--timeline-dot-border)'
@@ -1045,7 +1134,7 @@ function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: Re
                   borderRadius: radius.pill,
                 }}>
                   <WarningOutlined />
-                  必须升级
+                  {forcedOn.length > 0 ? `${forcedOn.join('、')} 必须升级` : '必须升级'}
                 </span>
               )}
               <ContributorAvatars contributors={contributors} showLabel />
@@ -1061,7 +1150,7 @@ function ChangelogItem({ item, isFirst, prevVersion, prevTimeLabel }: { item: Re
   )
 }
 
-function LatestReleaseSpotlight({ item, severity, hideDownloads }: { item: ReleaseEntry; severity: VersionSeverity; hideDownloads?: boolean }) {
+export function LatestReleaseSpotlight({ item, severity, hideDownloads }: { item: ReleaseEntry; severity: VersionSeverity; hideDownloads?: boolean }) {
   const isWeb = item.os === 'web'
   const dateObj = dayjs(item.created_at)
   const blocks = useMemo(() => noteBlocks(item, viewerOS), [item])
@@ -1233,8 +1322,9 @@ export default function Changelog() {
   const latestItem = filtered[0] ?? null
   const restItems = filtered.slice(1)
 
-  // When the newest release is the one the bar above is already offering, the card
-  // would repeat the same two buttons half a screen apart.
+  // When the newest release is the one the band above is already offering, the card
+  // would repeat the same two buttons half a screen apart. The handheld case needs
+  // no exception here: DesktopDownloads renders nothing there either way.
   const spotlightOfferedAbove = useMemo(
     () => (latestItem ? offeredAbove(latestItem, desktopDownloads) : false),
     [latestItem, desktopDownloads],

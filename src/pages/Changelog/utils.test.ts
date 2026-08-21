@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { detectViewerOS, getVersionSeverity, groupReleases, latestDesktopDownloads, noteBlocks, offerVersionLabel, offeredAbove, orderBuilds, parseContributors, parseUpdateDesc, safeDownloadUrl } from './utils'
+import { detectViewerOS, forcedPlatforms, isHandheld, getVersionSeverity, groupReleases, latestDesktopDownloads, noteBlocks, offerVersionLabel, offeredAbove, orderBuilds, parseContributors, parseUpdateDesc, safeDownloadUrl } from './utils'
 import type { AppVersion } from './utils'
 
 describe('parseContributors', () => {
@@ -24,6 +24,37 @@ describe('parseUpdateDesc', () => {
     const parsed = parseUpdateDesc('Windows 桌面端 1.0.0 版本发布')
     expect(parsed.added).toEqual([{ text: 'Windows 桌面端 1.0.0 版本发布', group: undefined }])
     expect(parsed.other).toEqual([])
+  })
+
+
+  it('never marks a line that reports a change on its way to the announcement', () => {
+    // Chinese writes without spaces, so any rule reading a release out of prose is
+    // tempted to swallow these whole — each reports a fix and mentions the release
+    // in one breath. They must survive as one item with their text intact.
+    for (const desc of [
+      '2.0.0修复若干问题后正式发布',
+      'Windows 桌面端 1.0.0修复白屏后正式发布。',
+      '1.0.0解决登录崩溃后正式上线',
+    ]) {
+      const items = Object.values(parseUpdateDesc(desc)).flat()
+      expect(items).toHaveLength(1)
+    }
+  })
+
+  it('keeps a line that says anything besides an announcement whole', () => {
+    // The shapes a release-detection rule mistakes for announcements. Nothing on
+    // this page removes a note today; these pin the parse so that stays true.
+    for (const desc of [
+      '白屏崩溃已解决，伴随 1.0.0 版本发布',
+      '协议从 1.0 升级到 2.0 正式上线',
+      '1.5x 倍速播放正式上线',
+      '深色模式正式发布',
+      'TLS 1.3 通道上线',
+    ]) {
+      const items = Object.values(parseUpdateDesc(desc)).flat()
+      expect(items).toHaveLength(1)
+      expect(items[0].text).toContain(desc.slice(0, 4))
+    }
   })
 
   it('keeps an explicit prefix ahead of the release-announcement fallback', () => {
@@ -70,6 +101,9 @@ describe('getVersionSeverity', () => {
   it('tags nothing when there is no predecessor to diff against', () => {
     expect(getVersionSeverity('3.2.1')).toBe('unknown')
     expect(getVersionSeverity('3.2.1', 'not-a-version')).toBe('unknown')
+    // parseSemVer reads 1.0.0 out of this one, and it is the opposite of a first
+    // stable release.
+    expect(getVersionSeverity('1.0.0-rc1')).toBe('unknown')
   })
 
   it('tags nothing when the comparison does not move forward', () => {
@@ -131,6 +165,57 @@ describe('groupReleases', () => {
       ])
       expect(entry.created_at).toBe('2026-08-20 18:00:00')
       expect(entry.is_force).toBe(1)
+    }
+  })
+
+  it('links the same installer the band offers when two rows tie on the second', () => {
+    // Two uploads of one OS at the same timestamp: the card and the band each pick
+    // a winner, and if they break the tie differently the page shows a version and
+    // hands over a different file.
+    const rows = [
+      release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/a.exe', created_at: '2026-08-20 16:34:04' }),
+      release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/b.exe', created_at: '2026-08-20 16:34:04' }),
+    ]
+
+    for (const feed of [rows, [...rows].reverse()]) {
+      const [entry] = groupReleases(feed)
+      expect(entry.builds?.[0].download_url).toBe(latestDesktopDownloads(feed)[0].download_url)
+    }
+  })
+
+  it('shows the newest notes filed, whatever order three uploads arrive in', () => {
+    // The build the card links and the notes it shows need not come from the same
+    // row: a re-upload that only fixes a link is saved with the notes box empty.
+    // Folding "keep what is there when the new one is blank" hands the card
+    // whichever non-blank row happened to be seen first, which the feed decides.
+    const older = release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/1.exe', created_at: '2026-08-20 10:00:00', update_desc: '修复：启动白屏' })
+    const newer = release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/2.exe', created_at: '2026-08-20 12:00:00', update_desc: '修复：托盘图标丢失' })
+    const relink = release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/3.exe', created_at: '2026-08-20 18:00:00', update_desc: '  ' })
+
+    const orders = [
+      [older, newer, relink], [older, relink, newer], [newer, older, relink],
+      [newer, relink, older], [relink, older, newer], [relink, newer, older],
+    ]
+    for (const feed of orders) {
+      const [entry] = groupReleases(feed)
+      expect(entry.builds?.[0].download_url).toBe('https://x/3.exe')
+      expect(noteBlocks(entry)).toEqual([{ os: [], desc: '修复：托盘图标丢失' }])
+    }
+  })
+
+  it('keeps the notes when the same build is re-uploaded with an empty box', () => {
+    const notes = release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/typo.exe', created_at: '2026-08-20 10:00:00', update_desc: '修复：启动白屏' })
+    const blank = release({ os: 'windows', app_version: '1.0.0', download_url: 'https://x/fixed.exe', created_at: '2026-08-20 18:00:00', update_desc: '   ' })
+
+    // Both arrival orders: the feed is sorted by updated_at, so the blank re-upload
+    // is as likely to be seen first as second, and only in one of those orders is
+    // it the row being written over.
+    for (const feed of [[notes, blank], [blank, notes]]) {
+      const [entry] = groupReleases(feed)
+      // The link follows the re-upload; what shipped did not change, so the notes
+      // do not either.
+      expect(entry.builds?.[0].download_url).toBe('https://x/fixed.exe')
+      expect(noteBlocks(entry)).toEqual([{ os: [], desc: '修复：启动白屏' }])
     }
   })
 
@@ -231,6 +316,29 @@ describe('detectViewerOS', () => {
   })
 })
 
+describe('isHandheld', () => {
+  it('names the devices that cannot run an installer at all', () => {
+    expect(isHandheld('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)')).toBe(true)
+    expect(isHandheld('Mozilla/5.0 (Linux; Android 14; Pixel 8)')).toBe(true)
+    expect(isHandheld('Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X)')).toBe(true)
+    // iPadOS claims to be a Mac; the touch points are the tell.
+    expect(isHandheld('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15', 5)).toBe(true)
+  })
+
+  it('leaves every desktop alone, recognised or not', () => {
+    expect(isHandheld('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')).toBe(false)
+    expect(isHandheld('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36')).toBe(false)
+    expect(isHandheld('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36')).toBe(false)
+    // A Chromebook runs neither installer, but it is a computer: whoever visits
+    // from one is browsing on the class of device the offer is aimed at, and
+    // detectViewerOS staying silent is the whole answer there.
+    expect(isHandheld('Mozilla/5.0 (X11; CrOS x86_64 14541.0.0)')).toBe(false)
+    // The one UA that must not be read as a phone: a desktop nothing recognises,
+    // which is exactly who needs the offer.
+    expect(isHandheld('SomeBrowser/1.0')).toBe(false)
+  })
+})
+
 describe('orderBuilds', () => {
   const builds = [
     { os: 'windows', download_url: 'a.exe', created_at: '2026-08-20 16:00:00', is_force: 0, update_desc: '' },
@@ -282,6 +390,27 @@ describe('safeDownloadUrl', () => {
     expect(safeDownloadUrl('\\/attacker.example/x.exe')).toBeNull()
   })
 
+  it('refuses a URL it could only approve by reading a different string', () => {
+    // A space is not ignored inside a URL the way a tab is — it is a forbidden host
+    // code point. Deciding on a copy with it removed approved one link and
+    // published another.
+    expect(safeDownloadUrl('http:// evil.com')).toBeNull()
+    expect(safeDownloadUrl('https://evil.com .good.com')).toBeNull()
+  })
+
+  it('refuses every scheme that is not http(s), however it resolves', () => {
+    expect(safeDownloadUrl('mailto:release@example.com')).toBeNull()
+    expect(safeDownloadUrl('file:///etc/passwd')).toBeNull()
+    expect(safeDownloadUrl('blob:https://cdn.example.com/abc')).toBeNull()
+  })
+
+  it('allows a relative path wherever on this origin it lands', () => {
+    expect(safeDownloadUrl('../releases/a.exe')).toBe('../releases/a.exe')
+    expect(safeDownloadUrl('a.exe')).toBe('a.exe')
+    // A backslash written as data, not as a separator, is a path like any other.
+    expect(safeDownloadUrl('/static/%5C%5Cattacker.example/x.exe')).toBe('/static/%5C%5Cattacker.example/x.exe')
+  })
+
   it('refuses an http(s) scheme with no authority, which is still absolute', () => {
     // "http:attacker.example" on an https page navigates off-origin, not to a path.
     expect(safeDownloadUrl('http:attacker.example')).toBeNull()
@@ -289,7 +418,6 @@ describe('safeDownloadUrl', () => {
     expect(safeDownloadUrl('HTTPS://cdn.example.com/a.exe')).toBe('HTTPS://cdn.example.com/a.exe')
   })
 })
-
 
 describe('noteBlocks', () => {
   it("keeps each platform's lines under the section that platform filed them in", () => {
@@ -502,17 +630,30 @@ describe('offeredAbove', () => {
   })
 })
 
+describe('forcedPlatforms', () => {
+  const forced = (rows: [string, 0 | 1][]) =>
+    forcedPlatforms(groupReleases(rows.map(([os, is_force]) =>
+      release({ os, is_force, app_version: '2.0.0', download_url: `https://x/${os}` })))[0])
+
+  it('names the platforms being told to upgrade when the others are not', () => {
+    // A macOS visitor reading an unqualified 必须升级 is being told to do something
+    // nobody is asking of them.
+    expect(forced([['windows', 1], ['macos', 0]])).toEqual(['windows'])
+  })
+
+  it('says nothing to qualify when the card speaks for every platform it holds', () => {
+    expect(forced([['windows', 1], ['macos', 1]])).toEqual([])
+    expect(forced([['windows', 0], ['macos', 0]])).toEqual([])
+    // A single build already has its platform named beside the version.
+    expect(forced([['windows', 1]])).toEqual([])
+  })
+})
+
 describe('offerVersionLabel', () => {
   const offer = (app_version: string) => ({ os: 'windows', app_version, download_url: 'https://x/a.exe', created_at: '2026-08-20 16:00:00', is_force: 0, update_desc: '' })
 
   it('labels a shared stable version', () => {
     expect(offerVersionLabel([offer('1.0.0'), { ...offer('1.0.0'), os: 'macos' }])).toBe('v1.0.0')
-  })
-
-  it('keeps a prerelease verbatim rather than badging it as the stable it is not', () => {
-    // formatVersion drops the suffix, so this would otherwise read "v1.0.0" above a
-    // button handing over the release candidate.
-    expect(offerVersionLabel([offer('1.0.0-rc1')])).toBe('1.0.0-rc1')
   })
 
   it('says nothing when one platform is on a prerelease and another is not', () => {
