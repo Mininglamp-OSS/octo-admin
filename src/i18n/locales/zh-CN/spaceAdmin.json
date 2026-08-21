@@ -38,12 +38,19 @@
   "validate.logoTooLong": "Logo 不能超过 {{max}} 个字符",
   "validate.descriptionTooLong": "空间描述不能超过 {{max}} 个字符",
   "entry.loading": "正在进入空间管理…",
-  "entry.noToken.title": "未检测到登录态",
-  "entry.noToken.subtitle": "请先在应用内登录后再进入空间管理，或使用超级管理员账号登录。",
-  "entry.noToken.action": "去登录",
   "entry.noSpace.title": "暂无可管理的空间",
   "entry.noSpace.subtitle": "你还不是任何空间的管理员或拥有者。",
   "entry.noSpace.action": "返回登录",
   "entry.error.title": "加载空间失败",
-  "entry.error.action": "重试"
+  "entry.error.action": "重试",
+  "entry.login.title": "空间控制台",
+  "entry.login.subtitle": "用你的账号登录，管理你是管理员的空间。",
+  "entry.login.superNotice": "你当前是超级管理员身份。空间控制台是另一套身份，登录后将切换为空间管理员。",
+  "entry.login.username": "用户名",
+  "entry.login.password": "密码",
+  "entry.login.usernameRequired": "请输入用户名",
+  "entry.login.passwordRequired": "请输入密码",
+  "entry.login.submit": "登录",
+  "entry.login.toSuper": "改用超级管理员登录",
+  "entry.login.noToken": "登录未返回 token"
 }

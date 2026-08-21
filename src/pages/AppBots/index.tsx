@@ -10,6 +10,7 @@ import {
   message,
   Typography,
   Avatar,
+  Alert,
 } from 'antd'
 import { PlusOutlined, SearchOutlined, RobotOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
@@ -247,6 +248,24 @@ export default function AppBotsPage({ spaceId }: Props) {
           </Button>
         </Space>
       </div>
+
+      {!spaceId && (
+        // 这张表只列平台级 Bot（服务端 /v1/admin/app_bot 按 scope 过滤，见 botInRouteScope
+        // 的跨租户防护）。空间级 Bot 在各自空间的控制台管理。没有这句提示时，
+        // 一个被移到空间的 Bot 会从这页凭空消失，用户无从知道它去哪了。
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={t('list.platformOnly.title')}
+          description={
+            <span>
+              {t('list.platformOnly.desc')}{' '}
+              <Typography.Link href="/admin/space">{t('list.platformOnly.link')}</Typography.Link>
+            </span>
+          }
+        />
+      )}
 
       <Table
         rowKey="id"
