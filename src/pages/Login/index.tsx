@@ -198,7 +198,7 @@ function CredentialsForm() {
       verificationForm.resetFields()
       message.success(t(isResend ? 'verification.resent' : 'verification.sent'))
     } catch (error) {
-      if (error instanceof ApiError && error.code === 'err.server.user.manager_login_challenge_invalid') {
+      if (error instanceof ApiError && error.code === 'err.server.user.manager_mfa_challenge_invalid') {
         resetChallenge()
         message.error(t('verification.invalid'))
         return
@@ -229,7 +229,7 @@ function CredentialsForm() {
       message.success(t('success'))
       navigate('/dashboard')
     } catch (error) {
-      if (error instanceof ApiError && error.code === 'err.server.user.manager_login_challenge_invalid') {
+      if (error instanceof ApiError && error.code === 'err.server.user.manager_mfa_challenge_invalid') {
         resetChallenge()
         message.error(t('verification.invalid'))
         return
