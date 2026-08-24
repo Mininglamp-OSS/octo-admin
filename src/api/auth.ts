@@ -7,6 +7,7 @@ export interface LoginParams {
 }
 
 export interface ManagerLoginResponse {
+  uid?: string
   token: string
   name: string
   role: string

@@ -1,6 +1,6 @@
 import { AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import api, { ApiError } from './index'
+import api, { ApiError, isManagerLoginRequest, shouldRedirectToLogin } from './index'
 import { classifyRestoreFailure } from '../pages/Login/sessionRestore'
 import { useAuthStore } from '../store/auth'
 
@@ -128,5 +128,36 @@ describe('api 401 handling', () => {
 
     expect(useAuthStore.getState().token).toBe('live-token')
     expect(window.location.href).toBe('')
+  })
+})
+
+function unauthorizedError(url?: string): AxiosError<unknown> {
+  return {
+    config: url ? ({ url } as AxiosError<unknown>['config']) : undefined,
+    response: { status: 401 } as AxiosError<unknown>['response'],
+  } as AxiosError<unknown>
+}
+
+describe('global unauthorized response handling', () => {
+  it.each([
+    '/v1/manager/login',
+    '/v1/manager/login/send',
+    '/v1/manager/login/resend?challenge_id=1',
+    '/api/v1/manager/login/verify',
+    'https://example.test/api/v1/manager/login/verify#step',
+  ])('recognizes %s as an unauthenticated manager login request', (url) => {
+    expect(isManagerLoginRequest(url)).toBe(true)
+  })
+
+  it('does not redirect MFA failures even if a stale token exists', () => {
+    expect(shouldRedirectToLogin(unauthorizedError('/v1/manager/login/verify'), true)).toBe(false)
+  })
+
+  it('redirects a 401 from an authenticated non-login request', () => {
+    expect(shouldRedirectToLogin(unauthorizedError('/v1/manager/me'), true)).toBe(true)
+  })
+
+  it('does not redirect an unauthenticated request without a session token', () => {
+    expect(shouldRedirectToLogin(unauthorizedError('/v1/manager/me'), false)).toBe(false)
   })
 })

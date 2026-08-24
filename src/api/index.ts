@@ -86,6 +86,29 @@ const api = axios.create({
   timeout: 30000,
 })
 
+/**
+ * Manager login, including its MFA send/resend/verify steps, is intentionally
+ * unauthenticated. A 401 from one of these endpoints is a login-flow error,
+ * not an expired bearer session, so the global session redirect must not
+ * destroy the challenge state before Login can render its error message.
+ */
+export function isManagerLoginRequest(url?: string): boolean {
+  if (!url) return false
+  const path = url.split(/[?#]/, 1)[0]
+  return /(?:^|\/)v1\/manager\/login(?:\/|$)/.test(path)
+}
+
+export function shouldRedirectToLogin(
+  error: AxiosError<unknown>,
+  hasSessionToken: boolean = Boolean(useAuthStore.getState().token),
+): boolean {
+  return (
+    error.response?.status === 401 &&
+    hasSessionToken &&
+    !isManagerLoginRequest(error.config?.url)
+  )
+}
+
 api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().token
   if (token) {

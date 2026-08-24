@@ -30,6 +30,17 @@ describe('manager login API', () => {
     })
   })
 
+  it('returns a direct manager session when MFA is inactive', async () => {
+    const session = { uid: 'uid-1', token: 'token-1', name: 'Admin', role: 'superAdmin' }
+    post.mockResolvedValue({ data: session })
+
+    await expect(login({ username: 'admin', password: 'password' })).resolves.toEqual(session)
+    expect(post).toHaveBeenCalledWith('/v1/manager/login', {
+      username: 'admin',
+      password: 'password',
+    })
+  })
+
   it('verifies a challenge and returns the final manager session', async () => {
     const session = { token: 'token-1', name: 'Admin', role: 'superAdmin' }
     post.mockResolvedValue({ data: session })

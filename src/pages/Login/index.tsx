@@ -8,6 +8,7 @@ import { ApiError } from '../../api'
 import { useAuthStore } from '../../store/auth'
 import LanguageSwitcher from '../../components/LanguageSwitcher'
 import { useSessionRestore } from './useSessionRestore'
+import { getResendCooldownSeconds } from './cooldown'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -117,7 +118,6 @@ function RestoreForbiddenBody({ onSignOut }: { onSignOut: () => void }) {
     </>
   )
 }
-
 interface LoginForm {
   username: string
   password: string
@@ -126,8 +126,6 @@ interface LoginForm {
 interface VerificationForm {
   code: string
 }
-
-const resendCooldownSeconds = 2 * 60
 
 function formatRemainingTime(seconds: number) {
   const minutes = Math.floor(seconds / 60)
@@ -149,7 +147,6 @@ function CredentialsForm() {
   const [loading, setLoading] = useState(false)
   const [sendLoading, setSendLoading] = useState(false)
   const [challenge, setChallenge] = useState<LoginChallengeResponse | null>(null)
-  const [remainingSeconds, setRemainingSeconds] = useState(0)
   const [resendSeconds, setResendSeconds] = useState(0)
   const [loginForm] = Form.useForm<LoginForm>()
   const [verificationForm] = Form.useForm<VerificationForm>()
@@ -158,20 +155,12 @@ function CredentialsForm() {
   const { t } = useTranslation('login')
 
   useEffect(() => {
-    if (!challenge) {
-      setRemainingSeconds(0)
-      setResendSeconds(0)
-      return
-    }
-
-    setRemainingSeconds(challenge.expires_in)
     const timer = window.setInterval(() => {
-      setRemainingSeconds((seconds) => Math.max(seconds - 1, 0))
       setResendSeconds((seconds) => Math.max(seconds - 1, 0))
     }, 1000)
 
     return () => window.clearInterval(timer)
-  }, [challenge])
+  }, [])
 
   const onLogin = async (values: LoginForm) => {
     setLoading(true)
@@ -179,6 +168,7 @@ function CredentialsForm() {
       const data = await login(values)
       if (isManagerLoginChallenge(data)) {
         setChallenge(data)
+        setResendSeconds(getResendCooldownSeconds(data.resend_after, data.code_sent))
         loginForm.resetFields()
         verificationForm.resetFields()
         message.success(t('verification.challengeCreated'))
@@ -195,7 +185,7 @@ function CredentialsForm() {
   }
 
   const onSendCode = async () => {
-    if (!challenge || remainingSeconds <= 0 || resendSeconds > 0) return
+    if (!challenge || resendSeconds > 0) return
 
     const isResend = challenge.code_sent
     setSendLoading(true)
@@ -204,7 +194,7 @@ function CredentialsForm() {
         ? await resendLoginCode(challenge.challenge_id)
         : await sendLoginCode(challenge.challenge_id)
       setChallenge(data)
-      setResendSeconds(resendCooldownSeconds)
+      setResendSeconds(getResendCooldownSeconds(data.resend_after, true))
       verificationForm.resetFields()
       message.success(t(isResend ? 'verification.resent' : 'verification.sent'))
     } catch (error) {
@@ -215,7 +205,7 @@ function CredentialsForm() {
       }
       const retryAfter = retryAfterFromError(error)
       if (retryAfter !== null) {
-        const cooldown = Math.max(resendCooldownSeconds, retryAfter)
+        const cooldown = getResendCooldownSeconds(retryAfter, true)
         setResendSeconds(cooldown)
         message.error(t('verification.rateLimited', { time: formatRemainingTime(cooldown) }))
         return
@@ -227,7 +217,7 @@ function CredentialsForm() {
   }
 
   const onVerify = async (values: VerificationForm) => {
-    if (!challenge || !challenge.code_sent || remainingSeconds <= 0) return
+    if (!challenge || !challenge.code_sent) return
 
     setLoading(true)
     try {
@@ -287,17 +277,14 @@ function CredentialsForm() {
                   placeholder={t('verification.code.placeholder')}
                   inputMode="numeric"
                   maxLength={6}
-                  disabled={!challenge.code_sent || remainingSeconds <= 0}
+                  disabled={!challenge.code_sent}
                 />
               </Form.Item>
               <Button
                 type={challenge.code_sent ? 'default' : 'primary'}
                 onClick={onSendCode}
-                loading={sendLoading}
-                disabled={
-                  loading || sendLoading || remainingSeconds <= 0 ||
-                  resendSeconds > 0
-                }
+                  loading={sendLoading}
+                  disabled={loading || sendLoading || resendSeconds > 0}
                 style={{ minWidth: 136 }}
               >
                 {resendSeconds > 0
@@ -315,18 +302,13 @@ function CredentialsForm() {
                 type="primary"
                 htmlType="submit"
                 loading={loading}
-                disabled={!challenge.code_sent || remainingSeconds <= 0}
+                disabled={!challenge.code_sent}
                 block
               >
                 {t('verification.submit')}
               </Button>
             </Form.Item>
           </Form>
-          {remainingSeconds <= 0 && (
-            <div style={{ textAlign: 'center', color: 'var(--a-text-tertiary)', fontSize: 13 }}>
-              {t('verification.expired')}
-            </div>
-          )}
           <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
             <Button
               type="link"
