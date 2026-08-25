@@ -12,11 +12,18 @@ interface LoginResponse {
   role: string
 }
 
+interface ManagerMeOptions {
+  /** 见 api/index.ts 的 skipAuthRedirect：由调用方自行处置 401。 */
+  skipAuthRedirect?: boolean
+}
+
 export const login = (params: LoginParams) =>
   api.post<LoginResponse>('/v1/manager/login', params).then((res) => res.data)
 
-export const getManagerMe = () =>
-  api.get<ManagerMe>('/v1/manager/me').then((res) => ({
-    ...res.data,
-    capabilities: normalizeManagerCapabilities(res.data.capabilities),
-  }))
+export const getManagerMe = (options: ManagerMeOptions = {}) =>
+  api
+    .get<ManagerMe>('/v1/manager/me', { skipAuthRedirect: options.skipAuthRedirect })
+    .then((res) => ({
+      ...res.data,
+      capabilities: normalizeManagerCapabilities(res.data.capabilities),
+    }))

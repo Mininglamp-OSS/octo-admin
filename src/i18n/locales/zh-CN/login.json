@@ -7,6 +7,11 @@
   "submit": "登录",
   "success": "登录成功",
   "failure": "登录失败",
+  "restore.checking": "正在恢复登录状态…",
+  "restore.error.title": "无法验证登录状态",
+  "restore.error.description": "暂时联系不上服务器，已保留本地登录凭据。请稍后重试。",
+  "restore.retry": "重试",
+  "restore.usePassword": "改用账号密码登录",
   "forgotPassword": "忘记密码？",
   "contactAdmin": "联系管理员",
   "footer": "© {{year}} Octo · 管理后台"

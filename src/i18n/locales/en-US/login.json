@@ -7,6 +7,11 @@
   "submit": "Sign in",
   "success": "Signed in",
   "failure": "Sign-in failed",
+  "restore.checking": "Restoring your session…",
+  "restore.error.title": "Couldn't verify your session",
+  "restore.error.description": "The server is unreachable right now. Your saved credentials were kept — please retry.",
+  "restore.retry": "Retry",
+  "restore.usePassword": "Sign in with a password instead",
   "forgotPassword": "Forgot password?",
   "contactAdmin": "Contact admin",
   "footer": "© {{year}} Octo · Admin Console"
