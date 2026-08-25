@@ -1,6 +1,7 @@
 import { AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import api, { ApiError } from './index'
+import { classifyRestoreFailure } from '../pages/Login/sessionRestore'
 import { useAuthStore } from '../store/auth'
 
 const LOGGED_IN = {
@@ -80,6 +81,39 @@ describe('api 401 handling', () => {
 
     expect(useAuthStore.getState().token).toBe('')
     expect(window.location.href).toBe('/admin/login')
+  })
+
+  it('hands the login probe a classifiable error for the 403 octo-server really sends', async () => {
+    // /v1/manager/me 的 forbidden 走 respondManagerForbidden → ResponseErrorL，
+    // wire 状态被 D14 钉死在 400、403 只在信封里。octo-server 自己的
+    // api_manager_me_test.go 断言了 w.Code == 400。这条把「拦截器产出的形状」
+    // 和「分类器读到的结论」接起来，免得两边各自对着一个想象中的形状测。
+    api.defaults.adapter = rejectWith(400, {
+      error: {
+        code: 'err.shared.auth.forbidden',
+        http_status: 403,
+        message: '该用户无权执行此操作',
+      },
+    })
+
+    const error = await api.get('/v1/manager/me', { skipAuthRedirect: true }).catch((e) => e)
+
+    expect(error).toBeInstanceOf(ApiError)
+    expect(error.transportStatus).toBe(400)
+    expect(error.status).toBe(403)
+    expect(classifyRestoreFailure(error)).toBe('forbidden')
+    // 授权被拒不等于凭据失效，凭据必须留着。
+    expect(useAuthStore.getState().token).toBe('live-token')
+  })
+
+  it('hands the login probe an expired verdict for the bare 401 octo-lib really sends', async () => {
+    // AuthMiddleware 的响应体是裸 msg，没有 error 信封。
+    api.defaults.adapter = rejectWith(401, { msg: 'token不能为空，请先登录！' })
+
+    const error = await api.get('/v1/manager/me', { skipAuthRedirect: true }).catch((e) => e)
+
+    expect(error.transportStatus).toBe(401)
+    expect(classifyRestoreFailure(error)).toBe('expired')
   })
 
   it('does not revoke on a wire 400 whose envelope claims 401', async () => {

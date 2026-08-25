@@ -133,6 +133,9 @@ describe('Login page states', () => {
     expect(container.querySelector('form')).toBeNull()
   })
 
+  // 探测成功时 hook 刻意不把 status 从 checking 收敛掉（见
+  // useSessionRestore.test.tsx），页面靠调用方导航离开。所以这个逃生口不是
+  // 锦上添花：少了它，导航一旦没发生，checking 就是个走不出去的死局。
   it('offers a way out of the probe rather than trapping the operator on a spinner', () => {
     const dismiss = vi.fn()
     harness.state = RESTORE_STATE({ status: 'checking', dismiss })

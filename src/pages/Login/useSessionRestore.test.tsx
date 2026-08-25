@@ -72,7 +72,14 @@ describe('useSessionRestore', () => {
   })
 
   afterEach(() => {
-    act(() => root.unmount())
+    // 有的用例会在测试内提前卸载，重复 unmount 是良性的。
+    act(() => {
+      try {
+        root.unmount()
+      } catch {
+        /* already unmounted inside the test */
+      }
+    })
     container.remove()
   })
 
@@ -118,6 +125,9 @@ describe('useSessionRestore', () => {
     expect(useAuthStore.getState().token).toBe('persisted-token')
     expect(useAuthStore.getState().managerProfileStatus).toBe('loaded')
     expect(useAuthStore.getState().uid).toBe('admin-1')
+    // 成功路径刻意不把 status 收敛掉 —— 靠调用方导航离开。所以 checking 态
+    // 必须自带逃生口(见 index.test.tsx),否则一旦导航没发生就是个死局。
+    expect(state?.status).toBe('checking')
   })
 
   it('fails fast rather than holding the operator on a spinner', async () => {
@@ -154,8 +164,32 @@ describe('useSessionRestore', () => {
     expect(useAuthStore.getState().token).toBe('persisted-token')
   })
 
+  it('lets a late probe response land nowhere once the page is gone', async () => {
+    // 卸载守卫是结构性的，不再依赖「离开 /login 的每条路径都记得先 logout()」
+    // 这个跨四个文件的巧合：加一个不 logout 的 navigate('/login') 也不会让
+    // 迟到的探测把用户拽走。
+    const { settle } = deferredProbe()
+    await mount()
+    expect(state?.status).toBe('checking')
+
+    await act(async () => {
+      root.unmount()
+    })
+    await act(async () => {
+      settle(MANAGER_ME)
+    })
+
+    expect(restoredPaths).toEqual([])
+    expect(useAuthStore.getState().managerProfileStatus).toBe('idle')
+  })
+
   it('gives a demoted admin a terminal state instead of outage copy', async () => {
-    mockedGetManagerMe.mockRejectedValue(new ApiError('forbidden', 403))
+    // 真实形状:respondManagerForbidden → ResponseErrorL,wire 400 + 信封 403(D14)。
+    // 手搓 new ApiError('forbidden', 403) 会让 transportStatus 默认成 403 ——
+    // 一个后端从不发出的组合,曾让这条分支明明是死代码却测得全绿。
+    mockedGetManagerMe.mockRejectedValue(
+      new ApiError('该用户无权执行此操作', 403, 'err.shared.auth.forbidden', undefined, 400),
+    )
 
     await mount()
 

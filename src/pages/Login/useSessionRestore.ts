@@ -53,6 +53,9 @@ export function useSessionRestore(onRestored: (path: string) => void): SessionRe
   // 世代号：用户放弃当前探测后，迟到的响应必须变成哑弹。
   const generation = useRef(0)
   const controller = useRef<AbortController | null>(null)
+  // 组件是否还挂着。见下面 effect 里的说明 —— 它让「卸载后不落地」成为结构性
+  // 保证，而不是依赖调用方每次都记得先 logout()。
+  const mounted = useRef(true)
 
   // 在 effect 里同步而不是渲染期赋值：并发渲染下被丢弃的那次渲染
   // 不应该改到 ref。首次探测用的是 useRef 的初始值，本来就是对的。
@@ -77,11 +80,11 @@ export function useSessionRestore(onRestored: (path: string) => void): SessionRe
         timeoutMs: PROBE_TIMEOUT_MS,
         signal: aborter.signal,
       })
-      if (run !== generation.current) return
+      if (run !== generation.current || !mounted.current) return
       useAuthStore.getState().setManagerMe(profile)
       restoredPath = firstManagerPath(profile.capabilities)
     } catch (error) {
-      if (run !== generation.current) return
+      if (run !== generation.current || !mounted.current) return
       const failure = classifyRestoreFailure(error)
       if (failure === 'expired') {
         useAuthStore.getState().logout()
@@ -118,12 +121,21 @@ export function useSessionRestore(onRestored: (path: string) => void): SessionRe
   }, [])
 
   useEffect(() => {
+    mounted.current = true
     if (!restorable) return
     void probe()
-    // 刻意不在卸载时中止：StrictMode 的 mount → unmount → mount 会把它变成
-    // 两次请求，而单次探测是这个改动明确验证过的性质。离开 /login 的每条
-    // 路径要么先 logout()、要么是整页导航（请求本来就断了），迟到的响应
-    // 无处落地。真正需要中止的是用户主动放弃，那走 abandon()。
+    // 卸载时只翻标志位，不 abort。
+    //
+    // abort 会被 StrictMode 的 mount → unmount → remount 误伤：第一次探测被
+    // 掐断，第二次 effect 又因为 probing.current 仍为 true 而直接返回，结果是
+    // 一次都探不成。翻标志位则安全 —— StrictMode 的第二次 effect 会把它设回
+    // true，真正的卸载不会。单次探测这个已验证的性质得以保住。
+    //
+    // 这样「卸载之后不再写 store、不再导航」就是结构性保证，不再依赖「离开
+    // /login 的每条路径都记得先 logout()」这个跨四个文件的巧合。
+    return () => {
+      mounted.current = false
+    }
   }, [probe, restorable])
 
   const retry = useCallback(() => {
