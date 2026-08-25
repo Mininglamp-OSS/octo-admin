@@ -17,8 +17,9 @@ export interface LoginChallengeResponse {
   challenge_id: string
   email: string
   expires_in: number
-  code_sent: boolean
-  resend_after: number
+  mfa_required?: boolean
+  code_sent?: boolean
+  resend_after?: number
 }
 
 export type ManagerLoginResult = ManagerLoginResponse | LoginChallengeResponse

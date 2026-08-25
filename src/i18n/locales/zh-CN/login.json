@@ -34,6 +34,7 @@
   "verification.failure": "验证码验证失败",
   "verification.sendFailure": "验证码发送失败",
   "verification.rateLimited": "发送过于频繁，请等待 {{time}}",
+  "verification.verifyLocked": "验证码连续多次输入错误，验证已临时锁定，请在 {{time}} 后重试",
   "verification.invalid": "本次登录验证已失效，请重新输入账号密码",
   "forgotPassword": "忘记密码？",
   "contactAdmin": "联系管理员",

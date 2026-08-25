@@ -139,6 +139,26 @@ function retryAfterFromError(error: unknown) {
   return Number.isFinite(retryAfter) && retryAfter > 0 ? Math.ceil(retryAfter) : null
 }
 
+const managerMFAVerificationLockFallbackSeconds = 10 * 60
+
+function verificationLockSecondsFromError(error: unknown) {
+  if (
+    !(error instanceof ApiError) ||
+    error.status !== 429 ||
+    ![
+      'err.server.user.manager_mfa_verify_locked',
+      // octo-server versions before PR #813 reuse the send-throttle code for
+      // the email-keyed verification lock. The endpoint tells us which meaning
+      // applies, so onVerify must accept both wire contracts.
+      'err.server.user.manager_mfa_rate_limited',
+    ].includes(error.code ?? '')
+  ) {
+    return null
+  }
+
+  return retryAfterFromError(error) ?? managerMFAVerificationLockFallbackSeconds
+}
+
 function isManagerLoginChallenge(data: ManagerLoginResult): data is LoginChallengeResponse {
   return 'challenge_id' in data && Boolean(data.challenge_id)
 }
@@ -148,6 +168,8 @@ function CredentialsForm() {
   const [sendLoading, setSendLoading] = useState(false)
   const [challenge, setChallenge] = useState<LoginChallengeResponse | null>(null)
   const [resendSeconds, setResendSeconds] = useState(0)
+  const [verificationLockSeconds, setVerificationLockSeconds] = useState(0)
+  const [verificationLockEmail, setVerificationLockEmail] = useState<string | null>(null)
   const [loginForm] = Form.useForm<LoginForm>()
   const [verificationForm] = Form.useForm<VerificationForm>()
   const navigate = useNavigate()
@@ -157,6 +179,7 @@ function CredentialsForm() {
   useEffect(() => {
     const timer = window.setInterval(() => {
       setResendSeconds((seconds) => Math.max(seconds - 1, 0))
+      setVerificationLockSeconds((seconds) => Math.max(seconds - 1, 0))
     }, 1000)
 
     return () => window.clearInterval(timer)
@@ -167,6 +190,10 @@ function CredentialsForm() {
     try {
       const data = await login(values)
       if (isManagerLoginChallenge(data)) {
+        if (verificationLockEmail && verificationLockEmail !== data.email) {
+          setVerificationLockEmail(null)
+          setVerificationLockSeconds(0)
+        }
         setChallenge(data)
         setResendSeconds(getResendCooldownSeconds(data.resend_after, data.code_sent))
         loginForm.resetFields()
@@ -185,7 +212,7 @@ function CredentialsForm() {
   }
 
   const onSendCode = async () => {
-    if (!challenge || resendSeconds > 0) return
+    if (!challenge || resendSeconds > 0 || verificationLockSeconds > 0) return
 
     const isResend = challenge.code_sent
     setSendLoading(true)
@@ -217,7 +244,7 @@ function CredentialsForm() {
   }
 
   const onVerify = async (values: VerificationForm) => {
-    if (!challenge || !challenge.code_sent) return
+    if (!challenge || !challenge.code_sent || verificationLockSeconds > 0) return
 
     setLoading(true)
     try {
@@ -232,6 +259,16 @@ function CredentialsForm() {
       if (error instanceof ApiError && error.code === 'err.server.user.manager_mfa_challenge_invalid') {
         resetChallenge()
         message.error(t('verification.invalid'))
+        return
+      }
+      const verificationLock = verificationLockSecondsFromError(error)
+      if (verificationLock !== null) {
+        setVerificationLockEmail(challenge.email)
+        setVerificationLockSeconds(verificationLock)
+        setResendSeconds((seconds) => Math.max(seconds, verificationLock))
+        message.error(
+          t('verification.verifyLocked', { time: formatRemainingTime(verificationLock) }),
+        )
         return
       }
       message.error((error as Error).message || t('verification.failure'))
@@ -277,14 +314,16 @@ function CredentialsForm() {
                   placeholder={t('verification.code.placeholder')}
                   inputMode="numeric"
                   maxLength={6}
-                  disabled={!challenge.code_sent}
+                  disabled={!challenge.code_sent || verificationLockSeconds > 0}
                 />
               </Form.Item>
               <Button
                 type={challenge.code_sent ? 'default' : 'primary'}
                 onClick={onSendCode}
-                  loading={sendLoading}
-                  disabled={loading || sendLoading || resendSeconds > 0}
+                loading={sendLoading}
+                disabled={
+                  loading || sendLoading || resendSeconds > 0 || verificationLockSeconds > 0
+                }
                 style={{ minWidth: 136 }}
               >
                 {resendSeconds > 0
@@ -302,13 +341,28 @@ function CredentialsForm() {
                 type="primary"
                 htmlType="submit"
                 loading={loading}
-                disabled={!challenge.code_sent}
+                disabled={!challenge.code_sent || verificationLockSeconds > 0}
                 block
               >
                 {t('verification.submit')}
               </Button>
             </Form.Item>
           </Form>
+          {verificationLockSeconds > 0 && (
+            <div
+              role="status"
+              style={{
+                textAlign: 'center',
+                marginTop: 12,
+                color: 'var(--a-text-secondary)',
+                fontSize: 13,
+              }}
+            >
+              {t('verification.verifyLocked', {
+                time: formatRemainingTime(verificationLockSeconds),
+              })}
+            </div>
+          )}
           <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
             <Button
               type="link"

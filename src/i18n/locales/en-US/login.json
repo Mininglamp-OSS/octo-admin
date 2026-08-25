@@ -34,6 +34,7 @@
   "verification.failure": "Verification failed",
   "verification.sendFailure": "Could not send the verification code",
   "verification.rateLimited": "Too many requests. Try again in {{time}}",
+  "verification.verifyLocked": "Too many incorrect verification attempts. Verification is temporarily locked. Try again in {{time}}.",
   "verification.invalid": "This login verification is no longer valid. Please enter your username and password again.",
   "forgotPassword": "Forgot password?",
   "contactAdmin": "Contact admin",

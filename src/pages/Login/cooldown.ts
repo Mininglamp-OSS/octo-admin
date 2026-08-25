@@ -12,7 +12,7 @@ export const minimumResendCooldownSeconds = 2 * 60
 
 export function getResendCooldownSeconds(
   resendAfter: number | undefined,
-  codeSent: boolean,
+  codeSent: boolean | undefined,
 ): number {
   const serverSeconds = Number(resendAfter)
   if (!Number.isFinite(serverSeconds) || serverSeconds <= 0) {
