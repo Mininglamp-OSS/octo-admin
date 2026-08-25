@@ -86,9 +86,10 @@ vi.mock('antd', async () => {
 
 const RESTORE_STATE = (overrides: Partial<SessionRestoreState> = {}): SessionRestoreState => ({
   status: 'form',
-  errorMessage: '',
+  errorDetail: '',
   retry: vi.fn(),
   dismiss: vi.fn(),
+  signOut: vi.fn(),
   ...overrides,
 })
 
@@ -132,6 +133,45 @@ describe('Login page states', () => {
     expect(container.querySelector('form')).toBeNull()
   })
 
+  it('offers a way out of the probe rather than trapping the operator on a spinner', () => {
+    const dismiss = vi.fn()
+    harness.state = RESTORE_STATE({ status: 'checking', dismiss })
+
+    render()
+
+    const escape = Array.from(container.querySelectorAll('button')).find(
+      (b) => b.textContent === 'restore.usePassword',
+    )
+    expect(escape).toBeTruthy()
+
+    act(() => {
+      escape?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    expect(dismiss).toHaveBeenCalledTimes(1)
+  })
+
+  it('gives a demoted admin its own copy and a terminal exit', () => {
+    const signOut = vi.fn()
+    harness.state = RESTORE_STATE({ status: 'forbidden', signOut })
+
+    render()
+
+    const alert = container.querySelector('[role="alert"]')
+    expect(alert?.textContent).toContain('restore.forbidden.title')
+    // 不能复用「服务器联系不上」的文案 —— 那不是发生的事。
+    expect(container.textContent).not.toContain('restore.error.description')
+    expect(container.querySelector('form')).toBeNull()
+
+    const exit = Array.from(container.querySelectorAll('button')).find(
+      (b) => b.textContent === 'restore.signOut',
+    )
+    act(() => {
+      exit?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(signOut).toHaveBeenCalledTimes(1)
+  })
+
   it('shows the credentials form when there is nothing to restore', () => {
     render()
 
@@ -143,13 +183,16 @@ describe('Login page states', () => {
   it('reports a failed probe through an alert and wires both recovery actions', () => {
     const retry = vi.fn()
     const dismiss = vi.fn()
-    harness.state = RESTORE_STATE({ status: 'error', errorMessage: 'bad gateway', retry, dismiss })
+    harness.state = RESTORE_STATE({ status: 'error', errorDetail: 'Network Error', retry, dismiss })
 
     render()
 
     // 恰好一个:嵌套的 live region 会被读屏播报两遍。
     expect(container.querySelectorAll('[role="alert"]')).toHaveLength(1)
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain('bad gateway')
+    const alertText = container.querySelector('[role="alert"]')?.textContent ?? ''
+    // 本地化文案是主信息,axios 的英文串只是附带的细节 —— 不能反过来。
+    expect(alertText).toContain('restore.error.description')
+    expect(alertText).toContain('Network Error')
     // 探测失败时绝不能露出表单：再登一次就是服务端多一个 session。
     expect(container.querySelector('form')).toBeNull()
 
@@ -168,12 +211,14 @@ describe('Login page states', () => {
     expect(dismiss).toHaveBeenCalledTimes(1)
   })
 
-  it('falls back to the generic description when the backend gave no message', () => {
-    harness.state = RESTORE_STATE({ status: 'error', errorMessage: '' })
+  it('shows only the localized copy when there is no detail to add', () => {
+    harness.state = RESTORE_STATE({ status: 'error', errorDetail: '' })
 
     render()
 
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain('restore.error.description')
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe(
+      'restore.error.titlerestore.error.description',
+    )
   })
 
   it('still signs in with a password when there is no session to restore', async () => {

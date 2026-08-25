@@ -17,13 +17,36 @@ declare module 'axios' {
 }
 
 export class ApiError extends Error {
+  /**
+   * 优先取自错误信封的 `error.http_status`，取不到才回落到传输层状态。
+   * 现有调用方用它判 409 / 404 / 400 这类业务语义，语义保持不变。
+   */
   status?: number
+  /**
+   * 传输层真实的 HTTP 状态码，不受错误信封影响。
+   *
+   * 两者会不一致，而且是 octo-server 有意为之：部分端点用
+   * `httperr.ResponseErrorL` 渲染，为兼容老客户端把 wire 状态钉死在 400，
+   * 真实状态只放进 `error.http_status`（见 octo-server
+   * pkg/errcode/messages_search.go 的注释）。
+   *
+   * 所以「服务端是不是拒绝了这个凭据」只能问传输层状态 —— 那正是
+   * 下面 401 拦截器的判据，两处必须用同一个答案。
+   */
+  transportStatus?: number
   code?: string
   details?: Record<string, unknown>
-  constructor(message: string, status?: number, code?: string, details?: Record<string, unknown>) {
+  constructor(
+    message: string,
+    status?: number,
+    code?: string,
+    details?: Record<string, unknown>,
+    transportStatus?: number,
+  ) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.transportStatus = transportStatus ?? status
     this.code = code
     this.details = details
   }
@@ -55,7 +78,9 @@ api.interceptors.response.use(
     const errorEnvelope = error.response?.data?.error
     const message = errorEnvelope?.message || error.response?.data?.msg || error.message
     const status = errorEnvelope?.http_status ?? error.response?.status
-    return Promise.reject(new ApiError(message, status, errorEnvelope?.code))
+    return Promise.reject(
+      new ApiError(message, status, errorEnvelope?.code, undefined, error.response?.status),
+    )
   }
 )
 

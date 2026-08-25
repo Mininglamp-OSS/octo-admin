@@ -31,6 +31,16 @@ function Probe() {
   return null
 }
 
+/** 手动控制的探测:让测试决定它什么时候、以什么结果收敛。 */
+function deferredProbe() {
+  let settle!: (me: ManagerMe) => void
+  const promise = new Promise<ManagerMe>((resolve) => {
+    settle = resolve
+  })
+  mockedGetManagerMe.mockReturnValue(promise)
+  return { settle }
+}
+
 describe('useSessionRestore', () => {
   let container: HTMLDivElement
   let root: Root
@@ -100,12 +110,65 @@ describe('useSessionRestore', () => {
     await mount()
 
     expect(mockedGetManagerMe).toHaveBeenCalledTimes(1)
-    expect(mockedGetManagerMe).toHaveBeenCalledWith({ skipAuthRedirect: true })
+    expect(mockedGetManagerMe).toHaveBeenCalledWith(
+      expect.objectContaining({ skipAuthRedirect: true }),
+    )
     expect(restoredPaths).toEqual(['/dashboard'])
     // 服务端每次 /v1/manager/login 都签发新 token，所以恢复路径必须保住原 token。
     expect(useAuthStore.getState().token).toBe('persisted-token')
     expect(useAuthStore.getState().managerProfileStatus).toBe('loaded')
     expect(useAuthStore.getState().uid).toBe('admin-1')
+  })
+
+  it('fails fast rather than holding the operator on a spinner', async () => {
+    deferredProbe()
+
+    await mount()
+
+    const options = mockedGetManagerMe.mock.calls[0][0]
+    expect(options?.skipAuthRedirect).toBe(true)
+    // 恢复会话只是省掉一次本来就能用的表单，后端慢时必须比共享客户端的
+    // 30s 默认超时早得多地放弃。
+    expect(options?.timeoutMs).toBeGreaterThan(0)
+    expect(options?.timeoutMs).toBeLessThan(30_000)
+    expect(options?.signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it('abandons an in-flight probe when the operator opts for the password form', async () => {
+    const { settle } = deferredProbe()
+    await mount()
+    expect(state?.status).toBe('checking')
+
+    await act(async () => {
+      state?.dismiss()
+    })
+    expect(state?.status).toBe('form')
+    expect(mockedGetManagerMe.mock.calls[0][0]?.signal?.aborted).toBe(true)
+
+    // 用户已经在表单上打字了，迟到的成功响应不能再把他带走。
+    await act(async () => {
+      settle(MANAGER_ME)
+    })
+    expect(restoredPaths).toEqual([])
+    expect(state?.status).toBe('form')
+    expect(useAuthStore.getState().token).toBe('persisted-token')
+  })
+
+  it('gives a demoted admin a terminal state instead of outage copy', async () => {
+    mockedGetManagerMe.mockRejectedValue(new ApiError('forbidden', 403))
+
+    await mount()
+
+    expect(state?.status).toBe('forbidden')
+    // 403 的 token 本身是有效的，清掉它没有意义。
+    expect(useAuthStore.getState().token).toBe('persisted-token')
+
+    await act(async () => {
+      state?.signOut()
+    })
+    expect(state?.status).toBe('form')
+    expect(useAuthStore.getState().token).toBe('')
+    expect(useAuthStore.getState().isLoggedIn).toBe(false)
   })
 
   it('clears the credential on 401 and falls back to the form', async () => {
@@ -125,7 +188,7 @@ describe('useSessionRestore', () => {
     await mount()
 
     expect(state?.status).toBe('error')
-    expect(state?.errorMessage).toBe('bad gateway')
+    expect(state?.errorDetail).toBe('bad gateway')
     expect(useAuthStore.getState().token).toBe('persisted-token')
     expect(useAuthStore.getState().isLoggedIn).toBe(true)
   })
@@ -145,12 +208,7 @@ describe('useSessionRestore', () => {
   })
 
   it('ignores a retry while a probe is still in flight', async () => {
-    let release: ((me: ManagerMe) => void) | undefined
-    mockedGetManagerMe.mockReturnValue(
-      new Promise<ManagerMe>((resolve) => {
-        release = resolve
-      }),
-    )
+    const { settle } = deferredProbe()
 
     await mount()
     expect(mockedGetManagerMe).toHaveBeenCalledTimes(1)
@@ -163,7 +221,7 @@ describe('useSessionRestore', () => {
     expect(mockedGetManagerMe).toHaveBeenCalledTimes(1)
 
     await act(async () => {
-      release?.(MANAGER_ME)
+      settle(MANAGER_ME)
     })
 
     expect(restoredPaths).toEqual(['/dashboard'])
@@ -175,7 +233,7 @@ describe('useSessionRestore', () => {
     await mount()
 
     expect(state?.status).toBe('error')
-    expect(state?.errorMessage).toBe('')
+    expect(state?.errorDetail).toBe('')
     expect(useAuthStore.getState().token).toBe('persisted-token')
   })
 

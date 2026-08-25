@@ -14,6 +14,18 @@ const LOGGED_IN = {
 
 describe('api 401 handling', () => {
   const originalAdapter = api.defaults.adapter
+  const originalLocation = window.location
+
+  const rejectWith = (status: number, data: unknown) =>
+    async (config: InternalAxiosRequestConfig) => {
+      throw new AxiosError('request failed', 'ERR_BAD_REQUEST', config, null, {
+        status,
+        statusText: 'Error',
+        data,
+        headers: {},
+        config,
+      })
+    }
 
   beforeEach(() => {
     api.defaults.adapter = async (config: InternalAxiosRequestConfig) => {
@@ -31,6 +43,7 @@ describe('api 401 handling', () => {
 
   afterEach(() => {
     api.defaults.adapter = originalAdapter
+    Object.defineProperty(window, 'location', { writable: true, value: originalLocation })
   })
 
   it('revokes the local credential and bounces to the login page by default', async () => {
@@ -49,6 +62,37 @@ describe('api 401 handling', () => {
 
     expect(useAuthStore.getState().token).toBe('live-token')
     expect(useAuthStore.getState().isLoggedIn).toBe(true)
+    expect(window.location.href).toBe('')
+  })
+
+  it('revokes on the transport status even when the envelope disagrees', async () => {
+    // octo-server 的部分端点用 httperr.ResponseErrorL 渲染，wire 状态被钉死、
+    // 真实状态只在 error.http_status 里，两者会不一致。撤销与否只看传输层。
+    api.defaults.adapter = rejectWith(401, {
+      error: { code: 'err.shared.auth.required', http_status: 503, message: '请先登录！' },
+    })
+
+    await expect(api.get('/v1/manager/me')).rejects.toMatchObject({
+      status: 503,
+      transportStatus: 401,
+      message: '请先登录！',
+    })
+
+    expect(useAuthStore.getState().token).toBe('')
+    expect(window.location.href).toBe('/admin/login')
+  })
+
+  it('does not revoke on a wire 400 whose envelope claims 401', async () => {
+    api.defaults.adapter = rejectWith(400, {
+      error: { code: 'err.server.messages_search.validation_failed', http_status: 401, message: 'bad' },
+    })
+
+    await expect(api.get('/v1/manager/me')).rejects.toMatchObject({
+      status: 401,
+      transportStatus: 400,
+    })
+
+    expect(useAuthStore.getState().token).toBe('live-token')
     expect(window.location.href).toBe('')
   })
 })

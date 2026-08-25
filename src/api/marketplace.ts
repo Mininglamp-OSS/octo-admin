@@ -55,7 +55,11 @@ marketplaceApi.interceptors.response.use(
     // revoked at octo-server. Mirror the shared axios interceptor
     // (../api/index.ts) so the auth store clears and the user is bounced
     // to /login rather than left on a broken page firing more 401s.
-    if (error.response?.status === 401) {
+    //
+    // skipAuthRedirect 是在 ../api/index.ts 里对 AxiosRequestConfig 做的全局
+    // 类型扩展，这个实例同样能传。不在这里读它就会变成「类型通过、行为静默
+    // 失效」的陷阱，所以照同样的语义处理。
+    if (error.response?.status === 401 && !error.config?.skipAuthRedirect) {
       useAuthStore.getState().logout()
       window.location.href = '/admin/login'
     }

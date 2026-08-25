@@ -10,44 +10,52 @@ import { useSessionRestore } from './useSessionRestore'
 
 export default function Login() {
   const navigate = useNavigate()
-  const { status, errorMessage, retry, dismiss } = useSessionRestore(
+  const { status, errorDetail, retry, dismiss, signOut } = useSessionRestore(
     useCallback((path: string) => navigate(path, { replace: true }), [navigate]),
   )
 
   return (
     <LoginShell>
-      {status === 'checking' && <RestoringBody />}
+      {status === 'checking' && <RestoringBody onDismiss={dismiss} />}
       {status === 'error' && (
-        <RestoreErrorBody message={errorMessage} onRetry={retry} onDismiss={dismiss} />
+        <RestoreErrorBody detail={errorDetail} onRetry={retry} onDismiss={dismiss} />
       )}
+      {status === 'forbidden' && <RestoreForbiddenBody onSignOut={signOut} />}
       {status === 'form' && <CredentialsForm />}
     </LoginShell>
   )
 }
 
-function RestoringBody() {
+// 探测态也给出口。它只是一个延迟优化，后端慢的时候不该把人扣在转圈上 ——
+// 改动之前表单是立刻可用的，这里不能比之前更差。
+function RestoringBody({ onDismiss }: { onDismiss: () => void }) {
   const { t } = useTranslation('login')
   return (
-    <div role="status" aria-live="polite" style={{ textAlign: 'center', padding: '24px 0' }}>
-      {/* antd 的 Spin 根节点自带 aria-live="polite"，套在外层 status 里就成了
-          嵌套 live region。转圈只是装饰，要播报的是下面那行文案。 */}
-      <span aria-hidden="true">
-        <Spin />
-      </span>
-      <p style={{ marginTop: 16, marginBottom: 0, color: 'var(--a-text-tertiary)', fontSize: 13 }}>
-        {t('restore.checking')}
-      </p>
-    </div>
+    <>
+      <div role="status" aria-live="polite" style={{ textAlign: 'center', padding: '24px 0 8px' }}>
+        {/* antd 的 Spin 根节点自带 aria-live="polite"，套在外层 status 里就成了
+            嵌套 live region。转圈只是装饰，要播报的是下面那行文案。 */}
+        <span aria-hidden="true">
+          <Spin />
+        </span>
+        <p style={{ marginTop: 16, marginBottom: 0, color: 'var(--a-text-tertiary)', fontSize: 13 }}>
+          {t('restore.checking')}
+        </p>
+      </div>
+      <Button type="link" block onClick={onDismiss}>
+        {t('restore.usePassword')}
+      </Button>
+    </>
   )
 }
 
 interface RestoreErrorBodyProps {
-  message: string
+  detail: string
   onRetry: () => void
   onDismiss: () => void
 }
 
-function RestoreErrorBody({ message, onRetry, onDismiss }: RestoreErrorBodyProps) {
+function RestoreErrorBody({ detail, onRetry, onDismiss }: RestoreErrorBodyProps) {
   const { t } = useTranslation('login')
   // antd 的 Alert 根节点已经是 role="alert"，不再外包一层，否则读屏会拿到
   // 两个嵌套的 alert 区域；两个恢复按钮也不该被卷进 live region 里播报。
@@ -57,7 +65,26 @@ function RestoreErrorBody({ message, onRetry, onDismiss }: RestoreErrorBodyProps
         type="warning"
         showIcon
         message={t('restore.error.title')}
-        description={message || t('restore.error.description')}
+        // 本地化文案是主信息。原始报错留在下面一行:这里能拿到的多半是 axios
+        // 自己的英文串(Network Error / timeout of 8000ms exceeded),让它盖掉
+        // 中文正文是本末倒置,但完全丢掉又会让人没法判断到底出了什么事。
+        description={
+          <>
+            {t('restore.error.description')}
+            {detail ? (
+              <div
+                style={{
+                  marginTop: 6,
+                  fontSize: 12,
+                  opacity: 0.75,
+                  wordBreak: 'break-word',
+                }}
+              >
+                {detail}
+              </div>
+            ) : null}
+          </>
+        }
         style={{ marginBottom: 16 }}
       />
       <Button type="primary" block size="large" onClick={onRetry}>
@@ -65,6 +92,26 @@ function RestoreErrorBody({ message, onRetry, onDismiss }: RestoreErrorBodyProps
       </Button>
       <Button type="link" block onClick={onDismiss} style={{ marginTop: 8 }}>
         {t('restore.usePassword')}
+      </Button>
+    </>
+  )
+}
+
+// 403：token 是有效的，只是这个账号不再有管理端权限。不能套用「服务器联系
+// 不上」那套文案 —— 那与事实不符，而且会让人一直点重试。这里给一个终态。
+function RestoreForbiddenBody({ onSignOut }: { onSignOut: () => void }) {
+  const { t } = useTranslation('login')
+  return (
+    <>
+      <Alert
+        type="error"
+        showIcon
+        message={t('restore.forbidden.title')}
+        description={t('restore.forbidden.description')}
+        style={{ marginBottom: 16 }}
+      />
+      <Button type="primary" block size="large" onClick={onSignOut}>
+        {t('restore.signOut')}
       </Button>
     </>
   )
