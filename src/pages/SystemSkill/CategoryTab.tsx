@@ -56,7 +56,10 @@ export default function CategoryTab({ canWrite }: Props) {
     setSubmitting(true)
     try {
       if (editItem) {
-        await updateCategory(editItem.id, values)
+        await updateCategory(editItem.id, {
+          ...values,
+          icon_key: editItem.icon_key,
+        })
         message.success(t('category.success.updated'))
       } else {
         await createCategory({ ...values, icon_key: 'MoreHorizontal' })
@@ -93,8 +96,8 @@ export default function CategoryTab({ canWrite }: Props) {
       const moved = next[target]
       const swapped = next[index]
       await Promise.all([
-        updateCategory(swapped.id, { name: swapped.name, sort_order: index }),
-        updateCategory(moved.id, { name: moved.name, sort_order: target }),
+        updateCategory(swapped.id, { name: swapped.name, icon_key: swapped.icon_key, sort_order: index }),
+        updateCategory(moved.id, { name: moved.name, icon_key: moved.icon_key, sort_order: target }),
       ])
       fetchList()
     } catch (err) {

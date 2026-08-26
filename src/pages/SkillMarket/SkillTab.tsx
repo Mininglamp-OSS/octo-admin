@@ -6,7 +6,7 @@ import type { ColumnsType } from 'antd/es/table'
 import {
   listAdminSkills,
   deleteAdminSkill,
-  getAdminSkillDownloadUrl,
+  downloadAdminSkillPackage,
   listSkillCategories,
   type SkillListItem,
   type CategoryItem,
@@ -102,8 +102,7 @@ export default function SkillTab() {
 
   const handleDownload = async (record: SkillListItem) => {
     try {
-      const url = await getAdminSkillDownloadUrl(record.skill_id)
-      window.open(url, '_blank')
+      await downloadAdminSkillPackage(record.skill_id, record.file_name)
     } catch (err) {
       message.error(err instanceof ApiError ? err.message : t('skill.loadFailed'))
     }

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Descriptions, Drawer, Spin, Tag, Space, Button, message } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
-import { getAdminSkill, getSkillMd, getAdminSkillDownloadUrl, type SkillDetail, type CategoryItem } from '../../api/skill'
+import { getAdminSkill, downloadAdminSkillPackage, type SkillDetail, type CategoryItem } from '../../api/skill'
 
 interface Props {
   open: boolean
@@ -24,13 +24,13 @@ export default function SkillDetailDrawer({ open, skillId, categories, onClose }
       return
     }
     setLoading(true)
-    Promise.all([
-      getAdminSkill(skillId),
-      getSkillMd(skillId).catch(() => ''),
-    ])
-      .then(([d, md]) => {
+    // SKILL.md preview comes from the detail's readme_content attachment (the
+    // SKILL.md file the backend inlines), NOT the legacy /skill_md route, which
+    // 404s for a unified plugin UUID.
+    getAdminSkill(skillId)
+      .then((d) => {
         setDetail(d)
-        setSkillMd(md)
+        setSkillMd(d.readme_content ?? '')
       })
       .catch(() => {
         message.error(t('skill.loadFailed'))
@@ -124,8 +124,7 @@ export default function SkillDetailDrawer({ open, skillId, categories, onClose }
             type="primary"
             onClick={async () => {
               try {
-                const url = await getAdminSkillDownloadUrl(detail.skill_id)
-                window.open(url, '_blank')
+                await downloadAdminSkillPackage(detail.skill_id, detail.file_name)
               } catch {
                 message.error(t('skill.loadFailed'))
               }

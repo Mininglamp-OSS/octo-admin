@@ -24,7 +24,10 @@ export default function SkillEditModal({ open, skill, categories, onClose, onSuc
         description: skill.description,
         category_id: skill.category_id || undefined,
         tags: skill.tags ?? [],
-        icon_url: skill.icon_url ?? '',
+        // Seed from the CANONICAL icon (object key / URL), NOT the presigned
+        // icon_url. updateAdminSkill maps this field back into the canonical
+        // `icon`, so echoing icon_url here would store a 1h URL that 403s later.
+        icon_url: skill.icon ?? '',
       })
     }
   }, [open, skill, form])

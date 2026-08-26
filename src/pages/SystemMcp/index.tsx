@@ -120,6 +120,8 @@ export default function SystemMcp() {
                 slogan: updated.slogan,
                 category: updated.category,
                 icon: updated.icon,
+                icon_url: updated.icon_url,
+                publisher: updated.publisher,
                 tags: updated.tags,
                 tool_count: updated.tool_count,
                 creator_name: updated.creator_name,
@@ -146,11 +148,11 @@ export default function SystemMcp() {
         render: (name: string, r) => (
           <div className="mcp-cell-name">
             <span className="mcp-cell-name__icon">
-              {r.icon &&
-              (r.icon.startsWith('http') || r.icon.startsWith('data:')) ? (
-                <img src={r.icon} alt={name} />
+              {r.icon_url &&
+              (r.icon_url.startsWith('http') || r.icon_url.startsWith('data:')) ? (
+                <img src={r.icon_url} alt={name} />
               ) : (
-                r.icon || '🧩'
+                r.icon_url || '🧩'
               )}
             </span>
             <div className="mcp-cell-name__text">

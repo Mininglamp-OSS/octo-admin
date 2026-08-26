@@ -57,6 +57,7 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
   const [categories, setCategories] = useState<CategoryItem[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [iconUrl, setIconUrl] = useState('')
+  const [iconDisplayUrl, setIconDisplayUrl] = useState('')
   const [iconUploading, setIconUploading] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval>>()
   const [form] = Form.useForm()
@@ -82,11 +83,13 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
           version: editSkill.version,
           changelog: t('upload.currentVersionChangelog'),
         })
-        setIconUrl(editSkill.icon_url || '')
+        setIconUrl(editSkill.icon || '')
+        setIconDisplayUrl(editSkill.icon_url || '')
       } else {
         setRenderEditSkill(null)
         form.setFieldsValue({ visibility: 'system', version: DEFAULT_VERSION, changelog: '' })
         setIconUrl('')
+        setIconDisplayUrl('')
       }
       setParseTaskId('')
       setSelectedFileName('')
@@ -163,7 +166,11 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
     setIconUploading(true)
     try {
       const { object_key } = await uploadIcon(file)
+      // A fresh upload is the ONLY path that replaces the canonical icon. The
+      // returned object_key is both what we submit and (best-effort) the
+      // preview source.
       setIconUrl(object_key)
+      setIconDisplayUrl(object_key)
     } catch (err) {
       if (err instanceof Error) message.error(err.message)
     } finally {
@@ -396,8 +403,8 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
                 }}
               >
                 <Space>
-                  {iconUrl && (
-                    <img src={iconUrl} alt="icon" style={{ width: 32, height: 32, borderRadius: 4 }} />
+                  {iconDisplayUrl && (
+                    <img src={iconDisplayUrl} alt="icon" style={{ width: 32, height: 32, borderRadius: 4 }} />
                   )}
                   <Button icon={<UploadOutlined />} loading={iconUploading}>
                     {t('upload.form.uploadIcon')}

@@ -47,9 +47,8 @@ interface ImportEntry {
   status: EntryStatus
   /** Parse or import failure reason, shown under the status tag. */
   error: string | null
-  /** Per-row overrides, initialized from the manifest. */
+  /** Per-row category override, initialized from the manifest. */
   category?: string
-  tags: string[]
 }
 
 interface Props {
@@ -131,7 +130,7 @@ export default function UploadModal({
     const key = file.uid
     setEntries((prev) => [
       ...prev,
-      { key, fileName: file.name, file, parsed: null, status: 'parsing', error: null, tags: [] },
+      { key, fileName: file.name, file, parsed: null, status: 'parsing', error: null },
     ])
     try {
       const parsed = await parseExpertContainer(file)
@@ -148,7 +147,6 @@ export default function UploadModal({
         parsed,
         status: 'ready',
         category: parsed.manifest.category || undefined,
-        tags: parsed.manifest.tags,
       })
     } catch (err) {
       updateEntry(key, { status: 'invalid', error: errText(err) })
@@ -184,7 +182,9 @@ export default function UploadModal({
         // The whole container zip is uploaded to the server importer, which
         // unzips it and mints the expert/team plugin + its bundled skills. The
         // selected category (a name) is resolved to a unified category id in
-        // the client; tags come from the manifest inside the zip.
+        // the client. Tags are NOT overridable here: the importer accepts only
+        // file + category_id and takes tags from the manifest inside the zip,
+        // so a per-row tags editor would be silently dropped.
         await importExpertContainer(entry.file, {
           kind: expectKind,
           categoryName: entry.category,
@@ -263,23 +263,6 @@ export default function UploadModal({
             disabled={submitting || e.status === 'done'}
             onChange={(v) => updateEntry(e.key, { category: v })}
             options={categories.map((c) => ({ value: c.name, label: c.name }))}
-          />
-        ),
-    },
-    {
-      title: t('list.tags'),
-      key: 'tags',
-      width: 190,
-      render: (_, e) =>
-        e.parsed && (
-          <Select
-            mode="tags"
-            size="small"
-            style={{ width: '100%' }}
-            placeholder={t('list.tagsPlaceholder')}
-            value={e.tags}
-            disabled={submitting || e.status === 'done'}
-            onChange={(v) => updateEntry(e.key, { tags: v })}
           />
         ),
     },

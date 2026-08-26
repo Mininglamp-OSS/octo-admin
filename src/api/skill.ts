@@ -32,6 +32,12 @@ export interface SkillListItem {
   id: string
   name: string
   display_name: string
+  /** Canonical, write-round-trip icon value (object key / URL) the backend
+   *  stores. Seed edit forms from THIS, not `icon_url` — echoing the presigned
+   *  `icon_url` back into the canonical column 403s the icon ~1h later. */
+  icon: string
+  /** Resolved display URL (presigned when `icon` is an object key). Render
+   *  only; never write it back as the canonical icon. */
   icon_url: string
   description: string
   category_id: string
@@ -159,6 +165,7 @@ function normalizeSkill<T extends Partial<SkillListItem>>(item: T): SkillListIte
     id,
     name: item.name || '',
     display_name: item.display_name || item.name || '',
+    icon: item.icon || '',
     icon_url: item.icon_url || '',
     description: item.description || '',
     category_id: item.category_id || '',
@@ -183,10 +190,12 @@ const parseTaskByUploadId = new Map<string, string>()
 // Admin skill catalog reads/writes now target octo-marketplace's UNIFIED
 // plugin surface (`/admin/plugins*`, plugin_type=skill). The snake_case
 // SkillListItem/SkillDetail shapes the pages consume are mapped from the
-// plugin wire model here; the upload → parse → create/reupload pipeline, the
-// SKILL.md / download endpoints, and ALL category functions stay on their
-// legacy /admin/skill* routes. The mapping mirrors octo-web's
-// dmworkskillmarket/skillApiReal against the same backend.
+// plugin wire model here. Categories are also on the unified taxonomy
+// (`/admin/plugin_categories`, see below). Only the upload → parse →
+// create/reupload pipeline still uses its legacy `/admin/skill*` routes; the
+// SKILL.md preview now reads the detail's `readme_content` attachment and the
+// download streams from the unified `/plugins/download` endpoint. The mapping
+// mirrors octo-web's dmworkskillmarket/skillApiReal against the same backend.
 
 interface PluginManifestWire {
   $schema?: string
@@ -329,6 +338,8 @@ function mapPluginToSkillListItem(
     // display name.
     name: manifest.name || raw.plugin_name || '',
     display_name: raw.plugin_name || '',
+    // Canonical icon vs. resolved display URL kept SEPARATE — see SkillListItem.
+    icon: raw.icon || '',
     icon_url: raw.icon_url || raw.icon || '',
     description: manifest.description || '',
     category_id: categoryId,
@@ -437,10 +448,12 @@ export async function listSkillCategories(): Promise<CategoryItem[]> {
 
 export async function createSkillCategory(params: {
   name: string
+  icon_key?: string
   sort_order?: number
 }): Promise<CategoryItem> {
   const resp = await skillApi.post<{ data: PluginCategoryWire }>('/admin/plugin_categories', {
     name: params.name,
+    icon_key: params.icon_key ?? '',
     plugin_types: SKILL_CATEGORY_PLUGIN_TYPES,
     sort_order: params.sort_order ?? 0,
   })
@@ -449,12 +462,16 @@ export async function createSkillCategory(params: {
 
 export async function updateSkillCategory(
   id: string,
-  params: { name?: string; sort_order?: number }
+  params: { name?: string; icon_key?: string; sort_order?: number }
 ): Promise<CategoryItem> {
   const resp = await skillApi.patch<{ data: PluginCategoryWire }>(
     `/admin/plugin_categories/${encodeURIComponent(id)}`,
     {
       name: params.name,
+      // The backend PATCH overwrites all columns, so echo the existing icon_key
+      // back — otherwise a rename/reorder wipes the category's icon (mirrors
+      // updateExpertCategory / updateMcpCategory).
+      icon_key: params.icon_key ?? '',
       plugin_types: SKILL_CATEGORY_PLUGIN_TYPES,
       sort_order: params.sort_order,
     }
@@ -498,9 +515,9 @@ export async function listAdminSkills(
   }>('/admin/plugins', { params: query })
   return {
     items: (resp.data.data ?? []).map((raw) => mapPluginToSkillListItem(raw)),
-    total: resp.data.pagination.total,
-    page: resp.data.pagination.page,
-    page_size: resp.data.pagination.page_size,
+    total: resp.data.pagination?.total ?? 0,
+    page: resp.data.pagination?.page ?? 1,
+    page_size: resp.data.pagination?.page_size ?? pageSize,
   }
 }
 
@@ -554,7 +571,14 @@ export async function updateAdminSkill(
   const description = params.description ?? manifest.description ?? ''
   const tags = normalizeTagsList(params.tags ?? plugin.tags)
   const visibility = params.visibility ?? plugin.visibility
+  // `params.icon_url` here carries the CANONICAL icon the form seeds from the
+  // record's `icon` (not the presigned display URL). When the operator didn't
+  // touch it, fall back to the freshly fetched canonical `plugin.icon` so the
+  // stored object key is preserved rather than overwritten.
   const icon = params.icon_url !== undefined ? params.icon_url : plugin.icon ?? ''
+  // Echo the existing publisher; the backend stamps it unconditionally from the
+  // request, so omitting it (omitempty → "") would blank it on every edit.
+  const publisher = plugin.publisher ?? ''
   const categoryId =
     params.category_id !== undefined ? params.category_id : plugin.category_id
   const newManifest: PluginManifestWire = {
@@ -577,6 +601,7 @@ export async function updateAdminSkill(
       ...(categoryId ? { category_id: categoryId } : {}),
       tags,
       icon,
+      publisher,
       visibility,
       manifest_json: newManifest,
       plugin_json: {
@@ -615,27 +640,61 @@ export async function deleteAdminSkill(id: string): Promise<void> {
   await skillApi.delete(`/admin/plugins/${encodeURIComponent(id)}`)
 }
 
-export async function getSkillMd(id: string): Promise<string> {
-  const resp = await skillApi.get<{ data: { content: string } }>(
-    `/admin/skills/${encodeURIComponent(id)}/skill_md`
-  )
-  return resp.data.data.content || ''
-}
-
 // ─── Download ────────────────────────────────────────────────────────────────
 
-export interface DownloadInfo {
-  download_url: string
-  file_sha256: string
+/** Parse `filename="..."` (or RFC 5987 `filename*=`) out of a
+ *  Content-Disposition header. Returns '' when absent. */
+export function parseContentDispositionFilename(disposition: string): string {
+  const star = /filename\*=(?:UTF-8'')?([^;]+)/i.exec(disposition)
+  if (star?.[1]) {
+    try {
+      return decodeURIComponent(star[1].trim().replace(/^"|"$/g, ''))
+    } catch {
+      /* fall through to the plain filename */
+    }
+  }
+  const plain = /filename="?([^";]+)"?/i.exec(disposition)
+  return plain?.[1]?.trim() ?? ''
 }
 
-/** Get a presigned download URL for a public skill archive (admin). */
-export async function getAdminSkillDownloadUrl(id: string): Promise<string> {
-  const resp = await skillApi.get<{ data: DownloadInfo }>(
-    `/admin/skills/${encodeURIComponent(id)}/download`,
-    { params: { format: 'json' } }
+/**
+ * Stream a skill plugin's packaged zip from the authenticated unified download
+ * endpoint (GET /plugins/download?plugin_id=) and trigger a browser save.
+ *
+ * The unified endpoint streams the zip bytes behind the caller's Octo token
+ * (no presigned URL), so we must fetch the blob through the marketplace client
+ * — which injects auth — rather than opening a bare URL. The legacy
+ * `/admin/skills/{id}/download` route keyed the old `skills` table and 404s for
+ * a unified plugin UUID. `plugin_id` resolves the plugin for the superAdmin
+ * operator the same as any tenant caller.
+ */
+export async function downloadAdminSkillPackage(
+  id: string,
+  fileName?: string
+): Promise<void> {
+  const resp = await skillApi.get(`/plugins/download`, {
+    params: { plugin_id: id },
+    responseType: 'blob',
+  })
+  const blob = resp.data as Blob
+  const disposition = String(
+    (resp.headers as Record<string, unknown> | undefined)?.[
+      'content-disposition'
+    ] ?? ''
   )
-  return resp.data.data.download_url
+  const name =
+    fileName || parseContentDispositionFilename(disposition) || 'skill.zip'
+  const url = URL.createObjectURL(blob)
+  try {
+    const a = document.createElement('a')
+    a.href = url
+    a.download = name
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+  } finally {
+    URL.revokeObjectURL(url)
+  }
 }
 
 // ─── Upload flow (presigned URL) ─────────────────────────────────────────────
@@ -892,6 +951,7 @@ export async function createCategory(data: {
 }): Promise<CategoryItem> {
   return createSkillCategory({
     name: data.name,
+    icon_key: data.icon_key,
     sort_order: 0,
   })
 }
@@ -902,6 +962,7 @@ export async function updateCategory(
 ): Promise<CategoryItem> {
   return updateSkillCategory(id, {
     name: data.name,
+    icon_key: data.icon_key,
     sort_order: data.sort_order,
   })
 }

@@ -63,6 +63,7 @@ export default function CategoryTab() {
       if (editing) {
         await updateSkillCategory(editing.skill_category_id, {
           name: values.name,
+          icon_key: editing.icon_key,
           sort_order: values.sort_order ?? 0,
         })
         message.success(t('category.success.updated'))

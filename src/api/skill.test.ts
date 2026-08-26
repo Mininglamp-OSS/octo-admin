@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockPost = vi.hoisted(() => vi.fn())
 const mockGet = vi.hoisted(() => vi.fn())
+const mockPatch = vi.hoisted(() => vi.fn())
 const mockUseAuthStore = vi.hoisted(() => ({
   getState: vi.fn(() => ({ token: 'token-1', logout: vi.fn() })),
 }))
@@ -11,7 +12,7 @@ vi.mock('axios', () => ({
     create: vi.fn(() => ({
       get: mockGet,
       post: mockPost,
-      patch: vi.fn(),
+      patch: mockPatch,
       delete: vi.fn(),
       interceptors: {
         request: { use: vi.fn() },
@@ -35,6 +36,8 @@ import {
   createAdminSkill,
   initReupload,
   uploadIcon,
+  getAdminSkill,
+  updateAdminSkill,
 } from './skill'
 
 // The unified import/reupload response envelope: { data: { plugin, relations } }.
@@ -64,6 +67,72 @@ function unifiedSkillPluginResponse() {
     },
   }
 }
+
+// The skill detail wire, carrying a canonical icon (object key), a resolved
+// presigned display icon_url, and a backfilled publisher — the three fields the
+// icon/publisher round-trip must keep distinct and preserve on edit.
+function skillDetailWire() {
+  return {
+    plugin_id: 'skill-1',
+    plugin_name: 'Skill One',
+    plugin_type: 'skill',
+    manifest_json: { name: 'skill-one', description: 'An ops skill.', labels: ['tag-1'] },
+    category_id: 'cat-ops',
+    icon: 'icons/skill-1/logo.png',
+    icon_url: 'https://presigned.example/skill-1?exp=1h',
+    publisher: 'Ops Team',
+    tags: ['tag-1'],
+    current_version: '1.0.1',
+    visibility: 'system',
+    plugin_json: {
+      attachments: [
+        { path: 'SKILL.md', content_type: 'raw', raw_content: '# doc' },
+      ],
+    },
+  }
+}
+
+const SKILL_CATEGORIES = {
+  data: { data: [{ category_id: 'cat-ops', name: 'Ops' }] },
+}
+
+describe('skill icon/publisher round-trip through the translation layer', () => {
+  beforeEach(() => {
+    mockGet.mockReset()
+    mockPatch.mockReset()
+    mockGet.mockImplementation((url: string) =>
+      url.includes('plugin_categories')
+        ? Promise.resolve(SKILL_CATEGORIES)
+        : Promise.resolve({ data: { data: { plugin: skillDetailWire(), relations: [] } } })
+    )
+    mockPatch.mockResolvedValue({ data: { data: {} } })
+  })
+
+  it('maps the canonical icon and the display icon_url onto SEPARATE fields on read', async () => {
+    const detail = await getAdminSkill('skill-1')
+    expect(detail.icon).toBe('icons/skill-1/logo.png')
+    expect(detail.icon_url).toBe('https://presigned.example/skill-1?exp=1h')
+  })
+
+  it('preserves the canonical icon and existing publisher on a metadata edit (no icon change)', async () => {
+    await updateAdminSkill('skill-1', {
+      name: 'skill-one',
+      description: 'An ops skill.',
+      category_id: 'cat-ops',
+      tags: ['tag-1'],
+      // icon_url intentionally omitted — operator didn't touch the icon.
+    })
+
+    const body = mockPatch.mock.calls[0][1] as {
+      plugin: { icon: string; publisher: string }
+    }
+    // Falls back to the freshly fetched canonical icon, NOT the presigned URL.
+    expect(body.plugin.icon).toBe('icons/skill-1/logo.png')
+    expect(body.plugin.icon).not.toContain('presigned')
+    // Existing publisher echoed so the backend's unconditional stamp can't blank it.
+    expect(body.plugin.publisher).toBe('Ops Team')
+  })
+})
 
 describe('createAdminSkill', () => {
   beforeEach(() => {

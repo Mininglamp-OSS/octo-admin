@@ -17,6 +17,7 @@
  */
 
 import { marketplaceApi as mcpApi, putPresignedFile } from './marketplace'
+import { ApiError } from './index'
 
 // ─── Types (mirrors octo-marketplace/docs/api/mcp-v1.md §3, wire shape) ────
 
@@ -63,7 +64,19 @@ export interface McpListItem {
   name: string
   slogan: string
   category: string
+  /** Canonical, write-round-trip icon value the backend stores and clients
+   *  echo on update: an object key, an emoji, or a full URL. NEVER overwrite
+   *  this with `icon_url` — a stored object key resolves to a 1-hour presigned
+   *  `icon_url` that would 403 once written back into the canonical column. */
   icon: string
+  /** Resolved display URL (a 1-hour presigned URL when `icon` is an object
+   *  key; otherwise the value handed straight back). Use for rendering only;
+   *  never send it back as `icon`. */
+  icon_url: string
+  /** Backfilled publisher/owner display name. Carried through read→edit→write
+   *  so a metadata PATCH doesn't blank it (the backend stamps it
+   *  unconditionally from the request). */
+  publisher?: string
   tags: string[]
   tool_count: number
   visibility: McpVisibility
@@ -98,6 +111,10 @@ export interface CreateMcpParams {
   slug?: string
   category: string
   icon?: string
+  /** Existing publisher, echoed on update so the backend doesn't blank it.
+   *  Omitted on create — the backend stamps it from the authenticated
+   *  operator. */
+  publisher?: string
   tags?: string[]
   slogan?: string
   transport: McpTransport
@@ -140,6 +157,8 @@ export interface PatchMcpParams {
   slug?: string
   category?: string
   icon?: string
+  /** Existing publisher, echoed on update so the backend doesn't blank it. */
+  publisher?: string
   tags?: string[]
   slogan?: string
   transport?: McpTransport
@@ -328,17 +347,31 @@ function escapeLikeGo(json: string): string {
     })
 }
 
-/** Slugify a server name the same way octo-web's slugifyServerName /
- *  FormModal.slugifyName do, so an identical name yields an identical slug. */
-function slugifyServerName(input: string): string {
-  return input
-    .toLowerCase()
+/** Safe fallback slug when a name slugifies to the empty string (all
+ *  non-ASCII, e.g. a pure-Chinese name). A `mcpServers` JSON key must be a
+ *  stable ASCII identifier, so we never emit an empty key. Mirrors octo-web's
+ *  `DEFAULT_SERVER_SLUG` (packages/dmworkmcp/src/utils/constants.ts). */
+export const DEFAULT_SERVER_SLUG = 'mcp-server'
+
+/** Slugify a server name byte-for-byte the way octo-web's `slugifyServerName`
+ *  does (packages/dmworkmcp/src/utils/constants.ts), so an identical name
+ *  yields an identical slug across the two consoles:
+ *    - trim, lowercase
+ *    - runs of WHITESPACE → `-` (underscores are NOT hyphenated; they fall
+ *      through to the strip step below and are dropped)
+ *    - drop every char outside [a-z0-9-]
+ *    - collapse repeated / edge hyphens
+ *    - fall back to DEFAULT_SERVER_SLUG when the result is empty
+ *  Note: octo-web applies no length cap here, so neither do we. */
+export function slugifyServerName(input: string): string {
+  const slug = (input ?? '')
     .trim()
-    .replace(/[\s_]+/g, '-')
+    .toLowerCase()
+    .replace(/\s+/g, '-')
     .replace(/[^a-z0-9-]/g, '')
     .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 64)
+    .replace(/^-+|-+$/g, '')
+  return slug || DEFAULT_SERVER_SLUG
 }
 
 /** Normalize a key into the ${KEY} placeholder name (Authorization ->
@@ -422,7 +455,13 @@ function mapMcpListItem(
     name: raw.plugin_name ?? '',
     slogan: manifest.description ?? '',
     category: (raw.category_id && idToKey.get(raw.category_id)) || '',
-    icon: raw.icon_url || raw.icon || '',
+    // `icon` is the canonical write value; `icon_url` is the resolved display
+    // URL (presigned when icon is an object key). Keep them SEPARATE — folding
+    // icon_url into icon would store the 1h presigned URL back on the next edit
+    // and 403 the icon an hour later.
+    icon: raw.icon ?? '',
+    icon_url: raw.icon_url || raw.icon || '',
+    publisher: raw.publisher || '',
     tags: raw.tags ?? [],
     tool_count: raw.tool_count ?? 0,
     visibility: mapVisibility(raw.visibility),
@@ -509,6 +548,7 @@ interface ConnectorUpsertBody {
     category_id?: string
     tags: string[]
     icon: string
+    publisher?: string
     visibility: McpVisibility
     manifest_json: PluginManifestWire
     plugin_json: {
@@ -537,7 +577,9 @@ function toConnectorUpsert(
 ): ConnectorUpsertBody {
   const name = (params.name ?? '').trim()
   const slug = slugifyServerName(params.slug?.trim() ? params.slug : name)
-  const key = slug || name
+  // slugifyServerName never returns empty (it falls back to DEFAULT_SERVER_SLUG),
+  // so `key` is always a stable ASCII identifier.
+  const key = slug
   // Pre-normalize like the backend (trim, drop empties, dedupe) so
   // manifest_json.labels matches the tags column invariant (tags == labels).
   const tags = [
@@ -596,7 +638,14 @@ function toConnectorUpsert(
       plugin_type: 'connector',
       ...(opts.categoryId ? { category_id: opts.categoryId } : {}),
       tags,
+      // Canonical icon only. The form seeds this from the record's canonical
+      // `icon` (object key / emoji / URL), NOT the presigned `icon_url`, so an
+      // untouched icon round-trips its stored key and a fresh upload replaces
+      // it. An empty string is a genuine "no icon".
       icon: params.icon ?? '',
+      // Echo the existing publisher on update so the backend's unconditional
+      // stamp doesn't blank it. Omitted on create (backend stamps the operator).
+      ...(params.publisher ? { publisher: params.publisher } : {}),
       visibility: opts.visibility,
       manifest_json: manifest,
       plugin_json: {
@@ -621,13 +670,23 @@ async function loadMcpDetail(id: string): Promise<McpDetail> {
 }
 
 /** Best-effort plugin_id extraction from a create/patch echo, tolerating both
- *  `{plugin:{plugin_id}}` and a bare `{plugin_id}` envelope. */
-function extractPluginId(data: unknown): string {
+ *  `{plugin:{plugin_id}}` and a bare `{plugin_id}` envelope. Throws a clean
+ *  create-failed error on an empty id so a malformed echo surfaces here rather
+ *  than as a deep TypeError when `loadMcpDetail('')` fetches a bogus row. */
+export function extractPluginId(data: unknown): string {
   const d = data as {
     plugin?: { plugin_id?: string }
     plugin_id?: string
   } | null
-  return d?.plugin?.plugin_id ?? d?.plugin_id ?? ''
+  const id = d?.plugin?.plugin_id ?? d?.plugin_id ?? ''
+  if (!id) {
+    throw new ApiError(
+      'Create failed: server did not return a plugin id',
+      502,
+      'invalid_response'
+    )
+  }
+  return id
 }
 
 // ─── Public functions ─────────────────────────────────────────────────────

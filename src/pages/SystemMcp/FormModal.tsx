@@ -218,7 +218,15 @@ interface FormValues {
   name: string
   slug: string
   category: string
+  /** Canonical icon value written back on submit (object key / emoji / URL).
+   *  Seeded from the record's canonical `icon`, replaced only by a fresh
+   *  upload — NEVER the presigned display URL. */
   icon: string
+  /** Resolved display URL used only for the preview tile. Seeded from the
+   *  record's `icon_url`; never submitted as the canonical icon. */
+  iconUrl: string
+  /** Existing publisher, carried through so a metadata edit doesn't blank it. */
+  publisher: string
   tags: string[]
   slogan: string
   transport: McpTransport
@@ -238,6 +246,8 @@ const EMPTY: FormValues = {
   slug: '',
   category: 'dev',
   icon: '',
+  iconUrl: '',
+  publisher: '',
   tags: [],
   slogan: '',
   transport: 'streamable-http',
@@ -263,6 +273,8 @@ function detailToValues(d: McpDetail): FormValues {
     slug: q.slug || '',
     category: d.category || 'dev',
     icon: d.icon || '',
+    iconUrl: d.icon_url || '',
+    publisher: d.publisher || '',
     tags: d.tags || [],
     slogan: d.slogan || '',
     transport: q.transport,
@@ -405,6 +417,9 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
       slug: form.slug ? slugifyName(form.slug) : undefined,
       category: form.category,
       icon: form.icon.trim() || undefined,
+      // Carry the existing publisher back on edit so the backend's
+      // unconditional stamp doesn't blank it. Empty on create → omitted.
+      publisher: form.publisher.trim() || undefined,
       tags: form.tags.length ? form.tags : undefined,
       slogan: form.slogan.trim() || undefined,
       transport: form.transport,
@@ -519,9 +534,13 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
     [t],
   )
 
+  // The preview renders the display URL (icon_url) when present, else the
+  // canonical icon (covers emoji + legacy full-URL records). The submitted
+  // value stays `form.icon` — the display URL is never written back.
+  const iconDisplay = form.iconUrl || form.icon
   const iconIsImage =
-    !!form.icon &&
-    (form.icon.startsWith('http') || form.icon.startsWith('data:'))
+    !!iconDisplay &&
+    (iconDisplay.startsWith('http') || iconDisplay.startsWith('data:'))
 
   const iconInputRef = React.useRef<HTMLInputElement | null>(null)
 
@@ -529,8 +548,9 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
   // Click on the 72×72 preview tile opens the file picker. Selected file is
   // validated (type + size), then POSTed to marketplace via the two-step
   // presigned-URL flow (see api/mcp.ts#uploadMcpIcon). On success we write
-  // the persistent download URL back into form.icon — same field the emoji /
-  // manual URL input feeds, so downstream code doesn't care about the source.
+  // the persistent download URL into BOTH form.icon (the canonical value
+  // submitted) and form.iconUrl (the preview), so the tile updates and the
+  // fresh key is what gets stored.
   const MAX_ICON_BYTES = 2 * 1024 * 1024
   const ALLOWED_ICON_TYPES = new Set([
     'image/png',
@@ -551,7 +571,10 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
     setIconUploading(true)
     try {
       const url = await uploadMcpIcon(file)
-      update('icon', url)
+      // A fresh upload replaces BOTH the canonical value (persistent download
+      // URL) and the preview. This is the only path that overwrites the
+      // canonical icon; an untouched icon keeps its seeded stored value.
+      setForm((prev) => ({ ...prev, icon: url, iconUrl: url }))
     } catch (e) {
       message.error(
         e instanceof ApiError
@@ -659,7 +682,7 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
                       ...
                     </span>
                   ) : iconIsImage ? (
-                    <img src={form.icon} alt="" />
+                    <img src={iconDisplay} alt="" />
                   ) : (
                     <span>{form.icon || '🧩'}</span>
                   )}
