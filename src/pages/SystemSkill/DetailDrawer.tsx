@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Drawer, Descriptions, Tag, Button, Typography, Popconfirm, Avatar, message } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { getSkill, deleteSkill, type SkillDetail } from '../../api/skill'
+import VisibilityTag from '../../components/VisibilityTag'
 
 interface Props {
   skillId: string | null
@@ -10,12 +11,6 @@ interface Props {
   onDeleted: () => void
   onEdit: (skill: SkillDetail) => void
   canManage: boolean
-}
-
-const VISIBILITY_COLOR: Record<string, string> = {
-  public: 'green',
-  space: 'blue',
-  private: 'default',
 }
 
 function formatFileSize(bytes: number): string {
@@ -89,9 +84,7 @@ export default function DetailDrawer({ skillId, open, onClose, onDeleted, onEdit
             </Descriptions.Item>
             <Descriptions.Item label={t('detail.field.owner')}>{skill.owner_name}</Descriptions.Item>
             <Descriptions.Item label={t('detail.field.visibility')}>
-              <Tag color={VISIBILITY_COLOR[skill.visibility]}>
-                {t(`visibility.${skill.visibility}` as any)}
-              </Tag>
+              <VisibilityTag scope={skill.visibility} />
             </Descriptions.Item>
             <Descriptions.Item label={t('detail.field.file')}>{skill.file_name || '—'}</Descriptions.Item>
             <Descriptions.Item label={t('detail.field.fileSize')}>

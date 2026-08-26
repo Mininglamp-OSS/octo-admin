@@ -7,16 +7,20 @@
  * namespace (mcp-v1.md §9.1); this file trusts that gate and only adds
  * resource-specific types + endpoint wrappers.
  *
- * Wire contract: marketplace wraps every success payload as `{data: T}` and
- * every field is snake_case. Types in this file mirror the wire exactly —
- * page code reads snake_case directly. Same pattern as ./skill.ts.
+ * The MCP catalog CRUD now targets octo-marketplace's UNIFIED plugin surface
+ * (`/admin/plugins*`, plugin_type=connector). The flat snake_case
+ * McpDetail/CreateMcpParams shapes the SystemMcp pages consume are mapped to
+ * and from the plugin wire model (manifest_json display document + plugin_json
+ * connector package of mcp.json + connector/* attachments) in the translation
+ * layer below, so the consuming pages need no change. `probe` and icon upload
+ * stay on the legacy `/admin/mcps/*` routes.
  */
 
 import { marketplaceApi as mcpApi, putPresignedFile } from './marketplace'
 
 // ─── Types (mirrors octo-marketplace/docs/api/mcp-v1.md §3, wire shape) ────
 
-export type McpVisibility = 'public' | 'private' | 'system'
+export type McpVisibility = 'system' | 'space' | 'private'
 export type McpTransport = 'stdio' | 'streamable-http' | 'sse'
 export type McpAuthType = 'bearer' | 'none'
 
@@ -63,6 +67,13 @@ export interface McpListItem {
   tags: string[]
   tool_count: number
   visibility: McpVisibility
+  /** Raw unified-plugin visibility (`system`/`space`/`private`) as it
+   *  arrives on the wire, before `mapVisibility` collapses it. Drives the
+   *  admin list "可见范围" column. */
+  scope: string
+  /** Owning Space id (empty for public/system). Drives the admin list "所属空间"
+   *  column, which resolves it to a Space name. */
+  space_id?: string
   creator_name: string
   created_by_type?: string
 }
@@ -113,8 +124,8 @@ export interface ListMcpParams {
   offset?: number
 }
 
-/** Client-side projection of `GET /admin/mcps` wire response. Wire ships
- *  `{data: McpListItem[], pagination: {total, page, page_size}}` — we
+/** Client-side projection of the list wire response. The unified surface ships
+ *  `{data: PluginListItem[], pagination: {total, page, page_size}}` — we
  *  flatten to `{items, total}` for the page. */
 export interface ListMcpResponse {
   items: McpListItem[]
@@ -146,67 +157,642 @@ export interface PatchMcpParams {
   notes?: string[]
 }
 
+// ─── Unified plugin translation layer (internal) ───────────────────────────
+//
+// The MCP catalog lives on octo-marketplace's UNIFIED plugin surface
+// (`/admin/plugins*`, plugin_type=connector). The flat McpDetail/CreateMcpParams
+// shapes the pages use are reshaped here into the plugin wire model
+// (manifest_json display document + plugin_json package of a root mcp.json +
+// connector/* attachments) and back, so the consuming pages need no change. The
+// connector package layout mirrors octo-marketplace's own backfill
+// (internal/backfill/plugin/{connector,mapping}.go) so a record this client
+// writes is byte-shaped like one the backend mints.
+
+const AUTHORIZATION_HEADER_KEY = 'Authorization'
+
+/** `${KEY}` install-time placeholder for a user-supplied env/header value —
+ *  the marketplace connector contract stores a user-supplied key with this
+ *  marker in mcp.json rather than a real value (backfill connector.go
+ *  placeholderFor). On read it maps back to a user_supplied key with an empty
+ *  value slot. */
+const PLACEHOLDER_PATTERN = /^\$\{[A-Za-z0-9_]+\}$/
+
+interface PluginManifestExampleWire {
+  title: string
+  input: string
+}
+
+interface PluginManifestWire {
+  $schema?: string
+  plugin_name?: string
+  plugin_type?: string
+  /** Machine name — for connectors this carries the legacy slug. */
+  name?: string
+  description?: string
+  labels?: string[]
+  examples?: PluginManifestExampleWire[]
+}
+
+interface PluginAttachmentWire {
+  path: string
+  content_type: 'raw' | 'storage'
+  mime_type?: string
+  raw_content?: string
+  storage_uri?: string
+  content_size?: number
+  content_hash?: string
+}
+
+interface PluginPackageWire {
+  $schema?: string
+  connector?: { type?: string; source?: string }
+  attachments?: PluginAttachmentWire[]
+}
+
+interface PluginListItemWire {
+  plugin_id: string
+  plugin_name: string
+  plugin_type: string
+  manifest_json?: PluginManifestWire
+  tags?: string[]
+  category_id?: string
+  icon?: string
+  icon_url?: string
+  tool_count?: number
+  publisher?: string
+  owner_id?: string
+  space_id?: string
+  visibility?: string
+  creator_name?: string
+  created_by_type?: string
+  current_version?: string
+  created_at?: string
+  updated_at?: string
+}
+
+interface PluginDetailPluginWire extends PluginListItemWire {
+  plugin_json?: PluginPackageWire
+}
+
+interface PluginCategoryWire {
+  category_id: string
+  name: string
+  icon_key?: string
+  plugin_types?: string[]
+  sort_order?: number
+  plugin_count?: number
+}
+
+interface ConnectorCategoryMaps {
+  keyToId: Map<string, string>
+  idToKey: Map<string, string>
+  wire: PluginCategoryWire[]
+}
+
+/** GET /admin/plugin_categories?plugin_type=connector. The category NAME is the
+ *  legacy enum key (dev/data/…), so both directions are pure lookups. */
+async function fetchConnectorCategoryMaps(): Promise<ConnectorCategoryMaps> {
+  const resp = await mcpApi.get<{ data: PluginCategoryWire[] }>(
+    '/admin/plugin_categories',
+    { params: { plugin_type: 'connector' } }
+  )
+  const wire = resp.data.data ?? []
+  const keyToId = new Map<string, string>()
+  const idToKey = new Map<string, string>()
+  for (const c of wire) {
+    keyToId.set(c.name, c.category_id)
+    idToKey.set(c.category_id, c.name)
+  }
+  return { keyToId, idToKey, wire }
+}
+
+/** raw_content of one inline package attachment, or undefined. */
+function rawAttachment(
+  pkg: PluginPackageWire | undefined,
+  path: string
+): string | undefined {
+  const hit = (pkg?.attachments ?? []).find(
+    (a) => a.path === path && a.content_type === 'raw'
+  )
+  return hit?.raw_content
+}
+
+/** Parsed JSON body of one inline attachment; undefined on miss/parse error. */
+function jsonAttachment<T>(
+  pkg: PluginPackageWire | undefined,
+  path: string
+): T | undefined {
+  const raw = rawAttachment(pkg, path)
+  if (raw === undefined) return undefined
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    return undefined
+  }
+}
+
+/** Stable serializer matching Go's json.Marshal encoding (sorted keys,
+ *  `<>&`/U+2028/U+2029 escapes). The connector attachment raw_content must
+ *  byte-match what the backend would emit. */
+function goCanonicalJSON(value: unknown): string {
+  return escapeLikeGo(stringifySortedKeys(value))
+}
+
+function stringifySortedKeys(value: unknown): string {
+  if (value === null || value === undefined) return 'null'
+  if (typeof value !== 'object') return JSON.stringify(value)
+  if (Array.isArray(value)) {
+    return `[${value.map(stringifySortedKeys).join(',')}]`
+  }
+  const record = value as Record<string, unknown>
+  const keys = Object.keys(record)
+    .filter((key) => record[key] !== undefined)
+    .sort()
+  const parts = keys.map(
+    (key) => `${JSON.stringify(key)}:${stringifySortedKeys(record[key])}`
+  )
+  return `{${parts.join(',')}}`
+}
+
+function escapeLikeGo(json: string): string {
+  return json
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029')
+    .replace(/\\./g, (escape) => {
+      if (escape === '\\b') return '\\u0008'
+      if (escape === '\\f') return '\\u000c'
+      return escape
+    })
+}
+
+/** Slugify a server name the same way octo-web's slugifyServerName /
+ *  FormModal.slugifyName do, so an identical name yields an identical slug. */
+function slugifyServerName(input: string): string {
+  return input
+    .toLowerCase()
+    .trim()
+    .replace(/[\s_]+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 64)
+}
+
+/** Normalize a key into the ${KEY} placeholder name (Authorization ->
+ *  AUTHORIZATION, X-API-Key -> X_API_KEY), mirroring backfill connector.go
+ *  envPlaceholderName so a fresh write matches a backend-minted record. */
+function envPlaceholderName(key: string): string {
+  let out = ''
+  for (const ch of key.trim()) {
+    if (ch >= 'a' && ch <= 'z') out += ch.toUpperCase()
+    else if ((ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')) out += ch
+    else out += '_'
+  }
+  return out || 'VALUE'
+}
+
+function placeholderFor(key: string): string {
+  return '${' + envPlaceholderName(key) + '}'
+}
+
+/** Write side: fold a flat (values map + user_supplied[]) pair into the single
+ *  mcp.json env/headers map the connector contract stores: shared keys carry
+ *  their verbatim value, user-supplied keys carry a ${KEY} placeholder. */
+function valueMapWithPlaceholders(
+  values: Record<string, string> | undefined,
+  userSupplied: string[] | undefined
+): Record<string, string> | undefined {
+  const supplied = new Set((userSupplied ?? []).map((k) => k.trim()).filter(Boolean))
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(values ?? {})) {
+    const k = key.trim()
+    if (!k) continue
+    out[k] = supplied.has(k) ? placeholderFor(k) : value
+  }
+  // A user-supplied key the values map omitted still needs a placeholder slot.
+  for (const key of supplied) {
+    if (!(key in out)) out[key] = placeholderFor(key)
+  }
+  return Object.keys(out).length ? out : undefined
+}
+
+/** Read side: split a stored mcp.json env/headers map back into the
+ *  (values, user_supplied) pair the form drives. A ${KEY} placeholder (the
+ *  connector marker for a consumer-filled value) maps to a user_supplied key
+ *  with a blank value slot; every other key is a shared value passed verbatim. */
+function splitPlaceholders(
+  map: Record<string, string> | undefined
+): { values?: Record<string, string>; userSupplied?: string[] } {
+  if (!map || !Object.keys(map).length) return {}
+  const values: Record<string, string> = {}
+  const userSupplied: string[] = []
+  for (const [key, value] of Object.entries(map)) {
+    if (typeof value === 'string' && PLACEHOLDER_PATTERN.test(value)) {
+      values[key] = ''
+      userSupplied.push(key)
+    } else {
+      values[key] = value
+    }
+  }
+  return {
+    values,
+    userSupplied: userSupplied.length ? userSupplied : undefined,
+  }
+}
+
+/** Unified plugin visibility → McpVisibility. The wire now emits only
+ *  `system` | `space` | `private`; legacy `public` was folded into `system` by
+ *  the backend migration, and any unknown value defaults to the global scope. */
+function mapVisibility(v: string | undefined): McpVisibility {
+  if (v === 'space') return 'space'
+  if (v === 'private') return 'private'
+  return 'system'
+}
+
+function mapMcpListItem(
+  raw: PluginListItemWire,
+  idToKey: Map<string, string>
+): McpListItem {
+  const manifest = raw.manifest_json ?? {}
+  return {
+    mcp_id: raw.plugin_id,
+    name: raw.plugin_name ?? '',
+    slogan: manifest.description ?? '',
+    category: (raw.category_id && idToKey.get(raw.category_id)) || '',
+    icon: raw.icon_url || raw.icon || '',
+    tags: raw.tags ?? [],
+    tool_count: raw.tool_count ?? 0,
+    visibility: mapVisibility(raw.visibility),
+    scope: raw.visibility ?? 'system',
+    space_id: raw.space_id,
+    creator_name: raw.creator_name ?? '',
+    created_by_type: raw.created_by_type,
+  }
+}
+
+/** One mcpServers entry inside the root mcp.json attachment. */
+interface McpServerEntryWire {
+  type?: McpTransport
+  url?: string
+  command?: string
+  args?: string[]
+  env?: Record<string, string>
+  headers?: Record<string, string>
+}
+
+interface McpJSONWire {
+  mcpServers?: Record<string, McpServerEntryWire>
+}
+
+function mapMcpDetail(
+  raw: PluginDetailPluginWire,
+  idToKey: Map<string, string>
+): McpDetail {
+  const item = mapMcpListItem(raw, idToKey)
+  const manifest = raw.manifest_json ?? {}
+  const servers =
+    jsonAttachment<McpJSONWire>(raw.plugin_json, 'mcp.json')?.mcpServers ?? {}
+  // One connector = one MCP server; the map key is the server name.
+  const serverName = Object.keys(servers)[0] ?? ''
+  const server = servers[serverName] ?? {}
+  const env = splitPlaceholders(server.env)
+  const headers = splitPlaceholders(server.headers)
+  const hasAuth = !!server.headers && AUTHORIZATION_HEADER_KEY in server.headers
+  const tools =
+    jsonAttachment<McpTool[]>(raw.plugin_json, 'connector/tools.json') ?? []
+  return {
+    ...item,
+    // Detail is the authoritative tool source; the list projection uses the
+    // stored tool_count.
+    tool_count: tools.length || item.tool_count,
+    quick_start: {
+      transport: server.type ?? 'stdio',
+      server_name: serverName || raw.plugin_name || '',
+      // The manifest machine name carries the legacy slug for connectors.
+      slug: manifest.name,
+      url: server.url,
+      // The unified wire stores no auth_type; derive it from the presence of
+      // an Authorization header (mcp-v1.md §5.1 invariant).
+      auth_type: hasAuth ? 'bearer' : 'none',
+      command: server.command,
+      args: server.args,
+      env: env.values,
+      env_user_supplied: env.userSupplied,
+      headers: headers.values,
+      headers_user_supplied: headers.userSupplied,
+    },
+    tools,
+    usage_examples:
+      jsonAttachment<string[]>(raw.plugin_json, 'connector/examples.json') ?? [],
+    faqs: jsonAttachment<McpFaq[]>(raw.plugin_json, 'connector/faqs.json') ?? [],
+    notes: jsonAttachment<string[]>(raw.plugin_json, 'connector/notes.json') ?? [],
+    created_at: raw.created_at ?? '',
+    updated_at: raw.updated_at ?? '',
+  }
+}
+
+interface ConnectorAttachmentBody {
+  path: string
+  content_type: 'raw'
+  mime_type: string
+  raw_content: string
+}
+
+interface ConnectorUpsertBody {
+  plugin: {
+    plugin_id?: string
+    plugin_name: string
+    plugin_type: 'connector'
+    category_id?: string
+    tags: string[]
+    icon: string
+    visibility: McpVisibility
+    manifest_json: PluginManifestWire
+    plugin_json: {
+      $schema: string
+      connector: { type: 'mcp'; source: string }
+      attachments: ConnectorAttachmentBody[]
+    }
+  }
+  relations: []
+}
+
+function rawAtt(path: string, content: string): ConnectorAttachmentBody {
+  return {
+    path,
+    content_type: 'raw',
+    mime_type: 'application/json',
+    raw_content: content,
+  }
+}
+
+/** Reshape the flat MCP create/patch payload into the connector plugin upsert
+ *  body (manifest_json display document + plugin_json connector package). */
+function toConnectorUpsert(
+  params: CreateMcpParams | PatchMcpParams,
+  opts: { pluginId?: string; categoryId?: string; visibility: McpVisibility }
+): ConnectorUpsertBody {
+  const name = (params.name ?? '').trim()
+  const slug = slugifyServerName(params.slug?.trim() ? params.slug : name)
+  const key = slug || name
+  // Pre-normalize like the backend (trim, drop empties, dedupe) so
+  // manifest_json.labels matches the tags column invariant (tags == labels).
+  const tags = [
+    ...new Set((params.tags ?? []).map((t) => t.trim()).filter(Boolean)),
+  ]
+  const usage = (params.usage_examples ?? []).map((s) => s.trim()).filter(Boolean)
+  const manifest: PluginManifestWire = {
+    $schema: 'cowork-plugin-manifest-1.0.json',
+    plugin_name: name,
+    plugin_type: 'connector',
+    name: key,
+    description: params.slogan ?? '',
+    labels: tags,
+    examples: usage.map((input, i) => ({ title: `使用示例 ${i + 1}`, input })),
+  }
+  const server: Record<string, unknown> = {}
+  if (params.transport) server.type = params.transport
+  if (params.url) server.url = params.url
+  if (params.command) server.command = params.command
+  if (params.args?.length) server.args = params.args
+  const env = valueMapWithPlaceholders(params.env, params.env_user_supplied)
+  if (env) server.env = env
+  const headers = valueMapWithPlaceholders(
+    params.headers,
+    params.headers_user_supplied
+  )
+  // A legacy bearer auth_type folds into an Authorization header placeholder
+  // (backfill connector.go), so the derived read-side auth_type round-trips.
+  if (
+    params.auth_type === 'bearer' &&
+    !(headers && AUTHORIZATION_HEADER_KEY in headers)
+  ) {
+    const withAuth = { ...(headers ?? {}) }
+    withAuth[AUTHORIZATION_HEADER_KEY] = placeholderFor(AUTHORIZATION_HEADER_KEY)
+    server.headers = withAuth
+  } else if (headers) {
+    server.headers = headers
+  }
+  const attachments: ConnectorAttachmentBody[] = [
+    rawAtt('mcp.json', goCanonicalJSON({ mcpServers: { [name]: server } })),
+    rawAtt('connector/tools.json', goCanonicalJSON(params.tools ?? [])),
+    rawAtt('connector/examples.json', goCanonicalJSON(usage)),
+    rawAtt(
+      'connector/faqs.json',
+      goCanonicalJSON((params.faqs ?? []).filter((f) => f.question.trim()))
+    ),
+    rawAtt(
+      'connector/notes.json',
+      goCanonicalJSON((params.notes ?? []).map((s) => s.trim()).filter(Boolean))
+    ),
+  ]
+  return {
+    plugin: {
+      ...(opts.pluginId ? { plugin_id: opts.pluginId } : {}),
+      plugin_name: name,
+      plugin_type: 'connector',
+      ...(opts.categoryId ? { category_id: opts.categoryId } : {}),
+      tags,
+      icon: params.icon ?? '',
+      visibility: opts.visibility,
+      manifest_json: manifest,
+      plugin_json: {
+        $schema: 'cowork-plugin-package-1.0.json',
+        connector: { type: 'mcp', source: `connector.${key}` },
+        attachments,
+      },
+    },
+    relations: [],
+  }
+}
+
+/** GET /admin/plugins/{id}?include_relations=true → mapped McpDetail. */
+async function loadMcpDetail(id: string): Promise<McpDetail> {
+  const maps = await fetchConnectorCategoryMaps()
+  const resp = await mcpApi.get<{
+    data: { plugin: PluginDetailPluginWire; relations: unknown[] }
+  }>(`/admin/plugins/${encodeURIComponent(id)}`, {
+    params: { include_relations: true },
+  })
+  return mapMcpDetail(resp.data.data.plugin, maps.idToKey)
+}
+
+/** Best-effort plugin_id extraction from a create/patch echo, tolerating both
+ *  `{plugin:{plugin_id}}` and a bare `{plugin_id}` envelope. */
+function extractPluginId(data: unknown): string {
+  const d = data as {
+    plugin?: { plugin_id?: string }
+    plugin_id?: string
+  } | null
+  return d?.plugin?.plugin_id ?? d?.plugin_id ?? ''
+}
+
 // ─── Public functions ─────────────────────────────────────────────────────
 
-/** GET /admin/api/v1/mcps — list every visibility=system record. */
+/** GET /admin/plugins?plugin_type=connector — list connector plugins
+ *  (the unified home of the legacy system MCP catalog). */
 export async function listSystemMcps(
   params: ListMcpParams = {}
 ): Promise<ListMcpResponse> {
-  const query: Record<string, unknown> = {}
+  const maps = await fetchConnectorCategoryMaps()
+  const query: Record<string, unknown> = { plugin_type: 'connector' }
   const keyword = params.keyword?.trim()
-  if (keyword) query.keyword = keyword
-  query.category = params.category ?? 'all'
-  // The admin list endpoint pages by number (page/page_size), not
-  // limit/offset — same translation as ./skill.ts and ./expert.ts.
+  if (keyword) query.q = keyword
+  const categoryKey = params.category
+  if (categoryKey && categoryKey !== 'all') {
+    const categoryId = maps.keyToId.get(categoryKey)
+    if (categoryId) query.category_id = categoryId
+  }
+  // The unified list endpoint pages by number (page/page_size), not
+  // limit/offset — same translation as ./skill.ts.
   const pageSize = params.limit && params.limit > 0 ? params.limit : 20
   query.page_size = pageSize
   query.page =
-    params.offset && params.offset > 0 ? Math.floor(params.offset / pageSize) + 1 : 1
+    params.offset && params.offset > 0
+      ? Math.floor(params.offset / pageSize) + 1
+      : 1
   const resp = await mcpApi.get<{
-    data: McpListItem[]
+    data: PluginListItemWire[]
     pagination: { total: number; page: number; page_size: number }
-  }>('/admin/mcps', { params: query })
+  }>('/admin/plugins', { params: query })
   return {
-    items: resp.data.data ?? [],
+    items: (resp.data.data ?? []).map((raw) =>
+      mapMcpListItem(raw, maps.idToKey)
+    ),
     total: resp.data.pagination?.total ?? 0,
   }
 }
 
-/** POST /admin/api/v1/mcps — create a system MCP. */
+/** POST /admin/plugins — create a connector plugin. Visibility is stamped
+ *  `system` by convention (the server overrides regardless). */
 export async function createSystemMcp(
   params: CreateMcpParams
 ): Promise<McpDetail> {
-  const resp = await mcpApi.post<{ data: McpDetail }>('/admin/mcps', params)
-  return resp.data.data
-}
-
-/** GET /admin/api/v1/mcps/{id} — fetch full detail for a system MCP. */
-export async function getSystemMcp(id: string): Promise<McpDetail> {
-  const resp = await mcpApi.get<{ data: McpDetail }>(
-    `/admin/mcps/${encodeURIComponent(id)}`
+  const maps = await fetchConnectorCategoryMaps()
+  const resp = await mcpApi.post<{ data: unknown }>(
+    '/admin/plugins',
+    toConnectorUpsert(params, {
+      categoryId: maps.keyToId.get(params.category),
+      visibility: 'system',
+    })
   )
-  return resp.data.data
+  const id = extractPluginId(resp.data.data)
+  return loadMcpDetail(id)
 }
 
-/** PATCH /admin/api/v1/mcps/{id} — partial update. Any admin can edit any
- *  system MCP (no ownership check server-side). */
+/** GET /admin/plugins/{id} — fetch full detail for a connector plugin. */
+export async function getSystemMcp(id: string): Promise<McpDetail> {
+  return loadMcpDetail(id)
+}
+
+/** PATCH /admin/plugins/{id} — full-replace update. The server preserves the
+ *  row's existing visibility/space/owner, so the echoed visibility is ignored. */
 export async function updateSystemMcp(
   id: string,
   params: PatchMcpParams
 ): Promise<McpDetail> {
-  const resp = await mcpApi.patch<{ data: McpDetail }>(
-    `/admin/mcps/${encodeURIComponent(id)}`,
-    params
+  const maps = await fetchConnectorCategoryMaps()
+  await mcpApi.patch(
+    `/admin/plugins/${encodeURIComponent(id)}`,
+    toConnectorUpsert(params, {
+      pluginId: id,
+      categoryId: maps.keyToId.get(params.category ?? ''),
+      visibility: 'system',
+    })
   )
-  return resp.data.data
+  return loadMcpDetail(id)
 }
 
-/** DELETE /admin/api/v1/mcps/{id} — soft delete. */
+/** DELETE /admin/plugins/{id} — soft delete. */
 export async function deleteSystemMcp(id: string): Promise<void> {
-  await mcpApi.delete(`/admin/mcps/${encodeURIComponent(id)}`)
+  await mcpApi.delete(`/admin/plugins/${encodeURIComponent(id)}`)
 }
 
-// ─── Probe ────────────────────────────────────────────────────────────────
+// ─── Categories (unified plugin surface) ────────────────────────────────────
+//
+// The 分类 tab under System MCP manages the connector catalog's categories, so
+// it reads/writes the unified /admin/plugin_categories taxonomy filtered to
+// plugin_type=connector. Each row carries plugin_types ["connector"]. Mirrors
+// the expert-market category tab (see ./expert.ts).
+
+/** Category row the System MCP 分类 tab renders. Mirrors ExpertCategory. */
+export interface McpCategory {
+  mcp_category_id: string
+  name: string
+  icon_key?: string
+  sort_order: number
+  count?: number
+}
+
+// plugin_types the MCP category tab manages — connector-only.
+const MCP_CATEGORY_PLUGIN_TYPES = ['connector'] as const
+
+/** Map a unified category wire row to the McpCategory the 分类 tab renders. */
+function pluginCategoryToMcpCategory(c: PluginCategoryWire): McpCategory {
+  return {
+    mcp_category_id: c.category_id,
+    name: c.name,
+    icon_key: c.icon_key,
+    sort_order: c.sort_order ?? 0,
+    count: c.plugin_count,
+  }
+}
+
+/** GET /admin/plugin_categories?plugin_type=connector → mapped category list. */
+export async function listMcpCategories(): Promise<McpCategory[]> {
+  const resp = await mcpApi.get<{ data: PluginCategoryWire[] }>(
+    '/admin/plugin_categories',
+    { params: { plugin_type: 'connector' } }
+  )
+  return (resp.data.data ?? []).map(pluginCategoryToMcpCategory)
+}
+
+/** POST /admin/plugin_categories — create a connector category. */
+export async function createMcpCategory(params: {
+  name: string
+  icon_key?: string
+  sort_order?: number
+}): Promise<McpCategory> {
+  const resp = await mcpApi.post<{ data: PluginCategoryWire }>(
+    '/admin/plugin_categories',
+    {
+      name: params.name,
+      icon_key: params.icon_key ?? '',
+      plugin_types: MCP_CATEGORY_PLUGIN_TYPES,
+      sort_order: params.sort_order ?? 0,
+    }
+  )
+  return pluginCategoryToMcpCategory(resp.data.data)
+}
+
+/** PATCH /admin/plugin_categories/{id} — full-replace update. The backend
+ *  overwrites all columns, so echo icon_key back on rename so it isn't wiped
+ *  (mirrors updateExpertCategory). */
+export async function updateMcpCategory(
+  id: string,
+  params: { name?: string; icon_key?: string; sort_order?: number }
+): Promise<McpCategory> {
+  const resp = await mcpApi.patch<{ data: PluginCategoryWire }>(
+    `/admin/plugin_categories/${encodeURIComponent(id)}`,
+    {
+      name: params.name ?? '',
+      icon_key: params.icon_key ?? '',
+      plugin_types: MCP_CATEGORY_PLUGIN_TYPES,
+      sort_order: params.sort_order ?? 0,
+    }
+  )
+  return pluginCategoryToMcpCategory(resp.data.data)
+}
+
+/** DELETE /admin/plugin_categories/{id} — 409 CONFLICT when still in use. */
+export async function deleteMcpCategory(id: string): Promise<void> {
+  await mcpApi.delete(`/admin/plugin_categories/${encodeURIComponent(id)}`)
+}
+
+// ─── Probe (legacy /admin/mcps route) ──────────────────────────────────────
 
 /** POST /admin/api/v1/mcps/probe body. Mirrors service.ProbeRequest exactly
  *  — the marketplace decodes with DisallowUnknownFields, so any extra field
@@ -241,7 +827,7 @@ export async function probeSystemMcp(
   return resp.data.data
 }
 
-// ─── Icon upload (presigned URL flow) ────────────────────────────────────
+// ─── Icon upload (presigned URL flow, legacy /admin/mcps route) ────────────
 
 /** POST /admin/api/v1/mcps/upload/icon response. Mirrors
  *  service.parse.IconUploadResult in the marketplace. `download_url` is the

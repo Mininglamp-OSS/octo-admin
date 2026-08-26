@@ -17,11 +17,14 @@ import { useAuthStore } from '../../store/auth'
 import SkillDetailDrawer from './SkillDetailDrawer'
 import SkillEditModal from './SkillEditModal'
 import SkillUploadModal from './SkillUploadModal'
+import VisibilityTag from '../../components/VisibilityTag'
+import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
 
 const PAGE_SIZE = 20
 
 export default function SkillTab() {
   const { t } = useTranslation(['skillMarket', 'common'])
+  const { nameOf } = useSpaceNameMap()
   const canWrite = useAuthStore((s) =>
     hasManagerCapability(s.managerCapabilities, 'skill.write')
   )
@@ -194,6 +197,19 @@ export default function SkillTab() {
       key: 'created_at',
       width: 160,
       render: (val: string) => (val ? new Date(val).toLocaleDateString() : '-'),
+    },
+    {
+      title: t('table.visibility', { ns: 'common' }),
+      key: 'visibility',
+      width: 100,
+      render: (_, record) => <VisibilityTag scope={record.scope} />,
+    },
+    {
+      title: t('table.space', { ns: 'common' }),
+      key: 'space',
+      width: 140,
+      ellipsis: true,
+      render: (_, record) => nameOf(record.space_id),
     },
     {
       title: t('skill.table.actions'),

@@ -21,7 +21,7 @@
     "action": "操作"
   },
   "visibility": {
-    "public": "公开",
+    "system": "系统",
     "space": "空间",
     "private": "私有"
   },

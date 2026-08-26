@@ -17,6 +17,16 @@
     "id": "ID"
   },
   "table": {
-    "total": "共 {{count}} 条"
+    "total": "共 {{count}} 条",
+    "visibility": "可见范围",
+    "space": "所属空间"
+  },
+  "visibility": {
+    "system": "系统",
+    "space": "空间",
+    "private": "私有"
+  },
+  "space": {
+    "global": "全局"
   }
 }

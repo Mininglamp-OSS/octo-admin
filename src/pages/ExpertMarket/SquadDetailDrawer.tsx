@@ -13,14 +13,12 @@ import { ApiError } from '../../api'
 import {
   deleteSystemSquad,
   getSystemSquad,
-  getSystemSquadSkillMd,
-  patchSystemSquad,
+  reuploadSquadContainer,
   type SquadDetail,
 } from '../../api/expert'
 import { DetailSection, McpConfigBlock, SkillMdModal, SkillRefList } from './detailParts'
 import ReuploadButton from './ReuploadButton'
-import { buildSquadPatch, uploadSquadSkillWrites } from './submitContainer'
-import type { ParsedSquad } from './parseContainer'
+import type { ParsedContainer } from './parseContainer'
 
 const { Text, Paragraph } = Typography
 
@@ -47,9 +45,8 @@ export default function SquadDetailDrawer({
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [viewingSkill, setViewingSkill] = useState<{
-    memberKey: string
-    index: number
     name: string
+    content: string
   } | null>(null)
 
   useEffect(() => {
@@ -91,17 +88,22 @@ export default function SquadDetailDrawer({
     }
   }
 
-  const handleReupload = async (parsed: import('./parseContainer').ParsedContainer) => {
+  const handleReupload = async (file: File, parsed: ParsedContainer) => {
     if (!detail) return
-    const m = parsed.manifest as ParsedSquad
-    // One upload per skill reference (server upload keys are single-use), and
-    // a PATCH body that omits fields the container doesn't declare — a
-    // present-but-empty tags/strategies/dependencies/permission would CLEAR
-    // the stored values.
-    const memberSkills = await uploadSquadSkillWrites(m, parsed.skillFiles)
-    const updated = await patchSystemSquad(detail.squad_id, buildSquadPatch(m, memberSkills))
-    setDetail(updated)
+    // Send the ORIGINAL zip to the server-side container reupload, which rebuilds
+    // the squad in place (preserving id/visibility/Space/owner) and swaps the
+    // member experts + their skills. The manifest category (a name) is resolved
+    // to a unified category id in the client, mirroring importExpertContainer.
+    await reuploadSquadContainer(detail.squad_id, file, parsed.manifest.category || undefined)
+    // The rebuild is committed server-side. Refresh the parent list, then refetch
+    // the drawer detail best-effort — a transient refetch failure must not surface
+    // as a reupload error (reopening the drawer recovers the fresh state).
     onChanged()
+    try {
+      setDetail(await getSystemSquad(detail.squad_id))
+    } catch {
+      // Keep the stale detail; the list reload + a drawer reopen recover it.
+    }
   }
 
   const footer = !detail || !canManage ? null : confirmingDelete ? (
@@ -226,8 +228,8 @@ export default function SquadDetailDrawer({
                     <h5 className="exp-member__head">{t('detail.skills')}</h5>
                     <SkillRefList
                       skills={m.skills}
-                      onView={(index, s) =>
-                        setViewingSkill({ memberKey: m.member_key, index, name: s.name })
+                      onView={(_index, s) =>
+                        setViewingSkill({ name: s.name, content: s.skill_md ?? '' })
                       }
                     />
                   </div>
@@ -241,9 +243,7 @@ export default function SquadDetailDrawer({
       <SkillMdModal
         open={viewingSkill !== null}
         title={viewingSkill?.name ?? ''}
-        load={() =>
-          getSystemSquadSkillMd(detail!.squad_id, viewingSkill!.memberKey, viewingSkill!.index)
-        }
+        load={() => Promise.resolve(viewingSkill?.content ?? '')}
         onClose={() => setViewingSkill(null)}
       />
     </Drawer>

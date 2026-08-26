@@ -13,6 +13,43 @@
   },
   "empty": "还没有 MCP，点击右上角「新建」添加",
   "loadFailed": "加载失败",
+  "tab": {
+    "mcps": "MCP",
+    "categories": "分类"
+  },
+  "category": {
+    "create": "新建分类",
+    "rename": "编辑",
+    "delete": "删除",
+    "deleteConfirm": "确认删除该分类？",
+    "deleteInUse": "该分类下还有 {{count}} 个 MCP，无法删除",
+    "empty": "还没有分类",
+    "table": {
+      "name": "名称",
+      "count": "数量",
+      "sortOrder": "排序",
+      "actions": "操作"
+    },
+    "modal": {
+      "createTitle": "新建分类",
+      "editTitle": "编辑分类",
+      "name": "名称",
+      "nameRequired": "请填写名称",
+      "sortOrder": "排序",
+      "sortOrderHint": "数字越小越靠前"
+    },
+    "success": {
+      "created": "已创建",
+      "updated": "已更新",
+      "deleted": "已删除"
+    },
+    "error": {
+      "nameExists": "分类名称已存在",
+      "createFailed": "创建失败",
+      "updateFailed": "更新失败",
+      "deleteFailed": "删除失败"
+    }
+  },
   "searchPlaceholder": "搜索名称或简介",
   "actions": {
     "view": "详情",

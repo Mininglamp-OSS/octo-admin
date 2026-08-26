@@ -21,7 +21,7 @@
     "action": "Actions"
   },
   "visibility": {
-    "public": "Public",
+    "system": "System",
     "space": "Space",
     "private": "Private"
   },

@@ -4,31 +4,31 @@ import { PlusOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import type { ColumnsType } from 'antd/es/table'
 import {
-  createExpertCategory,
-  deleteExpertCategory,
-  listExpertCategories,
-  updateExpertCategory,
-  type ExpertCategory,
-} from '../../api/expert'
+  createMcpCategory,
+  deleteMcpCategory,
+  listMcpCategories,
+  updateMcpCategory,
+  type McpCategory,
+} from '../../api/mcp'
 import { ApiError } from '../../api'
 import { hasManagerCapability } from '../../auth/capabilities'
 import { useAuthStore } from '../../store/auth'
 
 export default function CategoryTab() {
-  const { t } = useTranslation(['expertMarket', 'common'])
-  const canWrite = useAuthStore((s) => hasManagerCapability(s.managerCapabilities, 'expert.write'))
+  const { t } = useTranslation(['systemMcp', 'common'])
+  const canWrite = useAuthStore((s) => hasManagerCapability(s.managerCapabilities, 'mcp.write'))
 
-  const [rows, setRows] = useState<ExpertCategory[]>([])
+  const [rows, setRows] = useState<McpCategory[]>([])
   const [loading, setLoading] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
-  const [editing, setEditing] = useState<ExpertCategory | null>(null)
+  const [editing, setEditing] = useState<McpCategory | null>(null)
   const [form] = Form.useForm()
   const [submitting, setSubmitting] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      setRows(await listExpertCategories())
+      setRows(await listMcpCategories())
     } catch (err) {
       message.error(err instanceof ApiError ? err.message : t('loadFailed'))
     } finally {
@@ -45,7 +45,7 @@ export default function CategoryTab() {
     setModalOpen(true)
   }
 
-  const openEdit = (record: ExpertCategory) => {
+  const openEdit = (record: McpCategory) => {
     setEditing(record)
     setModalOpen(true)
   }
@@ -55,17 +55,16 @@ export default function CategoryTab() {
     setSubmitting(true)
     try {
       if (editing) {
-        // AdminCategoryRequest decodes a missing icon_key as "" and the
-        // backend overwrites all columns — echo the current icon_key back so
-        // renames/re-sorts don't wipe the seeded lucide icon.
-        await updateExpertCategory(editing.expert_category_id, {
+        // The backend overwrites all columns and decodes a missing icon_key as
+        // "" — echo the current icon_key back so renames/re-sorts don't wipe it.
+        await updateMcpCategory(editing.mcp_category_id, {
           name: values.name,
           icon_key: editing.icon_key,
           sort_order: values.sort_order ?? 0,
         })
         message.success(t('category.success.updated'))
       } else {
-        await createExpertCategory({ name: values.name, sort_order: values.sort_order ?? 0 })
+        await createMcpCategory({ name: values.name, sort_order: values.sort_order ?? 0 })
         message.success(t('category.success.created'))
       }
       setModalOpen(false)
@@ -83,9 +82,9 @@ export default function CategoryTab() {
     }
   }
 
-  const handleDelete = async (record: ExpertCategory) => {
+  const handleDelete = async (record: McpCategory) => {
     try {
-      await deleteExpertCategory(record.expert_category_id)
+      await deleteMcpCategory(record.mcp_category_id)
       message.success(t('category.success.deleted'))
       load()
     } catch (err) {
@@ -98,7 +97,7 @@ export default function CategoryTab() {
     }
   }
 
-  const columns: ColumnsType<ExpertCategory> = [
+  const columns: ColumnsType<McpCategory> = [
     { title: t('category.table.name'), dataIndex: 'name', key: 'name' },
     { title: t('category.table.count'), dataIndex: 'count', key: 'count', width: 100, render: (v?: number) => v ?? 0 },
     { title: t('category.table.sortOrder'), dataIndex: 'sort_order', key: 'sort_order', width: 100 },
@@ -137,7 +136,7 @@ export default function CategoryTab() {
         </div>
       )}
       <Table
-        rowKey="expert_category_id"
+        rowKey="mcp_category_id"
         columns={columns}
         dataSource={rows}
         loading={loading}

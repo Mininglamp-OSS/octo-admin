@@ -4,11 +4,12 @@
  * Accepts one or many container zips in a single session. `expectKind` binds
  * the modal to its tab: a file whose manifest kind doesn't match is marked
  * invalid (never blocks the rest). Every file is parsed client-side
- * (parseExpertContainer) into a review table where each row carries its own
- * editable category/tags (initialized from the manifest). Confirming imports
- * the valid entries sequentially (presign-upload bundled skill packages, then
- * POST the manifest); a per-entry failure marks that row retryable and
- * continues with the next. Container zips are never uploaded.
+ * (parseExpertContainer) into a review table for PREVIEW/VALIDATION only — kind
+ * check, category/tags prefill, and package/member counts. Confirming uploads
+ * each valid entry's WHOLE container zip to the server-side importer
+ * (importExpertContainer → POST /admin/plugins/import); the backend unzips it,
+ * mints the expert/team plugin + its bundled skills, and wires the relations.
+ * A per-entry failure marks that row retryable and continues with the next.
  */
 
 import { useRef, useState } from 'react'
@@ -19,9 +20,7 @@ import type { ColumnsType } from 'antd/es/table'
 import type { RcFile } from 'antd/es/upload'
 import { ApiError } from '../../api'
 import {
-  createSystemExpert,
-  createSystemSquad,
-  uploadExpertSkill,
+  importExpertContainer,
   type ExpertCategory,
   type ExpertKind,
 } from '../../api/expert'
@@ -32,13 +31,6 @@ import {
   type ParsedExpert,
   type ParsedSquad,
 } from './parseContainer'
-import {
-  buildExpertParams,
-  buildSquadParams,
-  uploadSkillWrites,
-  uploadSquadSkillWrites,
-  type SkillUploader,
-} from './submitContainer'
 import { buildAiPrompt } from './aiPrompt'
 
 const { Dragger } = Upload
@@ -49,6 +41,8 @@ type EntryStatus = 'parsing' | 'ready' | 'invalid' | 'saving' | 'done' | 'failed
 interface ImportEntry {
   key: string
   fileName: string
+  /** The original container zip — uploaded verbatim to the server importer. */
+  file: File
   parsed: ParsedContainer | null
   status: EntryStatus
   /** Parse or import failure reason, shown under the status tag. */
@@ -137,7 +131,7 @@ export default function UploadModal({
     const key = file.uid
     setEntries((prev) => [
       ...prev,
-      { key, fileName: file.name, parsed: null, status: 'parsing', error: null, tags: [] },
+      { key, fileName: file.name, file, parsed: null, status: 'parsing', error: null, tags: [] },
     ])
     try {
       const parsed = await parseExpertContainer(file)
@@ -173,21 +167,11 @@ export default function UploadModal({
     setSubmitting(true)
     const ctl = new AbortController()
     abortRef.current = ctl
-    const upload: SkillUploader = (name, blob, fileName) =>
-      uploadExpertSkill(name, blob, fileName, { signal: ctl.signal })
     let ok = 0
     let fail = 0
     for (let i = 0; i < pending.length; i++) {
       const entry = pending[i]
       if (ctl.signal.aborted) break
-      // The backend rejects an empty category on every write path
-      // (resolveCategory('') → 400), so fail the row up front instead of
-      // uploading its skill packages first.
-      if (!entry.category) {
-        updateEntry(entry.key, { status: 'failed', error: t('upload.categoryRequired') })
-        fail += 1
-        continue
-      }
       updateEntry(entry.key, { status: 'saving', error: null })
       setProgress(
         t('upload.importing', {
@@ -196,17 +180,16 @@ export default function UploadModal({
           name: entry.parsed.manifest.name,
         })
       )
-      // Row edits are authoritative.
-      const override = { category: entry.category, tags: entry.tags }
       try {
-        const m = entry.parsed.manifest
-        if (m.kind === 'squad') {
-          const memberSkills = await uploadSquadSkillWrites(m, entry.parsed.skillFiles, upload)
-          await createSystemSquad(buildSquadParams(m, memberSkills, override))
-        } else {
-          const skills = await uploadSkillWrites(m.skills, entry.parsed.skillFiles, upload)
-          await createSystemExpert(buildExpertParams(m, skills, override))
-        }
+        // The whole container zip is uploaded to the server importer, which
+        // unzips it and mints the expert/team plugin + its bundled skills. The
+        // selected category (a name) is resolved to a unified category id in
+        // the client; tags come from the manifest inside the zip.
+        await importExpertContainer(entry.file, {
+          kind: expectKind,
+          categoryName: entry.category,
+          signal: ctl.signal,
+        })
         updateEntry(entry.key, { status: 'done' })
         ok += 1
       } catch (err) {

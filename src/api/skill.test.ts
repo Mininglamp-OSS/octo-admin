@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockPost = vi.hoisted(() => vi.fn())
+const mockGet = vi.hoisted(() => vi.fn())
 const mockUseAuthStore = vi.hoisted(() => ({
   getState: vi.fn(() => ({ token: 'token-1', logout: vi.fn() })),
 }))
@@ -8,7 +9,7 @@ const mockUseAuthStore = vi.hoisted(() => ({
 vi.mock('axios', () => ({
   default: {
     create: vi.fn(() => ({
-      get: vi.fn(),
+      get: mockGet,
       post: mockPost,
       patch: vi.fn(),
       delete: vi.fn(),
@@ -31,27 +32,85 @@ vi.mock('../i18n', () => ({
 
 import {
   commitAdminSkillReupload,
+  createAdminSkill,
   initReupload,
   uploadIcon,
 } from './skill'
 
-describe('commitAdminSkillReupload', () => {
+// The unified import/reupload response envelope: { data: { plugin, relations } }.
+// mapPluginToSkillDetail derives name/version/tags from the plugin wire, and the
+// category-name enrichment issues a GET /admin/plugin_categories.
+function unifiedSkillPluginResponse() {
+  return {
+    data: {
+      data: {
+        plugin: {
+          plugin_id: 'skill-1',
+          plugin_name: 'Skill One',
+          plugin_type: 'skill',
+          manifest_json: { name: 'skill-one', description: 'An ops skill.' },
+          category_id: 'cat-ops',
+          tags: ['tag-1'],
+          current_version: '1.0.1',
+          visibility: 'system',
+          plugin_json: {
+            attachments: [
+              { path: 'SKILL.md', content_type: 'raw', raw_content: '# doc' },
+            ],
+          },
+        },
+        relations: [],
+      },
+    },
+  }
+}
+
+describe('createAdminSkill', () => {
   beforeEach(() => {
     mockPost.mockReset()
-    mockPost.mockResolvedValue({
-      data: {
-        data: {
-          skill_id: 'skill-1',
-          name: 'skill-one',
-          display_name: 'Skill One',
-          tags: ['tag-1'],
-          version: '1.0.1',
-        },
-      },
+    mockGet.mockReset()
+    mockPost.mockResolvedValue(unifiedSkillPluginResponse())
+    mockGet.mockResolvedValue({
+      data: { data: [{ category_id: 'cat-ops', name: 'Ops' }] },
     })
   })
 
-  it('commits an already parsed reupload task through the reupload endpoint', async () => {
+  it('creates a skill through the unified admin plugin import endpoint', async () => {
+    const result = await createAdminSkill({
+      parse_task_id: 'task-1',
+      name: 'skill-one',
+      category_id: 'cat-ops',
+      tags: ['tag-1'],
+      version: '1.0.1',
+      description: 'An ops skill.',
+    })
+
+    expect(mockPost).toHaveBeenCalledWith('/admin/plugins/skill_import', {
+      parse_task_id: 'task-1',
+      name: 'skill-one',
+      category_id: 'cat-ops',
+      tags: ['tag-1'],
+      version: '1.0.1',
+      description: 'An ops skill.',
+    })
+    expect(result.skill_id).toBe('skill-1')
+    expect(result.version).toBe('1.0.1')
+    expect(result.category_name).toBe('Ops')
+    // The system wire visibility is preserved (not collapsed to a legacy value).
+    expect(result.visibility).toBe('system')
+    expect(result.scope).toBe('system')
+  })
+})
+
+describe('commitAdminSkillReupload', () => {
+  beforeEach(() => {
+    mockPost.mockReset()
+    mockGet.mockReset()
+    mockPost.mockResolvedValue(unifiedSkillPluginResponse())
+    mockGet.mockResolvedValue({ data: { data: [] } })
+  })
+
+  it('commits an already parsed reupload task through the unified reupload endpoint', async () => {
     const result = await commitAdminSkillReupload('skill-1', {
       parse_task_id: 'task-1',
       version: '1.0.1',
@@ -59,7 +118,7 @@ describe('commitAdminSkillReupload', () => {
       tags: ['tag-1'],
     })
 
-    expect(mockPost).toHaveBeenCalledWith('/admin/skills/skill-1/reupload', {
+    expect(mockPost).toHaveBeenCalledWith('/admin/plugins/skill_reupload/skill-1', {
       parse_task_id: 'task-1',
       version: '1.0.1',
       changelog: 'replace package',

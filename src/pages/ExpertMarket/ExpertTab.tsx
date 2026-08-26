@@ -14,11 +14,14 @@ import { hasManagerCapability } from '../../auth/capabilities'
 import { useAuthStore } from '../../store/auth'
 import ExpertDetailDrawer from './ExpertDetailDrawer'
 import UploadModal from './UploadModal'
+import VisibilityTag from '../../components/VisibilityTag'
+import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
 
 const PAGE_SIZE = 20
 
 export default function ExpertTab() {
   const { t } = useTranslation(['expertMarket', 'common'])
+  const { nameOf } = useSpaceNameMap()
   const canWrite = useAuthStore((s) => hasManagerCapability(s.managerCapabilities, 'expert.write'))
 
   const [rows, setRows] = useState<ExpertListItem[]>([])
@@ -121,6 +124,20 @@ export default function ExpertTab() {
         render: (v?: number) => <span className="mono">{v ?? 0}</span>,
       },
       {
+        title: t('table.visibility', { ns: 'common' }),
+        dataIndex: 'scope',
+        key: 'scope',
+        width: 110,
+        render: (scope: string) => <VisibilityTag scope={scope} />,
+      },
+      {
+        title: t('table.space', { ns: 'common' }),
+        dataIndex: 'space_id',
+        key: 'space_id',
+        width: 160,
+        render: (spaceId?: string) => nameOf(spaceId),
+      },
+      {
         title: t('table.creator'),
         dataIndex: 'creator_name',
         key: 'creator_name',
@@ -129,7 +146,7 @@ export default function ExpertTab() {
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [t]
+    [t, nameOf]
   )
 
   return (

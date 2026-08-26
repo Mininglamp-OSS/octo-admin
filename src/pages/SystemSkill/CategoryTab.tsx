@@ -41,14 +41,12 @@ export default function CategoryTab({ canWrite }: Props) {
   const openCreate = () => {
     if (!canWrite) return
     setEditItem(null)
-    form.resetFields()
     setModalOpen(true)
   }
 
   const openEdit = (item: CategoryItem) => {
     if (!canWrite) return
     setEditItem(item)
-    form.setFieldsValue({ name: item.name })
     setModalOpen(true)
   }
 
@@ -185,7 +183,12 @@ export default function CategoryTab({ canWrite }: Props) {
         confirmLoading={submitting}
         destroyOnClose
       >
-        <Form form={form} layout="vertical" preserve={false}>
+        <Form
+          form={form}
+          layout="vertical"
+          preserve={false}
+          initialValues={{ name: editItem?.name ?? '' }}
+        >
           <Form.Item
             name="name"
             label={t('category.form.name')}

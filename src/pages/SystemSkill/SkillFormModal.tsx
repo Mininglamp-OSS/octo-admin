@@ -78,14 +78,14 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
           description: editSkill.description,
           category_id: editSkill.category_id,
           tags: editSkill.tags,
-          visibility: 'public',
+          visibility: 'system',
           version: editSkill.version,
           changelog: t('upload.currentVersionChangelog'),
         })
         setIconUrl(editSkill.icon_url || '')
       } else {
         setRenderEditSkill(null)
-        form.setFieldsValue({ visibility: 'public', version: DEFAULT_VERSION, changelog: '' })
+        form.setFieldsValue({ visibility: 'system', version: DEFAULT_VERSION, changelog: '' })
         setIconUrl('')
       }
       setParseTaskId('')
@@ -140,7 +140,7 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
               tags: status.result_tags || [],
               version: activeEditSkill ? bumpPatch(activeEditSkill.version || DEFAULT_VERSION) : (status.result_version || DEFAULT_VERSION),
               changelog: activeEditSkill ? '' : t('upload.initialChangelog'),
-              visibility: 'public',
+              visibility: 'system',
             })
             if (activeEditSkill) setReuploadedFileName(file.name)
           } else if (status.status === 'failed') {
@@ -195,7 +195,7 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
           description: values.description,
           category_id: values.category_id,
           tags: values.tags,
-          visibility: 'public',
+          visibility: 'system',
           icon_url: iconUrl || undefined,
         })
         message.success(t('editModal.success'))
@@ -207,7 +207,7 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
           description: values.description,
           category_id: values.category_id,
           tags: values.tags || [],
-          visibility: 'public',
+          visibility: 'system',
           version: values.version,
           changelog: values.changelog,
           icon_url: iconUrl || undefined,
@@ -366,11 +366,11 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
               />
             </Form.Item>
             {!activeEditSkill && (
-              <Form.Item name="visibility" label={t('upload.form.visibility')} initialValue="public">
+              <Form.Item name="visibility" label={t('upload.form.visibility')} initialValue="system">
                 <Select
                   disabled
                   options={[
-                    { value: 'public', label: t('visibility.public') },
+                    { value: 'system', label: t('visibility.system') },
                   ]}
                 />
               </Form.Item>

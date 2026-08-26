@@ -9,15 +9,11 @@ import {
   type SkillListItem,
   type CategoryItem,
 } from '../../api/skill'
+import VisibilityTag from '../../components/VisibilityTag'
+import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
 
 const LIMIT = 20
 const DEBOUNCE_MS = 300
-
-const VISIBILITY_COLOR: Record<string, string> = {
-  public: 'green',
-  space: 'blue',
-  private: 'default',
-}
 
 interface Props {
   onView: (id: string) => void
@@ -27,6 +23,7 @@ interface Props {
 
 export default function SkillTable({ onView, onUpload, canWrite }: Props) {
   const { t } = useTranslation('systemSkill')
+  const { nameOf } = useSpaceNameMap()
   const [data, setData] = useState<SkillListItem[]>([])
   const [hasMore, setHasMore] = useState(false)
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined])
@@ -121,12 +118,16 @@ export default function SkillTable({ onView, onUpload, canWrite }: Props) {
       width: 120,
     },
     {
-      title: t('column.visibility'),
-      dataIndex: 'visibility',
-      width: 90,
-      render: (vis: string) => (
-        <Tag color={VISIBILITY_COLOR[vis]}>{t(`visibility.${vis}` as any)}</Tag>
-      ),
+      title: t('table.visibility', { ns: 'common' }),
+      dataIndex: 'scope',
+      width: 110,
+      render: (scope: string) => <VisibilityTag scope={scope} />,
+    },
+    {
+      title: t('table.space', { ns: 'common' }),
+      dataIndex: 'space_id',
+      width: 160,
+      render: (spaceId?: string) => nameOf(spaceId),
     },
     {
       title: t('column.createdAt'),

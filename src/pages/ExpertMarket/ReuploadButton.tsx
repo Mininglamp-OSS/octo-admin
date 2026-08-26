@@ -1,8 +1,8 @@
 /**
  * "Re-upload container" button used in both detail drawers. Picks a container
- * zip, validates its kind, and hands the parsed container to the parent —
- * which presign-uploads the bundled packages (one object per skill reference)
- * and PATCHes the record to replace its spec.
+ * zip, validates its kind client-side (preview/validation only), and hands the
+ * ORIGINAL File plus the parsed container to the parent — which POSTs the raw
+ * zip to /admin/plugins/container_reupload/{id} to rebuild the plugin in place.
  */
 
 import { useRef, useState } from 'react'
@@ -15,7 +15,7 @@ import { ContainerError, parseExpertContainer, type ParsedContainer } from './pa
 
 interface Props {
   expectKind: ExpertKind
-  onReady: (parsed: ParsedContainer) => Promise<void>
+  onReady: (file: File, parsed: ParsedContainer) => Promise<void>
 }
 
 export default function ReuploadButton({ expectKind, onReady }: Props) {
@@ -31,7 +31,8 @@ export default function ReuploadButton({ expectKind, onReady }: Props) {
         message.error(t('container.kindMismatch', { defaultValue: 'Container kind does not match.' }))
         return
       }
-      await onReady(parsed)
+      // Client parse is only a pre-submit guard — the SUBMIT sends the raw zip.
+      await onReady(file, parsed)
       message.success(t('reupload.success'))
     } catch (err) {
       if (err instanceof ContainerError) {

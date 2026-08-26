@@ -39,6 +39,10 @@ export interface SkillListItem {
   tags: string[]
   owner_name: string
   visibility: string
+  /** Raw unified-plugin visibility (`system`/`space`/`private`) as it
+   *  arrives on the wire. Drives the admin list "可见范围" column. Skill wire
+   *  visibility is not collapsed, so this normally mirrors `visibility`. */
+  scope: string
   version: string
   file_name: string
   file_size: number
@@ -83,7 +87,7 @@ export interface CreateSkillParams {
   tags?: string[]
   version?: string
   changelog?: string
-  visibility?: 'public' | 'space' | 'private'
+  visibility?: 'system' | 'space' | 'private'
   icon_url?: string
 }
 
@@ -95,7 +99,7 @@ export interface PatchSkillParams {
   tags?: string[]
   version?: string
   changelog?: string
-  visibility?: 'public' | 'space' | 'private'
+  visibility?: 'system' | 'space' | 'private'
   icon_url?: string
 }
 
@@ -160,7 +164,8 @@ function normalizeSkill<T extends Partial<SkillListItem>>(item: T): SkillListIte
     category_id: item.category_id || '',
     tags: item.tags || [],
     owner_name: item.owner_name || '',
-    visibility: item.visibility || 'public',
+    visibility: item.visibility || 'system',
+    scope: item.scope || item.visibility || 'system',
     version: item.version || '',
     file_name: item.file_name || '',
     file_size: item.file_size ?? 0,
@@ -331,7 +336,8 @@ function mapPluginToSkillListItem(
     tags: normalizeTagsList(raw.tags),
     // Backfill preserved the legacy owner display name in publisher.
     owner_name: raw.publisher || raw.creator_name || '',
-    visibility: raw.visibility || 'public',
+    visibility: raw.visibility || 'system',
+    scope: raw.visibility ?? 'system',
     version: raw.current_version || '',
     file_name: '',
     file_size: 0,
@@ -393,34 +399,71 @@ async function fetchSkillPluginDetail(
   return resp.data.data.plugin
 }
 
+/** Map an admin skill import/reupload response ({ data: { plugin, relations } })
+ *  to the SkillDetail shape callers expect, enriching category_name from the
+ *  unified plugin_categories map — mirroring getAdminSkill / mapPluginToSkillDetail
+ *  against the same unified wire. */
+async function mapImportedSkillDetail(
+  plugin: PluginDetailPluginWire
+): Promise<SkillDetail> {
+  const idToName = await fetchSkillCategoryNameMap()
+  return mapPluginToSkillDetail(plugin, idToName)
+}
+
 // ─── Category API ────────────────────────────────────────────────────────────
 
+// Skill categories live in the unified plugin_categories taxonomy under
+// plugin_type=skill; create/update stamp plugin_types:["skill"]. The legacy
+// /admin/skill_categories routes are retired.
+const SKILL_CATEGORY_PLUGIN_TYPES = ['skill']
+
+function pluginCategoryToItem(w: PluginCategoryWire): CategoryItem {
+  return normalizeCategory({
+    skill_category_id: w.category_id,
+    id: w.category_id,
+    name: w.name,
+    icon_key: w.icon_key || '',
+    sort_order: w.sort_order ?? 0,
+    skill_count: w.plugin_count ?? 0,
+  })
+}
+
 export async function listSkillCategories(): Promise<CategoryItem[]> {
-  const resp = await skillApi.get<{ data: CategoryItem[] }>('/admin/skill_categories')
-  return resp.data.data.map(normalizeCategory)
+  const resp = await skillApi.get<{ data: PluginCategoryWire[] }>('/admin/plugin_categories', {
+    params: { plugin_type: 'skill' },
+  })
+  return (resp.data.data ?? []).map(pluginCategoryToItem)
 }
 
 export async function createSkillCategory(params: {
   name: string
   sort_order?: number
 }): Promise<CategoryItem> {
-  const resp = await skillApi.post<{ data: CategoryItem }>('/admin/skill_categories', params)
-  return normalizeCategory(resp.data.data)
+  const resp = await skillApi.post<{ data: PluginCategoryWire }>('/admin/plugin_categories', {
+    name: params.name,
+    plugin_types: SKILL_CATEGORY_PLUGIN_TYPES,
+    sort_order: params.sort_order ?? 0,
+  })
+  return pluginCategoryToItem(resp.data.data)
 }
 
 export async function updateSkillCategory(
   id: string,
   params: { name?: string; sort_order?: number }
 ): Promise<CategoryItem> {
-  const resp = await skillApi.patch<{ data: CategoryItem }>(
-    `/admin/skill_categories/${encodeURIComponent(id)}`,
-    params
+  const resp = await skillApi.patch<{ data: PluginCategoryWire }>(
+    `/admin/plugin_categories/${encodeURIComponent(id)}`,
+    {
+      name: params.name,
+      plugin_types: SKILL_CATEGORY_PLUGIN_TYPES,
+      sort_order: params.sort_order,
+    }
   )
-  return normalizeCategory(resp.data.data)
+  return pluginCategoryToItem(resp.data.data)
 }
 
 export async function deleteSkillCategory(id: string): Promise<void> {
-  await skillApi.delete(`/admin/skill_categories/${encodeURIComponent(id)}`)
+  await skillApi.delete(`/admin/plugin_categories/${encodeURIComponent(id)}`)
 }
 
 // ─── Skill API ───────────────────────────────────────────────────────────────
@@ -469,9 +512,26 @@ export async function getAdminSkill(id: string): Promise<SkillDetail> {
   return mapPluginToSkillDetail(plugin, idToName)
 }
 
+/**
+ * Create a public skill plugin from a completed admin parse task against the
+ * unified admin plugin surface (POST /admin/plugins/skill_import). category_id is
+ * the unified plugin_categories id the dropdown now provides. The response is the
+ * unified { data: { plugin, relations } } envelope, mapped back to SkillDetail.
+ * The upload → parse steps that produce parse_task_id stay on the legacy routes.
+ */
 export async function createAdminSkill(params: CreateSkillParams): Promise<SkillDetail> {
-  const resp = await skillApi.post<{ data: SkillDetail }>('/admin/skills', params)
-  return normalizeSkill(resp.data.data)
+  const body: Record<string, unknown> = {
+    parse_task_id: params.parse_task_id,
+    name: params.name,
+    category_id: params.category_id,
+    tags: params.tags,
+    version: params.version,
+  }
+  if (params.description !== undefined) body.description = params.description
+  const resp = await skillApi.post<{
+    data: { plugin: PluginDetailPluginWire; relations: unknown[] }
+  }>('/admin/plugins/skill_import', body)
+  return mapImportedSkillDetail(resp.data.data.plugin)
 }
 
 /**
@@ -540,11 +600,15 @@ export async function commitAdminSkillReupload(
   skillId: string,
   params: CommitReuploadParams
 ): Promise<SkillDetail> {
-  const resp = await skillApi.post<{ data: SkillDetail }>(
-    `/admin/skills/${encodeURIComponent(skillId)}/reupload`,
-    params
-  )
-  return normalizeSkill(resp.data.data)
+  const resp = await skillApi.post<{
+    data: { plugin: PluginDetailPluginWire; relations: unknown[] }
+  }>(`/admin/plugins/skill_reupload/${encodeURIComponent(skillId)}`, {
+    parse_task_id: params.parse_task_id,
+    version: params.version,
+    changelog: params.changelog,
+    tags: params.tags,
+  })
+  return mapImportedSkillDetail(resp.data.data.plugin)
 }
 
 export async function deleteAdminSkill(id: string): Promise<void> {
