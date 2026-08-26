@@ -1,12 +1,14 @@
-import { useCallback, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Form, Input, Button, Card, Spin, Alert, message } from 'antd'
-import { UserOutlined, LockOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, LockOutlined, MailOutlined, SafetyCertificateOutlined, UserOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
-import { login } from '../../api/auth'
+import { login, resendLoginCode, sendLoginCode, verifyLogin, type LoginChallengeResponse, type ManagerLoginResult } from '../../api/auth'
+import { ApiError } from '../../api'
 import { useAuthStore } from '../../store/auth'
 import LanguageSwitcher from '../../components/LanguageSwitcher'
 import { useSessionRestore } from './useSessionRestore'
+import { getResendCooldownSeconds } from './cooldown'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -116,22 +118,89 @@ function RestoreForbiddenBody({ onSignOut }: { onSignOut: () => void }) {
     </>
   )
 }
-
 interface LoginForm {
   username: string
   password: string
 }
 
+interface VerificationForm {
+  code: string
+}
+
+function formatRemainingTime(seconds: number) {
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = seconds % 60
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
+}
+
+function retryAfterFromError(error: unknown) {
+  if (!(error instanceof ApiError)) return null
+  const retryAfter = Number(error.details?.retry_after)
+  return Number.isFinite(retryAfter) && retryAfter > 0 ? Math.ceil(retryAfter) : null
+}
+
+const managerMFAVerificationLockFallbackSeconds = 10 * 60
+
+function verificationLockSecondsFromError(error: unknown) {
+  if (
+    !(error instanceof ApiError) ||
+    error.status !== 429 ||
+    ![
+      'err.server.user.manager_mfa_verify_locked',
+      // octo-server versions before PR #813 reuse the send-throttle code for
+      // the email-keyed verification lock. The endpoint tells us which meaning
+      // applies, so onVerify must accept both wire contracts.
+      'err.server.user.manager_mfa_rate_limited',
+    ].includes(error.code ?? '')
+  ) {
+    return null
+  }
+
+  return retryAfterFromError(error) ?? managerMFAVerificationLockFallbackSeconds
+}
+
+function isManagerLoginChallenge(data: ManagerLoginResult): data is LoginChallengeResponse {
+  return 'challenge_id' in data && Boolean(data.challenge_id)
+}
+
 function CredentialsForm() {
   const [loading, setLoading] = useState(false)
+  const [sendLoading, setSendLoading] = useState(false)
+  const [challenge, setChallenge] = useState<LoginChallengeResponse | null>(null)
+  const [resendSeconds, setResendSeconds] = useState(0)
+  const [verificationLockSeconds, setVerificationLockSeconds] = useState(0)
+  const [verificationLockEmail, setVerificationLockEmail] = useState<string | null>(null)
+  const [loginForm] = Form.useForm<LoginForm>()
+  const [verificationForm] = Form.useForm<VerificationForm>()
   const navigate = useNavigate()
   const authLogin = useAuthStore((state) => state.loginSuper)
   const { t } = useTranslation('login')
 
-  const onFinish = async (values: LoginForm) => {
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setResendSeconds((seconds) => Math.max(seconds - 1, 0))
+      setVerificationLockSeconds((seconds) => Math.max(seconds - 1, 0))
+    }, 1000)
+
+    return () => window.clearInterval(timer)
+  }, [])
+
+  const onLogin = async (values: LoginForm) => {
     setLoading(true)
     try {
       const data = await login(values)
+      if (isManagerLoginChallenge(data)) {
+        if (verificationLockEmail && verificationLockEmail !== data.email) {
+          setVerificationLockEmail(null)
+          setVerificationLockSeconds(0)
+        }
+        setChallenge(data)
+        setResendSeconds(getResendCooldownSeconds(data.resend_after, data.code_sent))
+        loginForm.resetFields()
+        verificationForm.resetFields()
+        message.success(t('verification.challengeCreated'))
+        return
+      }
       authLogin(data.token, data.name, data.role)
       message.success(t('success'))
       navigate('/dashboard')
@@ -142,27 +211,190 @@ function CredentialsForm() {
     }
   }
 
+  const onSendCode = async () => {
+    if (!challenge || resendSeconds > 0 || verificationLockSeconds > 0) return
+
+    const isResend = challenge.code_sent
+    setSendLoading(true)
+    try {
+      const data = isResend
+        ? await resendLoginCode(challenge.challenge_id)
+        : await sendLoginCode(challenge.challenge_id)
+      setChallenge(data)
+      setResendSeconds(getResendCooldownSeconds(data.resend_after, true))
+      verificationForm.resetFields()
+      message.success(t(isResend ? 'verification.resent' : 'verification.sent'))
+    } catch (error) {
+      if (error instanceof ApiError && error.code === 'err.server.user.manager_mfa_challenge_invalid') {
+        resetChallenge()
+        message.error(t('verification.invalid'))
+        return
+      }
+      const retryAfter = retryAfterFromError(error)
+      if (retryAfter !== null) {
+        const cooldown = getResendCooldownSeconds(retryAfter, true)
+        setResendSeconds(cooldown)
+        message.error(t('verification.rateLimited', { time: formatRemainingTime(cooldown) }))
+        return
+      }
+      message.error((error as Error).message || t('verification.sendFailure'))
+    } finally {
+      setSendLoading(false)
+    }
+  }
+
+  const onVerify = async (values: VerificationForm) => {
+    if (!challenge || !challenge.code_sent || verificationLockSeconds > 0) return
+
+    setLoading(true)
+    try {
+      const data = await verifyLogin({
+        challenge_id: challenge.challenge_id,
+        code: values.code,
+      })
+      authLogin(data.token, data.name, data.role)
+      message.success(t('success'))
+      navigate('/dashboard')
+    } catch (error) {
+      if (error instanceof ApiError && error.code === 'err.server.user.manager_mfa_challenge_invalid') {
+        resetChallenge()
+        message.error(t('verification.invalid'))
+        return
+      }
+      const verificationLock = verificationLockSecondsFromError(error)
+      if (verificationLock !== null) {
+        setVerificationLockEmail(challenge.email)
+        setVerificationLockSeconds(verificationLock)
+        setResendSeconds((seconds) => Math.max(seconds, verificationLock))
+        message.error(
+          t('verification.verifyLocked', { time: formatRemainingTime(verificationLock) }),
+        )
+        return
+      }
+      message.error((error as Error).message || t('verification.failure'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const backToLogin = () => {
+    resetChallenge()
+  }
+
+  function resetChallenge() {
+    setChallenge(null)
+    verificationForm.resetFields()
+    loginForm.resetFields()
+    setResendSeconds(0)
+  }
+
   return (
     <>
-      <Form onFinish={onFinish} size="large">
-        <Form.Item
-          name="username"
-          rules={[{ required: true, message: t('username.required') }]}
-        >
-          <Input prefix={<UserOutlined />} placeholder={t('username.placeholder')} />
-        </Form.Item>
-        <Form.Item
-          name="password"
-          rules={[{ required: true, message: t('password.required') }]}
-        >
-          <Input.Password prefix={<LockOutlined />} placeholder={t('password.placeholder')} />
-        </Form.Item>
-        <Form.Item style={{ marginBottom: 0 }}>
-          <Button type="primary" htmlType="submit" loading={loading} block>
-            {t('submit')}
-          </Button>
-        </Form.Item>
-      </Form>
+      {challenge ? (
+        <>
+          <div style={{ textAlign: 'center', marginBottom: 20, color: 'var(--a-text-secondary)' }}>
+            <MailOutlined style={{ marginRight: 6 }} />
+            {t(
+              challenge.code_sent ? 'verification.description' : 'verification.readyDescription',
+              { email: challenge.email },
+            )}
+          </div>
+          <Form form={verificationForm} onFinish={onVerify} size="large">
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              <Form.Item
+                name="code"
+                rules={[
+                  { required: true, message: t('verification.code.required') },
+                  { pattern: /^\d{6}$/, message: t('verification.code.invalid') },
+                ]}
+                style={{ flex: 1, marginBottom: 12 }}
+              >
+                <Input
+                  prefix={<SafetyCertificateOutlined />}
+                  placeholder={t('verification.code.placeholder')}
+                  inputMode="numeric"
+                  maxLength={6}
+                  disabled={!challenge.code_sent || verificationLockSeconds > 0}
+                />
+              </Form.Item>
+              <Button
+                type={challenge.code_sent ? 'default' : 'primary'}
+                onClick={onSendCode}
+                loading={sendLoading}
+                disabled={
+                  loading || sendLoading || resendSeconds > 0 || verificationLockSeconds > 0
+                }
+                style={{ minWidth: 136 }}
+              >
+                {resendSeconds > 0
+                  ? t(
+                    challenge.code_sent ? 'verification.resendAfter' : 'verification.sendAfter',
+                    { time: formatRemainingTime(resendSeconds) },
+                  )
+                  : challenge.code_sent
+                    ? t('verification.resend')
+                    : t('verification.send')}
+              </Button>
+            </div>
+            <Form.Item style={{ marginBottom: 12 }}>
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={loading}
+                disabled={!challenge.code_sent || verificationLockSeconds > 0}
+                block
+              >
+                {t('verification.submit')}
+              </Button>
+            </Form.Item>
+          </Form>
+          {verificationLockSeconds > 0 && (
+            <div
+              role="status"
+              style={{
+                textAlign: 'center',
+                marginTop: 12,
+                color: 'var(--a-text-secondary)',
+                fontSize: 13,
+              }}
+            >
+              {t('verification.verifyLocked', {
+                time: formatRemainingTime(verificationLockSeconds),
+              })}
+            </div>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
+            <Button
+              type="link"
+              icon={<ArrowLeftOutlined />}
+              onClick={backToLogin}
+              disabled={loading || sendLoading}
+            >
+              {t('verification.back')}
+            </Button>
+          </div>
+        </>
+      ) : (
+        <Form form={loginForm} onFinish={onLogin} size="large">
+          <Form.Item
+            name="username"
+            rules={[{ required: true, message: t('username.required') }]}
+          >
+            <Input prefix={<UserOutlined />} placeholder={t('username.placeholder')} />
+          </Form.Item>
+          <Form.Item
+            name="password"
+            rules={[{ required: true, message: t('password.required') }]}
+          >
+            <Input.Password prefix={<LockOutlined />} placeholder={t('password.placeholder')} />
+          </Form.Item>
+          <Form.Item style={{ marginBottom: 0 }}>
+            <Button type="primary" htmlType="submit" loading={loading} block>
+              {t('submit')}
+            </Button>
+          </Form.Item>
+        </Form>
+      )}
       <div
         style={{
           marginTop: 20,
