@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Descriptions, Drawer, Spin, Tag, Space, Button, message } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
-import { getAdminSkill, downloadAdminSkillPackage, type SkillDetail, type CategoryItem } from '../../api/skill'
+import { getAdminSkill, getAdminSkillMd, downloadAdminSkillPackage, type SkillDetail, type CategoryItem } from '../../api/skill'
 
 interface Props {
   open: boolean
@@ -24,13 +24,14 @@ export default function SkillDetailDrawer({ open, skillId, categories, onClose }
       return
     }
     setLoading(true)
-    // SKILL.md preview comes from the detail's readme_content attachment (the
-    // SKILL.md file the backend inlines), NOT the legacy /skill_md route, which
-    // 404s for a unified plugin UUID.
-    getAdminSkill(skillId)
-      .then((d) => {
+    // SKILL.md preview comes from the ADMIN skill_md endpoint (token auth,
+    // cross-Space, no X-Space-Id), which returns the authoritative raw markdown.
+    // The embedded readme_content is only a stub for un-expanded skills, so it's
+    // just a graceful fallback when the endpoint 404s for older skills.
+    Promise.all([getAdminSkill(skillId), getAdminSkillMd(skillId)])
+      .then(([d, md]) => {
         setDetail(d)
-        setSkillMd(d.readme_content ?? '')
+        setSkillMd(md ?? d.readme_content ?? '')
       })
       .catch(() => {
         message.error(t('skill.loadFailed'))

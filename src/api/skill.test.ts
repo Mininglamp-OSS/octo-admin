@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
 const mockPost = vi.hoisted(() => vi.fn())
 const mockGet = vi.hoisted(() => vi.fn())
@@ -34,11 +34,14 @@ vi.mock('../i18n', () => ({
 import {
   commitAdminSkillReupload,
   createAdminSkill,
+  downloadAdminSkillPackage,
+  getAdminSkillMd,
   initReupload,
   uploadIcon,
   getAdminSkill,
   updateAdminSkill,
 } from './skill'
+import { ApiError } from './index'
 
 // The unified import/reupload response envelope: { data: { plugin, relations } }.
 // mapPluginToSkillDetail derives name/version/tags from the plugin wire, and the
@@ -291,5 +294,70 @@ describe('uploadIcon', () => {
       code: 'invalid_response',
     })
     expect(fetch).not.toHaveBeenCalled()
+  })
+})
+
+describe('downloadAdminSkillPackage', () => {
+  beforeEach(() => {
+    mockGet.mockReset()
+    mockGet.mockResolvedValue({
+      data: new Blob(['zip-bytes'], { type: 'application/zip' }),
+      headers: { 'content-disposition': 'attachment; filename="pkg.zip"' },
+    })
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => 'blob:mock'),
+      revokeObjectURL: vi.fn(),
+    })
+    // jsdom would attempt a real navigation on anchor.click(); stub it out so the
+    // save-trigger is exercised without the "navigation not implemented" noise.
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('streams from the ADMIN download endpoint as a blob (admin client, no X-Space-Id)', async () => {
+    await downloadAdminSkillPackage('skill-1', 'my-skill.zip')
+
+    expect(mockGet).toHaveBeenCalledWith('/admin/plugins/skill-1/download', {
+      responseType: 'blob',
+    })
+    // Never the tenant route that needs X-Space-Id and applies tenant scope.
+    const url = mockGet.mock.calls[0][0] as string
+    expect(url).not.toContain('/plugins/download')
+    expect(url).not.toMatch(/\/admin\/skills\//)
+    // No X-Space-Id / params leaking a tenant scope onto the admin call.
+    const opts = mockGet.mock.calls[0][1] as { params?: unknown }
+    expect(opts.params).toBeUndefined()
+  })
+})
+
+describe('getAdminSkillMd', () => {
+  beforeEach(() => {
+    mockGet.mockReset()
+  })
+
+  it('fetches raw SKILL.md from the ADMIN skill_md endpoint', async () => {
+    mockGet.mockResolvedValue({ data: { data: { content: '# SKILL.md raw' } } })
+
+    const content = await getAdminSkillMd('skill-1')
+
+    expect(mockGet).toHaveBeenCalledWith('/admin/plugins/skill-1/skill_md')
+    // Not the legacy /admin/skills/{id}/skill_md route.
+    expect(mockGet.mock.calls[0][0]).not.toMatch(/\/admin\/skills\//)
+    expect(content).toBe('# SKILL.md raw')
+  })
+
+  it('returns null when the admin skill_md endpoint 404s (older skills)', async () => {
+    mockGet.mockRejectedValue(new ApiError('not found', 404))
+
+    await expect(getAdminSkillMd('skill-1')).resolves.toBeNull()
+  })
+
+  it('rethrows non-404 errors', async () => {
+    mockGet.mockRejectedValue(new ApiError('boom', 500))
+
+    await expect(getAdminSkillMd('skill-1')).rejects.toMatchObject({ status: 500 })
   })
 })

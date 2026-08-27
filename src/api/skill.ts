@@ -193,9 +193,10 @@ const parseTaskByUploadId = new Map<string, string>()
 // plugin wire model here. Categories are also on the unified taxonomy
 // (`/admin/plugin_categories`, see below). Only the upload → parse →
 // create/reupload pipeline still uses its legacy `/admin/skill*` routes; the
-// SKILL.md preview now reads the detail's `readme_content` attachment and the
-// download streams from the unified `/plugins/download` endpoint. The mapping
-// mirrors octo-web's dmworkskillmarket/skillApiReal against the same backend.
+// SKILL.md preview reads the admin `/admin/plugins/{id}/skill_md` route and the
+// download streams from the admin `/admin/plugins/{id}/download` route (both
+// token-authed, cross-Space, no X-Space-Id). The mapping mirrors octo-web's
+// dmworkskillmarket/skillApiReal against the same backend.
 
 interface PluginManifestWire {
   $schema?: string
@@ -658,24 +659,25 @@ export function parseContentDispositionFilename(disposition: string): string {
 }
 
 /**
- * Stream a skill plugin's packaged zip from the authenticated unified download
- * endpoint (GET /plugins/download?plugin_id=) and trigger a browser save.
+ * Stream a skill plugin's packaged zip from the ADMIN download endpoint
+ * (GET /admin/plugins/{id}/download) and trigger a browser save.
  *
- * The unified endpoint streams the zip bytes behind the caller's Octo token
- * (no presigned URL), so we must fetch the blob through the marketplace client
- * — which injects auth — rather than opening a bare URL. The legacy
- * `/admin/skills/{id}/download` route keyed the old `skills` table and 404s for
- * a unified plugin UUID. `plugin_id` resolves the plugin for the superAdmin
- * operator the same as any tenant caller.
+ * This must hit the admin route, not the tenant `/plugins/download`: the tenant
+ * route requires an `X-Space-Id` header the admin client never sends and applies
+ * tenant visibility scope, so it 400s and cannot see admin/cross-Space rows. The
+ * admin route authenticates with the operator's Octo token (injected by the
+ * marketplace client), is cross-Space, and sends no `X-Space-Id`. It streams the
+ * zip bytes behind that token (no presigned URL), so we fetch the blob through
+ * the marketplace client rather than opening a bare URL.
  */
 export async function downloadAdminSkillPackage(
   id: string,
   fileName?: string
 ): Promise<void> {
-  const resp = await skillApi.get(`/plugins/download`, {
-    params: { plugin_id: id },
-    responseType: 'blob',
-  })
+  const resp = await skillApi.get(
+    `/admin/plugins/${encodeURIComponent(id)}/download`,
+    { responseType: 'blob' }
+  )
   const blob = resp.data as Blob
   const disposition = String(
     (resp.headers as Record<string, unknown> | undefined)?.[
@@ -694,6 +696,30 @@ export async function downloadAdminSkillPackage(
     a.remove()
   } finally {
     URL.revokeObjectURL(url)
+  }
+}
+
+// ─── SKILL.md preview ─────────────────────────────────────────────────────────
+
+/**
+ * Fetch a skill plugin's raw SKILL.md from the ADMIN preview endpoint
+ * (GET /admin/plugins/{id}/skill_md → { data: { content } }).
+ *
+ * The embedded detail `readme_content` attachment is only a stub for
+ * un-expanded skills, so the drawer reads the authoritative SKILL.md from this
+ * admin route (token auth, cross-Space, no `X-Space-Id`). Returns null when the
+ * endpoint 404s (older skills predating this route) so callers can fall back to
+ * `readme_content` without erroring the drawer.
+ */
+export async function getAdminSkillMd(id: string): Promise<string | null> {
+  try {
+    const resp = await skillApi.get<{ data: { content: string } }>(
+      `/admin/plugins/${encodeURIComponent(id)}/skill_md`
+    )
+    return resp.data.data.content ?? ''
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return null
+    throw err
   }
 }
 
