@@ -126,6 +126,7 @@
     "slugHint": "生成 mcpServers JSON 时用作 key，仅限英文小写、数字、连字符；留空自动根据名称生成",
     "slugInvalid": "服务标识只能包含小写字母、数字与连字符，且 1-64 位",
     "slugRequired": "名称无法自动生成服务标识，请手动填写（仅限小写字母、数字与连字符）",
+    "slugLockedHint": "服务标识是该 MCP 的服务身份，创建后不可修改；如需更改请重新创建。",
     "advancedToggle": "显示高级设置",
     "tagsPillHint": "输入后回车添加",
     "tagsPillPlaceholder": "输入后按回车添加",

@@ -821,14 +821,7 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
 
               <Form.Item
                 label={t('form.slug')}
-                extra={
-                  slugLocked
-                    ? t('form.slugLockedHint', {
-                        defaultValue:
-                          '服务标识是该 MCP 的服务身份，创建后不可修改；如需更改请重新创建。',
-                      })
-                    : t('form.slugHint')
-                }
+                extra={slugLocked ? t('form.slugLockedHint') : t('form.slugHint')}
               >
                 <Input
                   value={form.slug}

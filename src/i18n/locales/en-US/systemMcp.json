@@ -126,6 +126,7 @@
     "slugHint": "Used as the mcpServers JSON key. Lowercase letters, digits, hyphens only; leave empty to auto-derive from name.",
     "slugInvalid": "Slug must match ^[a-z0-9-]{1,64}$",
     "slugRequired": "The name can't auto-derive a slug — enter one manually (lowercase letters, digits, hyphens only).",
+    "slugLockedHint": "The slug is this MCP's server identity and can't be changed after creation. To change it, recreate the connector.",
     "advancedToggle": "Show advanced settings",
     "tagsPillHint": "Press Enter to add",
     "tagsPillPlaceholder": "Type and press Enter",
