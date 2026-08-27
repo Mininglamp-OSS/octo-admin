@@ -31,14 +31,17 @@
  * re-parsing the zip and swapping the embedded skills/members (see
  * reuploadExpertContainer / reuploadSquadContainer). The old client-side unzip +
  * per-skill presign + flat `/admin/experts` / `/admin/squads` PATCH path is gone.
- * SKILL.md preview is now derived client-side from the already-resolved skill
- * plugin's SKILL.md attachment (SkillRef.skill_md), so no supporting skill_md
- * endpoint is called. The ExpertMarket surface no longer calls any legacy
+ * SKILL.md preview is loaded on demand by the drawers from the admin
+ * `GET /admin/plugins/{id}/skill_md` route (see detailParts.loadSkillMd), keyed
+ * by the resolved skill plugin id, falling back to the inline SKILL.md
+ * (SkillRef.skill_md) when the id is absent or the endpoint 404s. The
+ * ExpertMarket surface no longer calls any legacy
  * `/admin/experts|squads|expert_categories|expert_tags|expert_skill_uploads`
  * route — everything goes through `/admin/plugins*`.
  */
 
 import { marketplaceApi as expertApi } from './marketplace'
+import { ApiError } from './index'
 
 // ─── Shared types (mirror octo-marketplace internal/model/expert_dto.go) ───
 
@@ -397,15 +400,23 @@ function skillRefFromPlugin(plugin: PluginDetailPluginWire): SkillRef {
 }
 
 /** Resolve expert_skill relations (sorted by sort_order) into SkillRefs by
- *  fetching each target skill plugin for its name/content. */
+ *  fetching each target skill plugin for its name/content. Each relation is
+ *  resolved INDEPENDENTLY: a single un-resolvable target (a soft-deleted skill
+ *  whose relation still points at it → 404, or a transient 500) is dropped
+ *  rather than rejecting the whole load, so the drawer still opens with the
+ *  skills that do resolve. */
 async function resolveSkillRefs(relations: RelationWire[]): Promise<SkillRef[]> {
   const rels = relations
     .filter((r) => r.relation_type === 'expert_skill')
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-  const plugins = await Promise.all(
+  const settled = await Promise.allSettled(
     rels.map((r) => fetchPluginDetail(r.target_plugin_id, false))
   )
-  return plugins.map((p) => skillRefFromPlugin(p.plugin))
+  const out: SkillRef[] = []
+  for (const s of settled) {
+    if (s.status === 'fulfilled') out.push(skillRefFromPlugin(s.value.plugin))
+  }
+  return out
 }
 
 interface ParsedTeamDoc {
@@ -608,7 +619,16 @@ export async function getSystemSquad(id: string): Promise<SquadDetail> {
   const memberRels = relations
     .filter((r) => r.relation_type === 'expert_team_expert')
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-  const members = await Promise.all(memberRels.map(resolveSquadMember))
+  // Resolve each member INDEPENDENTLY: one un-resolvable member relation (a
+  // soft-deleted member whose relation still points at it → 404, or a transient
+  // 500) is dropped rather than failing the whole squad load, so the drawer
+  // still opens (and the squad stays deletable) with the members that resolve.
+  const settled = await Promise.allSettled(memberRels.map(resolveSquadMember))
+  const members = settled
+    .filter(
+      (s): s is PromiseFulfilledResult<SquadMember> => s.status === 'fulfilled'
+    )
+    .map((s) => s.value)
   const doc = parseTeamAgentsMarkdown(
     rawAttachment(plugin.plugin_json, 'AGENTS.md') ?? ''
   )
@@ -660,8 +680,9 @@ export interface ImportContainerResult {
  *
  * `categoryName` is resolved to a unified plugin category id via
  * /admin/plugin_categories (the importer takes a category UUID, not the
- * free-text manifest category); an unknown/blank name imports with no category
- * (the importer allows it). The container's tags come from the manifest inside
+ * free-text manifest category); a blank name imports with no category, while a
+ * NON-EMPTY name that fails to resolve throws (LOUD) rather than silently
+ * importing uncategorized. The container's tags come from the manifest inside
  * the zip — the importer accepts no tag override.
  */
 export async function importExpertContainer(
@@ -685,8 +706,11 @@ export async function importExpertContainer(
 
 /** Build the multipart body shared by the container import + reupload routes:
  *  the raw `file` field plus an optional `category_id` resolved from a free-text
- *  category name via /admin/plugin_categories (an unknown/blank name is simply
- *  omitted — the server treats the container as having no category override). */
+ *  category name via /admin/plugin_categories. A NON-EMPTY category name that
+ *  fails to resolve is a hard error (LOUD): silently omitting category_id lands
+ *  the import uncategorized with no signal, so the operator must see that the
+ *  chosen/manifest category doesn't exist. A blank name is simply omitted (the
+ *  server treats the container as having no category override). */
 async function buildContainerForm(
   pluginType: PluginTypeWire,
   file: File | Blob,
@@ -701,7 +725,14 @@ async function buildContainerForm(
   if (trimmed) {
     const { nameToId } = await fetchExpertCategoryMaps(pluginType)
     const categoryId = nameToId.get(trimmed)
-    if (categoryId) form.append('category_id', categoryId)
+    if (!categoryId) {
+      throw new ApiError(
+        `Unknown plugin category: ${trimmed}`,
+        400,
+        'category_not_found'
+      )
+    }
+    form.append('category_id', categoryId)
   }
   return form
 }

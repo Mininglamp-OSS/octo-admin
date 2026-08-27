@@ -37,10 +37,12 @@ import { useTranslation } from 'react-i18next'
 import { ApiError } from '../../api'
 import {
   createSystemMcp,
+  listMcpCategories,
   probeSystemMcp,
   updateSystemMcp,
   uploadMcpIcon,
   type CreateMcpParams,
+  type McpCategory,
   type McpDetail,
   type McpFaq,
   type McpServerEntryWire,
@@ -51,15 +53,6 @@ import {
   buildProbeRequest,
   resolveProbeErrorMessage,
 } from './probeHelpers'
-
-const CATEGORY_KEYS = [
-  'dev',
-  'data',
-  'search',
-  'productivity',
-  'ai',
-  'other',
-] as const
 
 const TRANSPORT_OPTIONS: McpTransport[] = ['streamable-http', 'sse', 'stdio']
 
@@ -209,6 +202,35 @@ function slugifyName(input: string): string {
 }
 
 /**
+ * Resolve the slug that a submit should carry, mirroring the backend's
+ * `slug_required` guard so a name that can't auto-derive an ASCII slug (e.g. a
+ * pure-CJK name → empty) forces the operator to type one instead of silently
+ * collapsing to `mcp-server` on the write path.
+ *
+ *   - A manually entered slug is validated against `^[a-z0-9-]{1,64}$`
+ *     (`reason: 'invalid'` when it doesn't match — a CJK slug fails here).
+ *   - An empty manual slug auto-derives from the name; when the name yields no
+ *     ASCII slug the result is `reason: 'required'` so the caller blocks submit.
+ *   - Otherwise the concrete, already-normalized slug is returned so the write
+ *     path never has to fall back to a default server slug.
+ */
+export function resolveConnectorSlug(
+  name: string,
+  slug: string,
+):
+  | { ok: true; slug: string }
+  | { ok: false; reason: 'required' | 'invalid' } {
+  const raw = (slug ?? '').trim()
+  if (raw) {
+    if (!/^[a-z0-9-]{1,64}$/.test(raw)) return { ok: false, reason: 'invalid' }
+    return { ok: true, slug: slugifyName(raw) }
+  }
+  const derived = slugifyName(name ?? '')
+  if (!derived) return { ok: false, reason: 'required' }
+  return { ok: true, slug: derived }
+}
+
+/**
  * Form state shape. Distinguished from the wire shape (CreateMcpParams) by
  * a few "raw" text buffers we parse on submit — same pattern as web:
  *   - argsRaw: whitespace-separated command args
@@ -256,7 +278,7 @@ const EMPTY: FormValues = {
   slug: '',
   serverName: '',
   extraServers: {},
-  category: 'dev',
+  category: '',
   icon: '',
   iconUrl: '',
   publisher: '',
@@ -287,7 +309,7 @@ function detailToValues(d: McpDetail): FormValues {
     // save round-trips them verbatim (review B / C).
     serverName: q.server_name || '',
     extraServers: q.extra_servers ?? {},
-    category: d.category || 'dev',
+    category: d.category || '',
     icon: d.icon || '',
     iconUrl: d.icon_url || '',
     publisher: d.publisher || '',
@@ -324,6 +346,27 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
   const [submitting, setSubmitting] = useState(false)
   const [probing, setProbing] = useState(false)
   const [iconUploading, setIconUploading] = useState(false)
+  // Connector categories are free-text rows on the unified taxonomy, not a
+  // frozen enum — feed the dropdown from the live list so a category created in
+  // the 分类 tab is selectable and a renamed one still matches on write.
+  const [categories, setCategories] = useState<McpCategory[]>([])
+
+  // Load the category taxonomy whenever the modal opens. On failure the dropdown
+  // simply stays empty; the write path still validates the chosen category id.
+  useEffect(() => {
+    if (!open) return
+    let alive = true
+    listMcpCategories()
+      .then((rows) => {
+        if (alive) setCategories(rows)
+      })
+      .catch(() => {
+        /* dropdown falls back to empty; submit still fails loud on a bad id */
+      })
+    return () => {
+      alive = false
+    }
+  }, [open])
 
   // Reset-on-open matches web's behavior (McpCreateModal:364-389). Editing
   // → hydrate from detail; create → start blank; either way step goes back
@@ -373,11 +416,23 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
   // string-comparison against the localized copy.
   const firstError = (): { message: string; step: number } | null => {
     if (!form.name.trim()) return { message: t('form.nameRequired'), step: 0 }
-    if (form.slug && !/^[a-z0-9-]{1,64}$/.test(form.slug)) {
+    // Mirror the backend's slug_required guard: a manual slug must be valid, and
+    // an empty manual slug must auto-derive a non-empty slug from the name.
+    // Otherwise block submit (a pure-CJK name auto-derives to "") rather than
+    // silently writing the `mcp-server` default server slug.
+    const slugRes = resolveConnectorSlug(form.name, form.slug)
+    if (!slugRes.ok) {
       return {
-        message: t('form.slugInvalid', {
-          defaultValue: '服务标识只能包含小写字母、数字与连字符，且 1-64 位',
-        }),
+        message:
+          slugRes.reason === 'required'
+            ? t('form.slugRequired', {
+                defaultValue:
+                  '名称无法自动生成服务标识，请手动填写（仅限小写字母、数字与连字符）',
+              })
+            : t('form.slugInvalid', {
+                defaultValue:
+                  '服务标识只能包含小写字母、数字与连字符，且 1-64 位',
+              }),
         step: 0,
       }
     }
@@ -425,12 +480,13 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
     // call for identical reasons (McpCreateModal.tsx around L740).
     const envSplit = entriesToWire(form.envEntries)
     const headersSplit = entriesToWire(form.headersEntries)
+    // Submit is gated by firstError, so the slug always resolves here. Send the
+    // concrete resolved slug (never undefined) so the write path never has to
+    // fall back to the `mcp-server` default server slug for a CJK-only name.
+    const slugRes = resolveConnectorSlug(form.name, form.slug)
     return {
       name: form.name.trim(),
-      // Auto-derived slug already fills; on manual override we've kept the
-      // user's value. slugifyName is idempotent, so an already-clean value
-      // survives untouched.
-      slug: form.slug ? slugifyName(form.slug) : undefined,
+      slug: slugRes.ok ? slugRes.slug : undefined,
       // Thread the preserved stored key + extra servers straight back so an
       // existing connector's server identity round-trips verbatim (review B / C).
       server_name: form.serverName || undefined,
@@ -540,12 +596,8 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
   }
 
   const categoryOptions = useMemo(
-    () =>
-      CATEGORY_KEYS.map((k) => ({
-        value: k,
-        label: t(`categoryOptions.${k}`, { defaultValue: k }),
-      })),
-    [t],
+    () => categories.map((c) => ({ value: c.name, label: c.name })),
+    [categories],
   )
   const transportOptions = useMemo(
     () =>
@@ -746,9 +798,11 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
               <div className="mcp-form-grid mcp-form-grid--2">
                 <Form.Item label={t('form.category')}>
                   <Select
-                    value={form.category}
-                    onChange={(v) => update('category', v)}
+                    value={form.category || undefined}
+                    onChange={(v) => update('category', v ?? '')}
                     options={categoryOptions}
+                    allowClear
+                    placeholder={t('form.category')}
                   />
                 </Form.Item>
                 <Form.Item

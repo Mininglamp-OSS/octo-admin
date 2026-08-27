@@ -58,7 +58,11 @@ export default function CategoryTab({ canWrite }: Props) {
       if (editItem) {
         await updateCategory(editItem.id, {
           ...values,
+          // Echo the existing icon_key AND sort_order — this tab has no
+          // sort_order field, so omitting it would zero the category's order on
+          // the backend's full-replace PATCH (rename must not reorder).
           icon_key: editItem.icon_key,
+          sort_order: editItem.sort_order,
         })
         message.success(t('category.success.updated'))
       } else {

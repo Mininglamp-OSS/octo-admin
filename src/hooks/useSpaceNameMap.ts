@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getSpace } from '../api/space'
 
@@ -14,6 +14,13 @@ import { getSpace } from '../api/space'
  * Space regardless of pagination or enabled/disabled status; a genuine
  * non-existent id (e.g. a local test seed) 404s and falls back to the raw id so
  * the column never blocks the table.
+ *
+ * `nameOf` is called from table `render` callbacks (the render phase). It must
+ * NOT fire a fetch there: under StrictMode/concurrent rendering an abandoned
+ * render that already issued a request + marked the id `requested` would leave
+ * that id permanently unresolved. Instead `nameOf` only RECORDS the observed id
+ * (a ref mutation), and a post-commit `useEffect` issues the fetches — effects
+ * run only for committed renders, so an abandoned render never strands an id.
  */
 
 export interface SpaceNameMap {
@@ -26,15 +33,38 @@ export function useSpaceNameMap(): SpaceNameMap {
   // Resolved names: id → name (""), where "" marks a resolved-but-unknown id
   // (404/error) so we stop re-requesting it and fall back to showing the id.
   const [names, setNames] = useState<Map<string, string>>(() => new Map())
+  // Ids seen during render (recorded, not fetched, in the render phase) and ids
+  // a fetch has already been issued for (de-dupe). Both are refs so touching
+  // them during render never schedules a state update.
+  const observed = useRef<Set<string>>(new Set())
   const requested = useRef<Set<string>>(new Set())
 
-  const resolve = useCallback((id: string) => {
-    if (requested.current.has(id)) return
-    requested.current.add(id)
-    getSpace(id)
-      .then((s) => setNames((m) => new Map(m).set(id, s?.name || '')))
-      .catch(() => setNames((m) => new Map(m).set(id, '')))
-  }, [])
+  // Resolve any observed-but-unrequested ids AFTER commit. Runs after every
+  // render and self-limits via `requested`, so only committed renders trigger a
+  // fetch and each id is fetched at most once.
+  useEffect(() => {
+    const pending: string[] = []
+    observed.current.forEach((id) => {
+      if (!requested.current.has(id)) {
+        requested.current.add(id)
+        pending.push(id)
+      }
+    })
+    if (pending.length === 0) return
+    let alive = true
+    for (const id of pending) {
+      getSpace(id)
+        .then((s) => {
+          if (alive) setNames((m) => new Map(m).set(id, s?.name || ''))
+        })
+        .catch(() => {
+          if (alive) setNames((m) => new Map(m).set(id, ''))
+        })
+    }
+    return () => {
+      alive = false
+    }
+  })
 
   return useMemo(() => {
     const globalLabel = t('space.global')
@@ -46,13 +76,14 @@ export function useSpaceNameMap(): SpaceNameMap {
           // Resolved: a real name, or "" (unknown) → show the raw id.
           return names.get(spaceId) || spaceId
         }
-        // Not yet resolved: kick off the lazy fetch and show the id until it
-        // lands (the fetch triggers a re-render). Deduped by `requested`.
-        resolve(spaceId)
+        // Not yet resolved: record the id for the post-commit effect to fetch
+        // (no fetch, no setState here — safe in the render phase). Show the id
+        // until the name lands (the resolve triggers a re-render).
+        observed.current.add(spaceId)
         return spaceId
       },
     }
-  }, [names, t, resolve])
+  }, [names, t])
 }
 
 export default useSpaceNameMap

@@ -261,6 +261,71 @@ describe('getSystemSquad — maps the team graph back to SquadDetail', () => {
   })
 })
 
+describe('getSystemSquad — resolves members independently (review P1)', () => {
+  it('still returns a detail with the other members when one member relation is un-resolvable', async () => {
+    // Two member relations: member-1 resolves; member-bad's target GET is not in
+    // the route table, so fetchPluginDetail rejects. The whole squad load must
+    // NOT fail closed — the drawer still opens with the resolvable member.
+    installGet({
+      '/admin/plugin_categories': teamCategories,
+      '/admin/plugins/sq-2': {
+        data: {
+          plugin: {
+            plugin_id: 'sq-2',
+            plugin_name: '增长小组',
+            plugin_type: 'expert_team',
+            category_id: 'c-mkt',
+            tags: [],
+            visibility: 'system',
+            manifest_json: { name: '增长小组', description: '' },
+            plugin_json: { attachments: [rawAtt('AGENTS.md', teamAgents)] },
+          },
+          relations: [
+            {
+              relation_type: 'expert_team_expert',
+              target_plugin_id: 'member-1',
+              sort_order: 0,
+              data: { member_key: 'lead', role: 'leader', is_leader: true },
+            },
+            {
+              // A soft-deleted member whose relation still points at it → 404.
+              relation_type: 'expert_team_expert',
+              target_plugin_id: 'member-bad',
+              sort_order: 1,
+              data: { member_key: 'gone', role: 'member', is_leader: false },
+            },
+          ],
+        },
+      },
+      '/admin/plugins/member-1': {
+        data: {
+          plugin: {
+            plugin_id: 'member-1',
+            plugin_name: '组长',
+            plugin_type: 'expert',
+            manifest_json: { name: '组长', description: 'leader' },
+            plugin_json: {
+              attachments: [
+                rawAtt('AGENTS.md', '统筹全局'),
+                rawAtt('mcp.json', '{"mcpServers":{}}'),
+              ],
+            },
+          },
+          relations: [],
+        },
+      },
+      // NOTE: '/admin/plugins/member-bad' is intentionally absent → rejects.
+    })
+
+    const detail = await getSystemSquad('sq-2')
+
+    // The drawer opens with just the resolvable member; the bad one is dropped.
+    expect(detail.members).toHaveLength(1)
+    expect(detail.members[0].name).toBe('组长')
+    expect(detail.member_count).toBe(1)
+  })
+})
+
 describe('listSystemExperts — maps the unified list projection', () => {
   it('resolves category names and flattens pagination', async () => {
     installGet({
@@ -337,18 +402,22 @@ describe('importExpertContainer — uploads the whole zip to the importer', () =
     expect(config).toMatchObject({ signal: undefined })
   })
 
-  it('resolves the squad taxonomy and omits an unknown category', async () => {
+  it('throws loudly (category_not_found) when a non-empty category cannot be resolved', async () => {
     installGet({ '/admin/plugin_categories': teamCategories })
     mockPost.mockResolvedValue({ data: { data: { plugin: { plugin_id: 'sq-9' } } } })
     const zip = new File([new Uint8Array([1])], 'squad.zip')
 
-    await importExpertContainer(zip, { kind: 'squad', categoryName: '不存在' })
+    // A non-empty manifest/selected category that isn't in the taxonomy must
+    // surface loudly instead of importing uncategorized with no signal.
+    await expect(
+      importExpertContainer(zip, { kind: 'squad', categoryName: '不存在' })
+    ).rejects.toMatchObject({ code: 'category_not_found' })
 
     expect(mockGet).toHaveBeenCalledWith('/admin/plugin_categories', {
       params: { plugin_type: 'expert_team' },
     })
-    const [, form] = mockPost.mock.calls[0]
-    expect((form as FormData).get('category_id')).toBeNull()
+    // The import never fired with an uncategorized fallback.
+    expect(mockPost).not.toHaveBeenCalled()
   })
 
   it('skips the taxonomy lookup entirely when no category is given', async () => {

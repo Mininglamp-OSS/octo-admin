@@ -40,6 +40,7 @@ import {
   uploadIcon,
   getAdminSkill,
   updateAdminSkill,
+  updateSkillCategory,
 } from './skill'
 import { ApiError } from './index'
 
@@ -171,6 +172,29 @@ describe('createAdminSkill', () => {
     // The system wire visibility is preserved (not collapsed to a legacy value).
     expect(result.visibility).toBe('system')
     expect(result.scope).toBe('system')
+  })
+
+  it('threads changelog (accepted by skill_import) but not display_name/icon (rejected)', async () => {
+    await createAdminSkill({
+      parse_task_id: 'task-1',
+      name: 'skill-one',
+      display_name: 'Skill One',
+      category_id: 'cat-ops',
+      tags: ['tag-1'],
+      version: '1.0.1',
+      description: 'An ops skill.',
+      changelog: 'initial release',
+      icon_url: 'icons/skill-1/logo.png',
+    })
+
+    const body = mockPost.mock.calls[0][1] as Record<string, unknown>
+    // changelog rides through (the initial version's changelog isn't discarded).
+    expect(body.changelog).toBe('initial release')
+    // display_name / icon are NOT sent — skill_import decodes with
+    // DisallowUnknownFields and rejects them, so they'd 400 the create.
+    expect('display_name' in body).toBe(false)
+    expect('icon' in body).toBe(false)
+    expect('icon_url' in body).toBe(false)
   })
 })
 
@@ -359,5 +383,36 @@ describe('getAdminSkillMd', () => {
     mockGet.mockRejectedValue(new ApiError('boom', 500))
 
     await expect(getAdminSkillMd('skill-1')).rejects.toMatchObject({ status: 500 })
+  })
+})
+
+describe('updateSkillCategory — echoes sort_order + icon_key on the full-replace PATCH', () => {
+  beforeEach(() => {
+    mockPatch.mockReset()
+    mockPatch.mockResolvedValue({
+      data: { data: { category_id: 'cat-1', name: '改名', icon_key: 'wrench', sort_order: 7 } },
+    })
+  })
+
+  it('sends the existing sort_order so a rename does not zero it (review P1)', async () => {
+    await updateSkillCategory('cat-1', {
+      name: '改名',
+      icon_key: 'wrench',
+      sort_order: 7,
+    })
+
+    expect(mockPatch).toHaveBeenCalledWith('/admin/plugin_categories/cat-1', {
+      name: '改名',
+      icon_key: 'wrench',
+      plugin_types: ['skill'],
+      sort_order: 7,
+    })
+  })
+
+  it('defaults sort_order to 0 (not undefined) when omitted, mirroring the twins', async () => {
+    await updateSkillCategory('cat-1', { name: '改名', icon_key: 'wrench' })
+
+    const body = mockPatch.mock.calls[0][1] as { sort_order: number }
+    expect(body.sort_order).toBe(0)
   })
 })

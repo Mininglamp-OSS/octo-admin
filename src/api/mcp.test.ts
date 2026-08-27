@@ -31,6 +31,7 @@ vi.mock('../i18n', () => ({
 
 import {
   createMcpCategory,
+  createSystemMcp,
   deleteMcpCategory,
   listMcpCategories,
   updateMcpCategory,
@@ -148,6 +149,74 @@ describe('slugifyServerName — octo-web parity', () => {
 
   it('lowercases, hyphenates whitespace and collapses/edges for a normal name', () => {
     expect(slugifyServerName('  My Cool  Server ')).toBe('my-cool-server')
+  })
+})
+
+describe('connector category lookup — loud on an unresolved category (review P1)', () => {
+  const CONNECTOR_CATS = {
+    data: { data: [{ category_id: 'c-dev', name: 'dev', plugin_types: ['connector'] }] },
+  }
+
+  it('createSystemMcp throws category_not_found instead of silently omitting category_id', async () => {
+    mockGet.mockResolvedValue(CONNECTOR_CATS)
+    mockPost.mockResolvedValue({ data: { data: { plugin: { plugin_id: 'mcp-x' } } } })
+
+    await expect(
+      createSystemMcp({
+        name: 'X',
+        // A category created in the new tab that isn't in this map (or a renamed
+        // seeded one) must fail loud, not write category_id=NULL.
+        category: '不存在的分类',
+        transport: 'streamable-http',
+        url: 'https://x/mcp',
+        tools: [],
+      })
+    ).rejects.toMatchObject({ code: 'category_not_found' })
+    // Never reached the create POST with a NULL category.
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  it('createSystemMcp resolves a known category name to its id', async () => {
+    mockGet.mockResolvedValue(CONNECTOR_CATS)
+    mockPost.mockResolvedValue({ data: { data: { plugin: { plugin_id: 'mcp-x' } } } })
+    // The follow-up loadMcpDetail GET also hits mockGet → returns the category
+    // list shape, which mapMcpDetail tolerates (no plugin key → empty detail).
+    mockGet.mockImplementation((url: string) =>
+      url.includes('plugin_categories')
+        ? Promise.resolve(CONNECTOR_CATS)
+        : Promise.resolve({ data: { data: { plugin: { plugin_id: 'mcp-x', plugin_name: 'X', plugin_type: 'connector', plugin_json: { attachments: [] } }, relations: [] } } })
+    )
+
+    await createSystemMcp({
+      name: 'X',
+      category: 'dev',
+      transport: 'streamable-http',
+      url: 'https://x/mcp',
+      tools: [],
+    })
+
+    const body = mockPost.mock.calls[0][1] as { plugin: { category_id?: string } }
+    expect(body.plugin.category_id).toBe('c-dev')
+  })
+
+  it('createSystemMcp omits category_id (no throw) for an empty category', async () => {
+    mockGet.mockImplementation((url: string) =>
+      url.includes('plugin_categories')
+        ? Promise.resolve(CONNECTOR_CATS)
+        : Promise.resolve({ data: { data: { plugin: { plugin_id: 'mcp-x', plugin_name: 'X', plugin_type: 'connector', plugin_json: { attachments: [] } }, relations: [] } } })
+    )
+    mockPost.mockResolvedValue({ data: { data: { plugin: { plugin_id: 'mcp-x' } } } })
+
+    await createSystemMcp({
+      name: 'X',
+      category: '',
+      transport: 'streamable-http',
+      url: 'https://x/mcp',
+      tools: [],
+    })
+
+    const body = mockPost.mock.calls[0][1] as { plugin: { category_id?: string } }
+    expect(body.plugin.category_id).toBeUndefined()
   })
 })
 

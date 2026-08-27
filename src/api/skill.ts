@@ -470,11 +470,12 @@ export async function updateSkillCategory(
     {
       name: params.name,
       // The backend PATCH overwrites all columns, so echo the existing icon_key
-      // back — otherwise a rename/reorder wipes the category's icon (mirrors
-      // updateExpertCategory / updateMcpCategory).
+      // AND sort_order back — otherwise a rename/reorder wipes the category's
+      // icon or zeroes its sort_order (mirrors updateExpertCategory /
+      // updateMcpCategory).
       icon_key: params.icon_key ?? '',
       plugin_types: SKILL_CATEGORY_PLUGIN_TYPES,
-      sort_order: params.sort_order,
+      sort_order: params.sort_order ?? 0,
     }
   )
   return pluginCategoryToItem(resp.data.data)
@@ -546,6 +547,14 @@ export async function createAdminSkill(params: CreateSkillParams): Promise<Skill
     version: params.version,
   }
   if (params.description !== undefined) body.description = params.description
+  // `changelog` IS accepted by the admin skill_import request; thread it so the
+  // initial version's changelog the form collects isn't discarded. `icon` and
+  // `display_name` are intentionally NOT sent: the admin skill_import request
+  // decodes with DisallowUnknownFields and accepts neither, so sending them
+  // would 400 the create — those fields are edit-only (see SkillFormModal).
+  if (params.changelog !== undefined && params.changelog !== '') {
+    body.changelog = params.changelog
+  }
   const resp = await skillApi.post<{
     data: { plugin: PluginDetailPluginWire; relations: unknown[] }
   }>('/admin/plugins/skill_import', body)

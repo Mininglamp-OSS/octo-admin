@@ -308,6 +308,29 @@ async function fetchConnectorCategoryMaps(): Promise<ConnectorCategoryMaps> {
   return { keyToId, idToKey, wire }
 }
 
+/** Resolve a connector category NAME to its unified id. A NON-EMPTY name that
+ *  doesn't resolve is a hard error (LOUD) rather than a silent omission: on the
+ *  full-replace PATCH an omitted category_id writes NULL, so a category created
+ *  in the new tab (or a renamed seeded one) that isn't in the map would silently
+ *  un-categorize the connector on every create/edit. An empty name is a genuine
+ *  "uncategorized" and resolves to undefined. */
+function resolveConnectorCategoryId(
+  maps: ConnectorCategoryMaps,
+  category: string | undefined
+): string | undefined {
+  const name = category?.trim()
+  if (!name) return undefined
+  const id = maps.keyToId.get(name)
+  if (!id) {
+    throw new ApiError(
+      `Unknown connector category: ${name}`,
+      400,
+      'category_not_found'
+    )
+  }
+  return id
+}
+
 /** raw_content of one inline package attachment, or undefined. */
 function rawAttachment(
   pkg: PluginPackageWire | undefined,
@@ -804,7 +827,7 @@ export async function createSystemMcp(
   const resp = await mcpApi.post<{ data: unknown }>(
     '/admin/plugins',
     toConnectorUpsert(params, {
-      categoryId: maps.keyToId.get(params.category),
+      categoryId: resolveConnectorCategoryId(maps, params.category),
       visibility: 'system',
     })
   )
@@ -835,7 +858,7 @@ export async function updateSystemMcp(
     `/admin/plugins/${encodeURIComponent(id)}`,
     toConnectorUpsert(params, {
       pluginId: id,
-      categoryId: maps.keyToId.get(params.category ?? ''),
+      categoryId: resolveConnectorCategoryId(maps, params.category),
       visibility,
     })
   )

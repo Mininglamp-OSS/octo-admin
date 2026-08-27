@@ -214,17 +214,20 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
         })
         message.success(t('editModal.success'))
       } else {
+        // The admin skill_import request accepts name/category/tags/version/
+        // description/changelog only (it decodes with DisallowUnknownFields), so
+        // display_name and the uploaded icon can't ride the create — the form
+        // hides them on create and edits them afterward via the edit path,
+        // rather than collecting-and-discarding them here.
         await createSkill({
           parse_task_id: parseTaskId,
           name: values.name,
-          display_name: values.display_name || values.name,
           description: values.description,
           category_id: values.category_id,
           tags: values.tags || [],
           visibility: 'system',
           version: values.version,
           changelog: values.changelog,
-          icon_url: iconUrl || undefined,
         })
         message.success(t('upload.success'))
       }
@@ -370,9 +373,13 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
                 <Input />
               </Form.Item>
             )}
+            {activeEditSkill && (
+              <>
             <Form.Item name="display_name" label={t('upload.form.displayName')} rules={[{ required: true }]}>
               <Input />
             </Form.Item>
+              </>
+            )}
             <Form.Item name="category_id" label={t('upload.form.category')} rules={[{ required: true }]}>
               <Select
                 options={categories.map((c) => ({ value: c.id, label: c.name }))}
@@ -400,6 +407,7 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
               options={[]}
             />
           </Form.Item>
+            {activeEditSkill && (
             <Form.Item label={t('upload.form.icon')}>
               <Upload
                 accept="image/*"
@@ -419,6 +427,7 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
                 </Space>
               </Upload>
             </Form.Item>
+          )}
           </Form>
       </div>
     </Modal>

@@ -19,6 +19,7 @@ import {
   describeApiError,
   entriesFromWire,
   entriesToWire,
+  resolveConnectorSlug,
 } from './FormModal'
 
 describe('entriesFromWire', () => {
@@ -105,6 +106,46 @@ describe('entriesToWire', () => {
       'X-Api-Key': '',
     })
     expect(out.userSupplied).toEqual(['Authorization', 'X-Api-Key'])
+  })
+})
+
+describe('resolveConnectorSlug', () => {
+  it('requires an explicit slug when a pure-CJK name auto-derives to empty (never mcp-server)', () => {
+    // The bug this guards: a Chinese-only name strips to "" and the write path
+    // silently substituted DEFAULT_SERVER_SLUG ("mcp-server"), colliding two
+    // connectors. With no manual slug, submit must be BLOCKED instead.
+    const res = resolveConnectorSlug('高德地图', '')
+    expect(res).toEqual({ ok: false, reason: 'required' })
+  })
+
+  it('round-trips a valid manual slug for a CJK name', () => {
+    const res = resolveConnectorSlug('高德地图', 'gaode-map')
+    expect(res).toEqual({ ok: true, slug: 'gaode-map' })
+  })
+
+  it('rejects a manual slug that is not [a-z0-9-] (a CJK slug fails)', () => {
+    expect(resolveConnectorSlug('x', '高德')).toEqual({
+      ok: false,
+      reason: 'invalid',
+    })
+    expect(resolveConnectorSlug('x', 'Bad Slug!')).toEqual({
+      ok: false,
+      reason: 'invalid',
+    })
+  })
+
+  it('auto-derives a valid slug from an ASCII name when no manual slug is given', () => {
+    expect(resolveConnectorSlug('  My Cool  Server ', '')).toEqual({
+      ok: true,
+      slug: 'my-cool-server',
+    })
+  })
+
+  it('normalizes a manual slug idempotently (already-clean value survives)', () => {
+    expect(resolveConnectorSlug('anything', 'github-mcp')).toEqual({
+      ok: true,
+      slug: 'github-mcp',
+    })
   })
 })
 
