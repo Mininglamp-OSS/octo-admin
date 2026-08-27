@@ -691,7 +691,7 @@ function toConnectorUpsert(
   ]
   const usage = (params.usage_examples ?? []).map((s) => s.trim()).filter(Boolean)
   const manifest: PluginManifestWire = {
-    $schema: 'cowork-plugin-manifest-1.0.json',
+    $schema: 'cowork-plugin-manifest-2.0.json',
     plugin_name: name,
     plugin_type: 'connector',
     // The manifest machine name is the connector's SLUG (its stable identity),
@@ -768,7 +768,7 @@ function toConnectorUpsert(
       visibility: opts.visibility,
       manifest_json: manifest,
       plugin_json: {
-        $schema: 'cowork-plugin-package-1.0.json',
+        $schema: 'cowork-plugin-package-2.0.json',
         // connector.source anchors to the modeled server's map key (mapKey), the
         // same identifier used for manifest.name and the mcpServers key, so the
         // three never disagree (review P1-A).

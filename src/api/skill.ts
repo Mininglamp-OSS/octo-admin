@@ -610,7 +610,7 @@ export async function updateAdminSkill(
   const categoryId =
     params.category_id !== undefined ? params.category_id : plugin.category_id
   const newManifest: PluginManifestWire = {
-    $schema: 'cowork-plugin-manifest-1.0.json',
+    $schema: 'cowork-plugin-manifest-2.0.json',
     plugin_name: displayName,
     plugin_type: 'skill',
     name,
@@ -633,7 +633,7 @@ export async function updateAdminSkill(
       visibility,
       manifest_json: newManifest,
       plugin_json: {
-        $schema: 'cowork-plugin-package-1.0.json',
+        $schema: 'cowork-plugin-package-2.0.json',
         attachments,
       },
     },
