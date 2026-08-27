@@ -577,9 +577,14 @@ function mapMcpDetail(
     connectorSource && connectorSource.startsWith('connector.')
       ? connectorSource.slice('connector.'.length)
       : undefined
+  // Select the modeled server: prefer the one named by connector.source (which
+  // the write path anchors to the real map key), then manifest.name (the slug —
+  // only a present key when it happens to equal the server key), then the first
+  // key. Source-first avoids flipping the modeled server when an extra server is
+  // keyed like the slug (review P1).
   const namedKey =
-    (manifest.name && servers[manifest.name] ? manifest.name : undefined) ??
-    (sourceName && servers[sourceName] ? sourceName : undefined)
+    (sourceName && servers[sourceName] ? sourceName : undefined) ??
+    (manifest.name && servers[manifest.name] ? manifest.name : undefined)
   const serverName = namedKey ?? serverKeys[0] ?? ''
   const server = servers[serverName] ?? {}
   const extraServers: Record<string, McpServerEntryWire> = {}
@@ -675,10 +680,9 @@ function toConnectorUpsert(
   // The mcpServers map key is the stored server name when the record carries
   // one (preserved verbatim so a backend-minted key that differs from the slug
   // round-trips — review B), falling back to the slug for a fresh create.
-  // manifest.name and connector.source both anchor to THIS same identifier
-  // (review P1-A) so the modeled server, its manifest machine name, and its
-  // connector source never disagree — otherwise read-side named selection
-  // (mapMcpDetail) would flip the modeled server on a no-op save.
+  // connector.source anchors to THIS key (mapKey) so it always names the
+  // modeled server; manifest.name stays the SLUG (the connector's machine
+  // name), which the read side no longer relies on for server selection.
   const mapKey = params.server_name?.trim() || key
   // Pre-normalize like the backend (trim, drop empties, dedupe) so
   // manifest_json.labels matches the tags column invariant (tags == labels).
@@ -690,14 +694,13 @@ function toConnectorUpsert(
     $schema: 'cowork-plugin-manifest-1.0.json',
     plugin_name: name,
     plugin_type: 'connector',
-    // The manifest machine name MUST match the modeled server's actual map key
-    // (mapKey), not the re-slugified display slug. mapMcpDetail's read-side
-    // named-server selection keys off manifest.name; if it pointed at a slug
-    // that isn't a present mcpServers key, a no-op save would flip the modeled
-    // server to the first-sorted / wrong entry (review P1-A). Anchoring
-    // manifest.name, connector.source, and the server key all to mapKey keeps
-    // the three consistent so the modeled server round-trips.
-    name: mapKey,
+    // The manifest machine name is the connector's SLUG (its stable identity),
+    // NOT the mcpServers key. Anchoring it to the server key would hijack a
+    // backend-minted connector's machine name (e.g. "GitHub MCP") away from its
+    // slug ("github-mcp") on a no-op save (review P1). The read side selects the
+    // modeled server via connector.source (which IS anchored to mapKey), so
+    // manifest.name never needs to be a present map key.
+    name: key,
     description: params.slogan ?? '',
     labels: tags,
     examples: usage.map((input, i) => ({ title: `使用示例 ${i + 1}`, input })),

@@ -623,9 +623,10 @@ describe('connector identity anchoring — source/name/key agree, no flip (revie
       plugin: { plugin_name: string; manifest_json: { name?: string } }
     }
     const servers = writtenMcpServers(body)
-    // All three identity anchors reference the SAME stored key.
+    // connector.source + the server key reference the stored key; manifest.name
+    // stays the SLUG (the machine name) — it is NOT hijacked to the server key.
     expect(body.plugin.plugin_json.connector.source).toBe('connector.jira-server')
-    expect(body.plugin.manifest_json.name).toBe('jira-server')
+    expect(body.plugin.manifest_json.name).toBe('the-slug')
     expect(servers['jira-server']).toBeDefined()
     // The display name never leaks into the server map or the source.
     expect(servers['My Connector']).toBeUndefined()
@@ -635,8 +636,8 @@ describe('connector identity anchoring — source/name/key agree, no flip (revie
     expect(servers.extra).toEqual({ type: 'stdio', command: 'run', args: ['--x'] })
 
     // Feed the WRITTEN document back through the read: the modeled server must
-    // stay `jira-server` (manifest.name now matches a present key) and never
-    // flip to the first-sorted `extra`.
+    // stay `jira-server` (selected via connector.source) and never flip to the
+    // first-sorted `extra`; the slug round-trips as the slug, not the server key.
     const writtenWire = connectorDetailWireWith({
       plugin_id: 'mcp-12',
       plugin_name: body.plugin.plugin_name,
@@ -655,7 +656,7 @@ describe('connector identity anchoring — source/name/key agree, no flip (revie
     )
     const reread = await getSystemMcp('mcp-12')
     expect(reread.quick_start.server_name).toBe('jira-server')
-    expect(reread.quick_start.slug).toBe('jira-server')
+    expect(reread.quick_start.slug).toBe('the-slug')
     expect(reread.quick_start.extra_servers).toEqual({
       extra: { type: 'stdio', command: 'run', args: ['--x'] },
     })
