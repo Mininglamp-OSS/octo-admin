@@ -675,6 +675,10 @@ function toConnectorUpsert(
   // The mcpServers map key is the stored server name when the record carries
   // one (preserved verbatim so a backend-minted key that differs from the slug
   // round-trips — review B), falling back to the slug for a fresh create.
+  // manifest.name and connector.source both anchor to THIS same identifier
+  // (review P1-A) so the modeled server, its manifest machine name, and its
+  // connector source never disagree — otherwise read-side named selection
+  // (mapMcpDetail) would flip the modeled server on a no-op save.
   const mapKey = params.server_name?.trim() || key
   // Pre-normalize like the backend (trim, drop empties, dedupe) so
   // manifest_json.labels matches the tags column invariant (tags == labels).
@@ -686,7 +690,14 @@ function toConnectorUpsert(
     $schema: 'cowork-plugin-manifest-1.0.json',
     plugin_name: name,
     plugin_type: 'connector',
-    name: key,
+    // The manifest machine name MUST match the modeled server's actual map key
+    // (mapKey), not the re-slugified display slug. mapMcpDetail's read-side
+    // named-server selection keys off manifest.name; if it pointed at a slug
+    // that isn't a present mcpServers key, a no-op save would flip the modeled
+    // server to the first-sorted / wrong entry (review P1-A). Anchoring
+    // manifest.name, connector.source, and the server key all to mapKey keeps
+    // the three consistent so the modeled server round-trips.
+    name: mapKey,
     description: params.slogan ?? '',
     labels: tags,
     examples: usage.map((input, i) => ({ title: `使用示例 ${i + 1}`, input })),
@@ -755,7 +766,10 @@ function toConnectorUpsert(
       manifest_json: manifest,
       plugin_json: {
         $schema: 'cowork-plugin-package-1.0.json',
-        connector: { type: 'mcp', source: `connector.${key}` },
+        // connector.source anchors to the modeled server's map key (mapKey), the
+        // same identifier used for manifest.name and the mcpServers key, so the
+        // three never disagree (review P1-A).
+        connector: { type: 'mcp', source: `connector.${mapKey}` },
         attachments,
       },
     },

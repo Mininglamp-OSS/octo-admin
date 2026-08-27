@@ -37,6 +37,7 @@ import {
   getSystemSquad,
   importExpertContainer,
   listExpertCategories,
+  listSquadCategories,
   listSystemExperts,
   reuploadExpertContainer,
   reuploadSquadContainer,
@@ -429,6 +430,47 @@ describe('importExpertContainer — uploads the whole zip to the importer', () =
     expect(mockGet).not.toHaveBeenCalled()
     const [, form] = mockPost.mock.calls[0]
     expect((form as FormData).get('category_id')).toBeNull()
+    expect((form as FormData).get('file')).toBeInstanceOf(File)
+  })
+})
+
+describe('squad category taxonomy — dropdown lists what import resolves against (review P1-2)', () => {
+  it('listSquadCategories lists the expert_team taxonomy, not the expert one', async () => {
+    installGet({ '/admin/plugin_categories': teamCategories })
+
+    const rows = await listSquadCategories()
+
+    expect(mockGet).toHaveBeenCalledWith('/admin/plugin_categories', {
+      params: { plugin_type: 'expert_team' },
+    })
+    expect(rows).toEqual([
+      expect.objectContaining({ expert_category_id: 'c-mkt', name: '营销策划' }),
+    ])
+  })
+
+  it('a squad import with an expert_team-resolvable category succeeds (no category_not_found block)', async () => {
+    // The category the squad dropdown offers comes from listSquadCategories
+    // (expert_team). Importing with it must resolve against the SAME expert_team
+    // taxonomy and succeed — not blow up with the round-5 loud category_not_found
+    // the expert/expert_team mismatch used to cause.
+    installGet({ '/admin/plugin_categories': teamCategories })
+    mockPost.mockResolvedValue({ data: { data: { plugin: { plugin_id: 'sq-11' } } } })
+    const zip = new File([new Uint8Array([1, 2, 3])], 'squad.zip', {
+      type: 'application/zip',
+    })
+
+    const result = await importExpertContainer(zip, {
+      kind: 'squad',
+      categoryName: '营销策划',
+    })
+
+    expect(result).toEqual({ plugin_id: 'sq-11' })
+    expect(mockGet).toHaveBeenCalledWith('/admin/plugin_categories', {
+      params: { plugin_type: 'expert_team' },
+    })
+    const [url, form] = mockPost.mock.calls[0]
+    expect(url).toBe('/admin/plugins/import')
+    expect((form as FormData).get('category_id')).toBe('c-mkt')
     expect((form as FormData).get('file')).toBeInstanceOf(File)
   })
 })

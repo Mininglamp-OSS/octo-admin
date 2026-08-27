@@ -557,6 +557,111 @@ describe('connector multi-server preservation (review C safeguard)', () => {
   })
 })
 
+describe('connector identity anchoring — source/name/key agree, no flip (review P1-A)', () => {
+  it('anchors connector.source, manifest.name and the server key to the stored map key when slug differs, and round-trips a preserved extra server without flipping the modeled server', async () => {
+    // A backend-minted record where the stored server key `jira-server` differs
+    // from the manifest machine slug `the-slug`, plus an UNMODELED extra server
+    // `extra` that sorts BEFORE the modeled key (so a re-slugify bug would flip
+    // the read to `extra`). connector.source names the real server.
+    const wire = connectorDetailWireWith({
+      plugin_id: 'mcp-12',
+      plugin_name: 'My Connector',
+      plugin_type: 'connector',
+      manifest_json: { name: 'the-slug', description: 's', labels: [] },
+      category_id: 'c-dev',
+      icon: '',
+      visibility: 'system',
+      tags: [],
+      plugin_json: {
+        connector: { type: 'mcp', source: 'connector.jira-server' },
+        attachments: [
+          {
+            path: 'mcp.json',
+            content_type: 'raw',
+            raw_content: JSON.stringify({
+              mcpServers: {
+                extra: { type: 'stdio', command: 'run', args: ['--x'] },
+                'jira-server': {
+                  type: 'streamable-http',
+                  url: 'https://jira.example/mcp',
+                },
+              },
+            }),
+          },
+        ],
+      },
+    })
+    mockGet.mockImplementation((url: string) =>
+      url.includes('plugin_categories')
+        ? Promise.resolve(CONNECTOR_CATEGORIES)
+        : Promise.resolve(wire)
+    )
+    mockPatch.mockResolvedValue({ data: { data: { plugin: { plugin_id: 'mcp-12' } } } })
+
+    const detail = await getSystemMcp('mcp-12')
+    // Read selects the source-named server, exposes its verbatim key, and keeps
+    // the slug (manifest machine name) distinct from the server key.
+    expect(detail.quick_start.server_name).toBe('jira-server')
+    expect(detail.quick_start.slug).toBe('the-slug')
+    expect(detail.quick_start.extra_servers).toEqual({
+      extra: { type: 'stdio', command: 'run', args: ['--x'] },
+    })
+
+    // Thread the read values back exactly as FormModal.buildPayload does.
+    await updateSystemMcp('mcp-12', {
+      name: detail.name,
+      slug: detail.quick_start.slug,
+      server_name: detail.quick_start.server_name,
+      extra_servers: detail.quick_start.extra_servers,
+      category: 'dev',
+      transport: detail.quick_start.transport,
+      url: detail.quick_start.url,
+      tools: [],
+    })
+
+    const body = mockPatch.mock.calls[0][1] as UpsertBody & {
+      plugin: { plugin_name: string; manifest_json: { name?: string } }
+    }
+    const servers = writtenMcpServers(body)
+    // All three identity anchors reference the SAME stored key.
+    expect(body.plugin.plugin_json.connector.source).toBe('connector.jira-server')
+    expect(body.plugin.manifest_json.name).toBe('jira-server')
+    expect(servers['jira-server']).toBeDefined()
+    // The display name never leaks into the server map or the source.
+    expect(servers['My Connector']).toBeUndefined()
+    expect(body.plugin.plugin_json.connector.source).not.toContain('My Connector')
+    // The extra server survives byte-for-byte alongside the modeled one.
+    expect(Object.keys(servers).sort()).toEqual(['extra', 'jira-server'])
+    expect(servers.extra).toEqual({ type: 'stdio', command: 'run', args: ['--x'] })
+
+    // Feed the WRITTEN document back through the read: the modeled server must
+    // stay `jira-server` (manifest.name now matches a present key) and never
+    // flip to the first-sorted `extra`.
+    const writtenWire = connectorDetailWireWith({
+      plugin_id: 'mcp-12',
+      plugin_name: body.plugin.plugin_name,
+      plugin_type: 'connector',
+      manifest_json: body.plugin.manifest_json,
+      category_id: 'c-dev',
+      icon: '',
+      visibility: 'system',
+      tags: [],
+      plugin_json: body.plugin.plugin_json,
+    })
+    mockGet.mockImplementation((url: string) =>
+      url.includes('plugin_categories')
+        ? Promise.resolve(CONNECTOR_CATEGORIES)
+        : Promise.resolve(writtenWire)
+    )
+    const reread = await getSystemMcp('mcp-12')
+    expect(reread.quick_start.server_name).toBe('jira-server')
+    expect(reread.quick_start.slug).toBe('jira-server')
+    expect(reread.quick_start.extra_servers).toEqual({
+      extra: { type: 'stdio', command: 'run', args: ['--x'] },
+    })
+  })
+})
+
 describe('connector list — tags normalization (crash guard)', () => {
   it('coerces string-encoded tags to an array so the page never maps a bare String', async () => {
     mockGet.mockImplementation((url: string) =>

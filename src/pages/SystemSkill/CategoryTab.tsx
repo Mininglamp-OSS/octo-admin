@@ -63,6 +63,9 @@ export default function CategoryTab({ canWrite }: Props) {
           // the backend's full-replace PATCH (rename must not reorder).
           icon_key: editItem.icon_key,
           sort_order: editItem.sort_order,
+          // Echo the row's plugin_types so a rename never narrows a category
+          // shared across plugin types down to ["skill"].
+          plugin_types: editItem.plugin_types,
         })
         message.success(t('category.success.updated'))
       } else {
@@ -100,8 +103,18 @@ export default function CategoryTab({ canWrite }: Props) {
       const moved = next[target]
       const swapped = next[index]
       await Promise.all([
-        updateCategory(swapped.id, { name: swapped.name, icon_key: swapped.icon_key, sort_order: index }),
-        updateCategory(moved.id, { name: moved.name, icon_key: moved.icon_key, sort_order: target }),
+        updateCategory(swapped.id, {
+          name: swapped.name,
+          icon_key: swapped.icon_key,
+          sort_order: index,
+          plugin_types: swapped.plugin_types,
+        }),
+        updateCategory(moved.id, {
+          name: moved.name,
+          icon_key: moved.icon_key,
+          sort_order: target,
+          plugin_types: moved.plugin_types,
+        }),
       ])
       fetchList()
     } catch (err) {

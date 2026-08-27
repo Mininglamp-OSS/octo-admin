@@ -65,6 +65,9 @@ export default function CategoryTab() {
           name: values.name,
           icon_key: editing.icon_key,
           sort_order: values.sort_order ?? 0,
+          // Echo the row's existing plugin_types so a rename never narrows a
+          // category shared across plugin types down to ["skill"].
+          plugin_types: editing.plugin_types,
         })
         message.success(t('category.success.updated'))
       } else {

@@ -239,6 +239,23 @@ export function resolveConnectorSlug(
 }
 
 /**
+ * Whether a SEEDED slug (the value hydrated from an existing record) is itself a
+ * valid, self-sufficient identity — non-empty, `^[a-z0-9-]{1,64}$`, and
+ * normalizing to a non-empty slug. Only such a slug is locked on the edit path;
+ * a row seeded with an empty or non-conforming slug stays EDITABLE so the
+ * operator can satisfy the required-slug gate instead of being trapped (the
+ * field can't be edited AND submit hard-blocks). This is exactly the set
+ * `resolveConnectorSlug` accepts for a manual slug — the two must agree so a
+ * field left editable can actually pass submit.
+ */
+export function seededSlugIsValid(slug: string): boolean {
+  const raw = (slug ?? '').trim()
+  if (!raw) return false
+  if (!/^[a-z0-9-]{1,64}$/.test(raw)) return false
+  return slugifyName(raw) !== ''
+}
+
+/**
  * Form state shape. Distinguished from the wire shape (CreateMcpParams) by
  * a few "raw" text buffers we parse on submit — same pattern as web:
  *   - argsRaw: whitespace-separated command args
@@ -350,6 +367,13 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
   const [form, setForm] = useState<FormValues>(EMPTY)
   const [step, setStep] = useState(0)
   const [slugTouched, setSlugTouched] = useState(false)
+  // Whether the slug field is locked as immutable identity. Only true on the
+  // edit path AND when the SEEDED slug is itself valid — a row seeded with an
+  // empty / non-conforming slug stays editable so the operator can fix it
+  // (otherwise the field is disabled AND submit hard-blocks on the bad slug).
+  // Captured from the seed at open time, not the live form value, so typing a
+  // valid slug into an unlocked field never re-locks it mid-edit.
+  const [slugLocked, setSlugLocked] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [probing, setProbing] = useState(false)
@@ -386,12 +410,16 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
       setForm(seed)
       // An existing slug counts as user-set so name renames don't clobber it.
       setSlugTouched(!!seed.slug)
+      // Lock the slug only when the seeded value is a valid identity; an
+      // empty/non-conforming seeded slug stays editable so it can be fixed.
+      setSlugLocked(seededSlugIsValid(seed.slug))
       setAdvancedOpen(
         seed.envEntries.length > 0 || seed.headersEntries.length > 0,
       )
     } else {
       setForm(EMPTY)
       setSlugTouched(false)
+      setSlugLocked(false)
       setAdvancedOpen(false)
     }
     setStep(0)
@@ -794,7 +822,7 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
               <Form.Item
                 label={t('form.slug')}
                 extra={
-                  isEdit
+                  slugLocked
                     ? t('form.slugLockedHint', {
                         defaultValue:
                           '服务标识是该 MCP 的服务身份，创建后不可修改；如需更改请重新创建。',
@@ -809,8 +837,11 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
                   maxLength={64}
                   // Slug is the server identity (mcpServers key / connector
                   // source). Editing it on the edit path would desync the stored
-                  // key from manifest.name, so lock it — create stays editable.
-                  disabled={isEdit}
+                  // key from manifest.name, so lock it — but ONLY when the seeded
+                  // slug is valid. A row seeded with an empty/non-conforming slug
+                  // stays editable so the operator can satisfy the required-slug
+                  // gate instead of being trapped (can't edit, can't submit).
+                  disabled={slugLocked}
                 />
               </Form.Item>
 

@@ -25,6 +25,11 @@ export interface CategoryItem {
   icon_key: string
   sort_order: number
   skill_count: number
+  /** The row's stored plugin_types, carried through read→edit→write so a
+   *  rename/reorder from this skill tab echoes them back instead of NARROWING a
+   *  category shared across plugin types down to ["skill"]. Absent on legacy
+   *  rows → the update falls back to the skill-only default. */
+  plugin_types?: string[]
 }
 
 export interface SkillListItem {
@@ -154,6 +159,7 @@ function normalizeCategory(item: Partial<CategoryItem>): CategoryItem {
     icon_key: item.icon_key || '',
     sort_order: item.sort_order ?? 0,
     skill_count: item.skill_count ?? 0,
+    plugin_types: item.plugin_types,
   }
 }
 
@@ -437,6 +443,7 @@ function pluginCategoryToItem(w: PluginCategoryWire): CategoryItem {
     icon_key: w.icon_key || '',
     sort_order: w.sort_order ?? 0,
     skill_count: w.plugin_count ?? 0,
+    plugin_types: w.plugin_types,
   })
 }
 
@@ -463,7 +470,12 @@ export async function createSkillCategory(params: {
 
 export async function updateSkillCategory(
   id: string,
-  params: { name?: string; icon_key?: string; sort_order?: number }
+  params: {
+    name?: string
+    icon_key?: string
+    sort_order?: number
+    plugin_types?: string[]
+  }
 ): Promise<CategoryItem> {
   const resp = await skillApi.patch<{ data: PluginCategoryWire }>(
     `/admin/plugin_categories/${encodeURIComponent(id)}`,
@@ -474,7 +486,13 @@ export async function updateSkillCategory(
       // icon or zeroes its sort_order (mirrors updateExpertCategory /
       // updateMcpCategory).
       icon_key: params.icon_key ?? '',
-      plugin_types: SKILL_CATEGORY_PLUGIN_TYPES,
+      // Echo the row's EXISTING plugin_types when the caller supplies them so a
+      // rename/reorder from this skill tab never NARROWS a category shared across
+      // plugin types down to ["skill"]. Legacy callers that omit them fall back
+      // to the skill-only default.
+      plugin_types: params.plugin_types?.length
+        ? params.plugin_types
+        : SKILL_CATEGORY_PLUGIN_TYPES,
       sort_order: params.sort_order ?? 0,
     }
   )
@@ -993,12 +1011,20 @@ export async function createCategory(data: {
 
 export async function updateCategory(
   id: string,
-  data: { name?: string; icon_key?: string; sort_order?: number }
+  data: {
+    name?: string
+    icon_key?: string
+    sort_order?: number
+    plugin_types?: string[]
+  }
 ): Promise<CategoryItem> {
   return updateSkillCategory(id, {
     name: data.name,
     icon_key: data.icon_key,
     sort_order: data.sort_order,
+    // Thread the row's plugin_types through the reorder/swap loop too so a
+    // shared category is not narrowed to ["skill"] on a move.
+    plugin_types: data.plugin_types,
   })
 }
 

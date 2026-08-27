@@ -4,7 +4,7 @@ import { PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import type { ColumnsType } from 'antd/es/table'
 import {
-  listExpertCategories,
+  listSquadCategories,
   listSystemSquads,
   type ExpertCategory,
   type SquadListItem,
@@ -54,7 +54,10 @@ export default function SquadTab() {
 
   useEffect(() => {
     load(1, '')
-    listExpertCategories()
+    // The squad dropdown must list the expert_team taxonomy — the same set the
+    // container import resolves the chosen category against — so a selection is
+    // always resolvable on upload (review P1-2).
+    listSquadCategories()
       .then(setCategories)
       .catch(() => setCategories([]))
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -170,8 +173,9 @@ export default function SquadTab() {
             icon={<PlusOutlined />}
             onClick={() => {
               // Refresh the category options — they may have changed on the
-              // Categories tab since this tab mounted.
-              listExpertCategories().then(setCategories).catch(() => {})
+              // Categories tab since this tab mounted. List the expert_team
+              // taxonomy so the dropdown matches what the import resolves against.
+              listSquadCategories().then(setCategories).catch(() => {})
               setUploadOpen(true)
             }}
           >

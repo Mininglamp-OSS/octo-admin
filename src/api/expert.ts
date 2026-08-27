@@ -796,6 +796,22 @@ export async function listExpertCategories(): Promise<ExpertCategory[]> {
   return (resp.data.data ?? []).map(toExpertCategory)
 }
 
+/** GET /admin/plugin_categories?plugin_type=expert_team — the taxonomy the squad
+ *  import / reupload RESOLVE against (buildContainerForm('expert_team')). The
+ *  Squad tab dropdown MUST list this rather than the expert taxonomy so a chosen
+ *  category is always resolvable on write: listing `expert` while the container
+ *  form resolves against `expert_team` let a squad whose category exists only
+ *  under expert_team BLOCK the import with the loud category_not_found (review
+ *  P1-2). Since expert-market categories carry both plugin types, this normally
+ *  returns the same shared rows the Expert tab shows. */
+export async function listSquadCategories(): Promise<ExpertCategory[]> {
+  const resp = await expertApi.get<{ data: PluginCategoryWire[] }>(
+    '/admin/plugin_categories',
+    { params: { plugin_type: 'expert_team' } }
+  )
+  return (resp.data.data ?? []).map(toExpertCategory)
+}
+
 export async function createExpertCategory(params: {
   name: string
   icon_key?: string

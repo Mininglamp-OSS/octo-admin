@@ -41,6 +41,7 @@ import {
   getAdminSkill,
   updateAdminSkill,
   updateSkillCategory,
+  listSkillCategories,
 } from './skill'
 import { ApiError } from './index'
 
@@ -414,5 +415,47 @@ describe('updateSkillCategory — echoes sort_order + icon_key on the full-repla
 
     const body = mockPatch.mock.calls[0][1] as { sort_order: number }
     expect(body.sort_order).toBe(0)
+  })
+
+  it('echoes the row EXISTING plugin_types so a shared category is not narrowed to ["skill"] (review P1-C)', async () => {
+    // A category shared by skill + connector: renaming/reordering it from the
+    // skill tab must keep BOTH types, not overwrite with ['skill'].
+    await updateSkillCategory('cat-1', {
+      name: '改名',
+      icon_key: 'wrench',
+      sort_order: 7,
+      plugin_types: ['skill', 'connector'],
+    })
+
+    const body = mockPatch.mock.calls[0][1] as { plugin_types: string[] }
+    expect(body.plugin_types).toEqual(['skill', 'connector'])
+  })
+
+  it('falls back to the skill-only plugin_types when the caller omits them', async () => {
+    await updateSkillCategory('cat-1', { name: '改名', sort_order: 7 })
+
+    const body = mockPatch.mock.calls[0][1] as { plugin_types: string[] }
+    expect(body.plugin_types).toEqual(['skill'])
+  })
+
+  it('carries plugin_types onto the mapped list row so the tab can echo them back', async () => {
+    mockGet.mockReset()
+    mockGet.mockResolvedValue({
+      data: {
+        data: [
+          {
+            category_id: 'cat-1',
+            name: '通用',
+            icon_key: 'wrench',
+            sort_order: 3,
+            plugin_count: 4,
+            plugin_types: ['skill', 'connector'],
+          },
+        ],
+      },
+    })
+
+    const rows = await listSkillCategories()
+    expect(rows[0].plugin_types).toEqual(['skill', 'connector'])
   })
 })
