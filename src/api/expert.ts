@@ -48,6 +48,10 @@ export type ExpertVisibility = 'system' | 'space' | 'private'
 /** Read projection of a skill on an expert/squad (never echoes bytes). */
 export interface SkillRef {
   name: string
+  /** The source skill plugin's id, when resolved from an expert_skill relation.
+   *  Lets the drawer fetch the authoritative SKILL.md from
+   *  `GET /admin/plugins/{id}/skill_md` instead of the inline stub. */
+  skill_plugin_id?: string
   has_content?: boolean
   can_download?: boolean
   file_name?: string
@@ -386,6 +390,7 @@ function skillRefFromPlugin(plugin: PluginDetailPluginWire): SkillRef {
   const md = rawAttachment(plugin.plugin_json, 'SKILL.md')
   return {
     name: plugin.plugin_name || plugin.manifest_json?.name || '',
+    skill_plugin_id: plugin.plugin_id,
     has_content: (md ?? '') !== '',
     skill_md: md,
   }

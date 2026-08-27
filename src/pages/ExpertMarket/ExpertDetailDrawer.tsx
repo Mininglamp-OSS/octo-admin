@@ -16,7 +16,7 @@ import {
   reuploadExpertContainer,
   type ExpertDetail,
 } from '../../api/expert'
-import { DetailSection, McpConfigBlock, SkillMdModal, SkillRefList } from './detailParts'
+import { DetailSection, McpConfigBlock, SkillMdModal, SkillRefList, loadSkillMd } from './detailParts'
 import ReuploadButton from './ReuploadButton'
 import type { ParsedContainer } from './parseContainer'
 
@@ -44,7 +44,11 @@ export default function ExpertDetailDrawer({
   const [loading, setLoading] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const [viewingSkill, setViewingSkill] = useState<{ name: string; content: string } | null>(null)
+  const [viewingSkill, setViewingSkill] = useState<{
+    name: string
+    skillPluginId?: string
+    fallback: string
+  } | null>(null)
 
   const reload = (id: string) => {
     let cancelled = false
@@ -176,7 +180,11 @@ export default function ExpertDetailDrawer({
             <SkillRefList
               skills={detail.skills}
               onView={(_index, s) =>
-                setViewingSkill({ name: s.name, content: s.skill_md ?? '' })
+                setViewingSkill({
+                  name: s.name,
+                  skillPluginId: s.skill_plugin_id,
+                  fallback: s.skill_md ?? '',
+                })
               }
             />
           </DetailSection>
@@ -186,7 +194,7 @@ export default function ExpertDetailDrawer({
       <SkillMdModal
         open={viewingSkill !== null}
         title={viewingSkill?.name ?? ''}
-        load={() => Promise.resolve(viewingSkill?.content ?? '')}
+        load={() => loadSkillMd(viewingSkill)}
         onClose={() => setViewingSkill(null)}
       />
     </Drawer>

@@ -145,7 +145,12 @@ describe('getSystemExpert — maps the plugin graph back to ExpertDetail', () =>
     // The skill's SKILL.md rides along on the SkillRef (skill_md), so the drawer
     // renders the viewer client-side without a supporting skill_md fetch.
     expect(detail.skills).toEqual([
-      { name: '架构评审清单', has_content: true, skill_md: '# 清单' },
+      {
+        name: '架构评审清单',
+        skill_plugin_id: 'skill-1',
+        has_content: true,
+        skill_md: '# 清单',
+      },
     ])
     expect(detail.skill_count).toBe(1)
     // The SKILL.md text arrives inline on the skill relation target; no legacy
@@ -246,7 +251,12 @@ describe('getSystemSquad — maps the team graph back to SquadDetail', () => {
       mcp_config: '{"mcpServers":{}}',
     })
     expect(member.skills).toEqual([
-      { name: '增长清单', has_content: true, skill_md: '# 增长' },
+      {
+        name: '增长清单',
+        skill_plugin_id: 'skill-2',
+        has_content: true,
+        skill_md: '# 增长',
+      },
     ])
   })
 })

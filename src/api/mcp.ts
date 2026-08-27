@@ -37,7 +37,16 @@ export interface McpFaq {
 
 export interface McpQuickStart {
   transport: McpTransport
+  /** Stored mcpServers JSON key for the modeled server — the VERBATIM key the
+   *  backend persisted (mcp-v1.md §3, "服务标识"). May differ from the slug for
+   *  a backend-minted connector; threaded back on write so the key round-trips
+   *  (review B). Empty when the record carries no mcp.json server. */
   server_name: string
+  /** Extra mcpServers entries this form does not model, retained verbatim from
+   *  read so a multi-server document round-trips without dropping servers on
+   *  write (review C safeguard). Absent/empty for the common single-server
+   *  connector. */
+  extra_servers?: Record<string, McpServerEntryWire>
   /** ASCII identifier used as the JSON key in the generated mcpServers
    *  snippet (mcp-v1.md §3, "服务标识"). Present on records created after
    *  migration 03; matches `^[a-z0-9-]{1,64}$`. Empty on legacy rows. */
@@ -109,6 +118,14 @@ export interface CreateMcpParams {
   /** Optional ASCII identifier. When empty the server auto-slugifies name.
    *  Must match `^[a-z0-9-]{1,64}$` when provided. */
   slug?: string
+  /** Stored mcpServers JSON key to preserve verbatim on write. When present the
+   *  connector upsert keys the server map by THIS instead of re-slugifying the
+   *  display name, so a backend-minted key that differs from the slug round-trips
+   *  byte-for-byte (review B). Omitted on a fresh create → the slug is used. */
+  server_name?: string
+  /** Extra mcpServers entries to re-emit verbatim alongside the modeled server
+   *  (review C safeguard). Threaded straight through from read. */
+  extra_servers?: Record<string, McpServerEntryWire>
   category: string
   icon?: string
   /** Existing publisher, echoed on update so the backend doesn't blank it.
@@ -155,6 +172,10 @@ export interface ListMcpResponse {
 export interface PatchMcpParams {
   name?: string
   slug?: string
+  /** See CreateMcpParams.server_name — stored key preserved verbatim on write. */
+  server_name?: string
+  /** See CreateMcpParams.extra_servers — extra servers re-emitted verbatim. */
+  extra_servers?: Record<string, McpServerEntryWire>
   category?: string
   icon?: string
   /** Existing publisher, echoed on update so the backend doesn't blank it. */
@@ -233,7 +254,9 @@ interface PluginListItemWire {
   plugin_name: string
   plugin_type: string
   manifest_json?: PluginManifestWire
-  tags?: string[]
+  /** May arrive as a JSON-encoded string on the unified wire — always run it
+   *  through `normalizeTagsList` before use. */
+  tags?: unknown
   category_id?: string
   icon?: string
   icon_url?: string
@@ -445,6 +468,26 @@ function mapVisibility(v: string | undefined): McpVisibility {
   return 'system'
 }
 
+/** Safely coerce a wire `tags` value to string[]. The unified plugin list can
+ *  return tags as a JSON-encoded string; mirror the skill/expert mappers so a
+ *  string-encoded value never reaches the page as a bare String (whose missing
+ *  `.map` would crash the tag column). */
+function normalizeTagsList(tags: unknown): string[] {
+  if (Array.isArray(tags))
+    return tags.filter((t): t is string => typeof t === 'string')
+  if (typeof tags === 'string') {
+    try {
+      const parsed = JSON.parse(tags)
+      if (Array.isArray(parsed))
+        return parsed.filter((t): t is string => typeof t === 'string')
+    } catch {
+      /* not JSON — treat as a single tag */
+    }
+    return tags.trim() ? [tags.trim()] : []
+  }
+  return []
+}
+
 function mapMcpListItem(
   raw: PluginListItemWire,
   idToKey: Map<string, string>
@@ -462,7 +505,9 @@ function mapMcpListItem(
     icon: raw.icon ?? '',
     icon_url: raw.icon_url || raw.icon || '',
     publisher: raw.publisher || '',
-    tags: raw.tags ?? [],
+    // The unified wire can deliver tags as a JSON-encoded string; normalize so
+    // the page's `tags.slice(0,3).map(...)` never hits a bare String (crash).
+    tags: normalizeTagsList(raw.tags),
     tool_count: raw.tool_count ?? 0,
     visibility: mapVisibility(raw.visibility),
     scope: raw.visibility ?? 'system',
@@ -472,8 +517,9 @@ function mapMcpListItem(
   }
 }
 
-/** One mcpServers entry inside the root mcp.json attachment. */
-interface McpServerEntryWire {
+/** One mcpServers entry inside the root mcp.json attachment. Exported so the
+ *  form can carry preserved (modeled + extra) server entries verbatim. */
+export interface McpServerEntryWire {
   type?: McpTransport
   url?: string
   command?: string
@@ -494,9 +540,17 @@ function mapMcpDetail(
   const manifest = raw.manifest_json ?? {}
   const servers =
     jsonAttachment<McpJSONWire>(raw.plugin_json, 'mcp.json')?.mcpServers ?? {}
-  // One connector = one MCP server; the map key is the server name.
-  const serverName = Object.keys(servers)[0] ?? ''
+  // One connector = one MODELED MCP server; the map key is the stored server
+  // name (verbatim — may differ from the slug for a backend-minted row). Any
+  // OTHER entries are retained aside and re-emitted verbatim on write so an
+  // unexpected multi-server document is never silently collapsed (review C).
+  const serverKeys = Object.keys(servers)
+  const serverName = serverKeys[0] ?? ''
   const server = servers[serverName] ?? {}
+  const extraServers: Record<string, McpServerEntryWire> = {}
+  for (const k of serverKeys) {
+    if (k !== serverName) extraServers[k] = servers[k]
+  }
   const env = splitPlaceholders(server.env)
   const headers = splitPlaceholders(server.headers)
   const hasAuth = !!server.headers && AUTHORIZATION_HEADER_KEY in server.headers
@@ -509,7 +563,10 @@ function mapMcpDetail(
     tool_count: tools.length || item.tool_count,
     quick_start: {
       transport: server.type ?? 'stdio',
-      server_name: serverName || raw.plugin_name || '',
+      // Expose the VERBATIM stored key so the form can thread it back on write
+      // (review B). Empty when the record carries no mcp.json server.
+      server_name: serverName,
+      extra_servers: Object.keys(extraServers).length ? extraServers : undefined,
       // The manifest machine name carries the legacy slug for connectors.
       slug: manifest.name,
       url: server.url,
@@ -580,6 +637,10 @@ function toConnectorUpsert(
   // slugifyServerName never returns empty (it falls back to DEFAULT_SERVER_SLUG),
   // so `key` is always a stable ASCII identifier.
   const key = slug
+  // The mcpServers map key is the stored server name when the record carries
+  // one (preserved verbatim so a backend-minted key that differs from the slug
+  // round-trips — review B), falling back to the slug for a fresh create.
+  const mapKey = params.server_name?.trim() || key
   // Pre-normalize like the backend (trim, drop empties, dedupe) so
   // manifest_json.labels matches the tags column invariant (tags == labels).
   const tags = [
@@ -618,8 +679,17 @@ function toConnectorUpsert(
   } else if (headers) {
     server.headers = headers
   }
+  // Key the modeled server by its preserved stored key (mapKey), then re-emit
+  // any extra servers the form doesn't model VERBATIM so a multi-server
+  // document is never collapsed on write (review C). goCanonicalJSON sorts
+  // keys, so insertion order does not affect the emitted bytes.
+  const mcpServers: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(params.extra_servers ?? {})) {
+    if (k !== mapKey) mcpServers[k] = v
+  }
+  mcpServers[mapKey] = server
   const attachments: ConnectorAttachmentBody[] = [
-    rawAtt('mcp.json', goCanonicalJSON({ mcpServers: { [name]: server } })),
+    rawAtt('mcp.json', goCanonicalJSON({ mcpServers })),
     rawAtt('connector/tools.json', goCanonicalJSON(params.tools ?? [])),
     rawAtt('connector/examples.json', goCanonicalJSON(usage)),
     rawAtt(
@@ -747,19 +817,26 @@ export async function getSystemMcp(id: string): Promise<McpDetail> {
   return loadMcpDetail(id)
 }
 
-/** PATCH /admin/plugins/{id} — full-replace update. The server preserves the
- *  row's existing visibility/space/owner, so the echoed visibility is ignored. */
+/** PATCH /admin/plugins/{id} — full-replace update. Echoes the row's EXISTING
+ *  visibility rather than widening a space/private connector to system-wide.
+ *  The server preserves visibility/space/owner on update, so this is
+ *  belt-and-suspenders + parity with the skill edit path. */
 export async function updateSystemMcp(
   id: string,
   params: PatchMcpParams
 ): Promise<McpDetail> {
   const maps = await fetchConnectorCategoryMaps()
+  // Read the current row's visibility so an edit never hard-codes `system`.
+  const current = await mcpApi.get<{
+    data: { plugin: PluginDetailPluginWire; relations: unknown[] }
+  }>(`/admin/plugins/${encodeURIComponent(id)}`)
+  const visibility = mapVisibility(current.data.data.plugin.visibility)
   await mcpApi.patch(
     `/admin/plugins/${encodeURIComponent(id)}`,
     toConnectorUpsert(params, {
       pluginId: id,
       categoryId: maps.keyToId.get(params.category ?? ''),
-      visibility: 'system',
+      visibility,
     })
   )
   return loadMcpDetail(id)

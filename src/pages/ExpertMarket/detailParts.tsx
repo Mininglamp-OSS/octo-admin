@@ -2,8 +2,31 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Alert, Modal, Skeleton, Typography } from 'antd'
 import { useTranslation } from 'react-i18next'
 import type { SkillRef } from '../../api/expert'
+import { getAdminSkillMd } from '../../api/skill'
 
 const { Text, Link } = Typography
+
+/** What the SKILL.md viewer needs to resolve a skill's markdown: the source
+ *  skill plugin id (preferred, hits the authoritative admin preview endpoint)
+ *  and the inline stub carried on the detail read as a fallback. */
+export interface SkillMdSource {
+  skillPluginId?: string
+  fallback: string
+}
+
+/** Load a skill's SKILL.md for the viewer: prefer the authoritative admin
+ *  preview (`getAdminSkillMd` by skill plugin id), falling back to the inline
+ *  `skill_md`/readme stub when the id is absent or the endpoint 404s. A
+ *  non-404 failure propagates so the modal surfaces the error rather than
+ *  masking a real outage behind the stub. */
+export async function loadSkillMd(source: SkillMdSource | null): Promise<string> {
+  if (!source) return ''
+  if (source.skillPluginId) {
+    const md = await getAdminSkillMd(source.skillPluginId)
+    if (md != null) return md
+  }
+  return source.fallback
+}
 
 export function DetailSection({ title, children }: { title: ReactNode; children: ReactNode }) {
   return (

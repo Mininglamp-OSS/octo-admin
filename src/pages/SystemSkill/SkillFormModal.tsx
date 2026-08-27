@@ -79,7 +79,9 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
           description: editSkill.description,
           category_id: editSkill.category_id,
           tags: editSkill.tags,
-          visibility: 'system',
+          // Echo the record's existing visibility — never widen a space/private
+          // skill to system-wide on edit.
+          visibility: editSkill.visibility || 'system',
           version: editSkill.version,
           changelog: t('upload.currentVersionChangelog'),
         })
@@ -143,7 +145,9 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
               tags: status.result_tags || [],
               version: activeEditSkill ? bumpPatch(activeEditSkill.version || DEFAULT_VERSION) : (status.result_version || DEFAULT_VERSION),
               changelog: activeEditSkill ? '' : t('upload.initialChangelog'),
-              visibility: 'system',
+              // Preserve the existing row's visibility on reupload; only a fresh
+              // create defaults to system.
+              visibility: activeEditSkill?.visibility || 'system',
             })
             if (activeEditSkill) setReuploadedFileName(file.name)
           } else if (status.status === 'failed') {
@@ -202,7 +206,10 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
           description: values.description,
           category_id: values.category_id,
           tags: values.tags,
-          visibility: 'system',
+          // Echo the existing visibility instead of hard-coding system — an
+          // edit must not widen a space/private skill.
+          visibility: (activeEditSkill.visibility ||
+            'system') as 'system' | 'space' | 'private',
           icon_url: iconUrl || undefined,
         })
         message.success(t('editModal.success'))

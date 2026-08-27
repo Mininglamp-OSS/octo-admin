@@ -43,6 +43,7 @@ import {
   type CreateMcpParams,
   type McpDetail,
   type McpFaq,
+  type McpServerEntryWire,
   type McpTool,
   type McpTransport,
 } from '../../api/mcp'
@@ -217,6 +218,15 @@ function slugifyName(input: string): string {
 interface FormValues {
   name: string
   slug: string
+  /** Stored mcpServers JSON key for an existing connector, preserved verbatim
+   *  on write so a backend-minted key that differs from the display name / slug
+   *  round-trips (review B). Empty for a fresh create → the slug becomes the
+   *  key. */
+  serverName: string
+  /** Extra mcpServers entries the form doesn't model, kept aside on read and
+   *  re-emitted verbatim on write so a multi-server document isn't collapsed
+   *  (review C). */
+  extraServers: Record<string, McpServerEntryWire>
   category: string
   /** Canonical icon value written back on submit (object key / emoji / URL).
    *  Seeded from the record's canonical `icon`, replaced only by a fresh
@@ -244,6 +254,8 @@ interface FormValues {
 const EMPTY: FormValues = {
   name: '',
   slug: '',
+  serverName: '',
+  extraServers: {},
   category: 'dev',
   icon: '',
   iconUrl: '',
@@ -271,6 +283,10 @@ function detailToValues(d: McpDetail): FormValues {
   return {
     name: d.name,
     slug: q.slug || '',
+    // Preserve the stored mcpServers key + any unmodeled extra servers so a
+    // save round-trips them verbatim (review B / C).
+    serverName: q.server_name || '',
+    extraServers: q.extra_servers ?? {},
     category: d.category || 'dev',
     icon: d.icon || '',
     iconUrl: d.icon_url || '',
@@ -415,6 +431,12 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
       // user's value. slugifyName is idempotent, so an already-clean value
       // survives untouched.
       slug: form.slug ? slugifyName(form.slug) : undefined,
+      // Thread the preserved stored key + extra servers straight back so an
+      // existing connector's server identity round-trips verbatim (review B / C).
+      server_name: form.serverName || undefined,
+      extra_servers: Object.keys(form.extraServers).length
+        ? form.extraServers
+        : undefined,
       category: form.category,
       icon: form.icon.trim() || undefined,
       // Carry the existing publisher back on edit so the backend's

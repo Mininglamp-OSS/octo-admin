@@ -16,7 +16,7 @@ import {
   reuploadSquadContainer,
   type SquadDetail,
 } from '../../api/expert'
-import { DetailSection, McpConfigBlock, SkillMdModal, SkillRefList } from './detailParts'
+import { DetailSection, McpConfigBlock, SkillMdModal, SkillRefList, loadSkillMd } from './detailParts'
 import ReuploadButton from './ReuploadButton'
 import type { ParsedContainer } from './parseContainer'
 
@@ -46,7 +46,8 @@ export default function SquadDetailDrawer({
   const [deleting, setDeleting] = useState(false)
   const [viewingSkill, setViewingSkill] = useState<{
     name: string
-    content: string
+    skillPluginId?: string
+    fallback: string
   } | null>(null)
 
   useEffect(() => {
@@ -229,7 +230,11 @@ export default function SquadDetailDrawer({
                     <SkillRefList
                       skills={m.skills}
                       onView={(_index, s) =>
-                        setViewingSkill({ name: s.name, content: s.skill_md ?? '' })
+                        setViewingSkill({
+                          name: s.name,
+                          skillPluginId: s.skill_plugin_id,
+                          fallback: s.skill_md ?? '',
+                        })
                       }
                     />
                   </div>
@@ -243,7 +248,7 @@ export default function SquadDetailDrawer({
       <SkillMdModal
         open={viewingSkill !== null}
         title={viewingSkill?.name ?? ''}
-        load={() => Promise.resolve(viewingSkill?.content ?? '')}
+        load={() => loadSkillMd(viewingSkill)}
         onClose={() => setViewingSkill(null)}
       />
     </Drawer>

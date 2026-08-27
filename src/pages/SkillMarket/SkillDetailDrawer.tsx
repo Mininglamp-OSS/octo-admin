@@ -28,7 +28,14 @@ export default function SkillDetailDrawer({ open, skillId, categories, onClose }
     // cross-Space, no X-Space-Id), which returns the authoritative raw markdown.
     // The embedded readme_content is only a stub for un-expanded skills, so it's
     // just a graceful fallback when the endpoint 404s for older skills.
-    Promise.all([getAdminSkill(skillId), getAdminSkillMd(skillId)])
+    //
+    // Catch the skill_md promise INDEPENDENTLY: a non-404 failure (500 /
+    // network) must not sink the whole load and hide the detail that fetched
+    // fine — degrade to the readme_content fallback instead.
+    Promise.all([
+      getAdminSkill(skillId),
+      getAdminSkillMd(skillId).catch(() => null),
+    ])
       .then(([d, md]) => {
         setDetail(d)
         setSkillMd(md ?? d.readme_content ?? '')

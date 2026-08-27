@@ -35,6 +35,7 @@ import {
   listMcpCategories,
   updateMcpCategory,
   getSystemMcp,
+  listSystemMcps,
   updateSystemMcp,
   slugifyServerName,
   extractPluginId,
@@ -253,5 +254,221 @@ describe('MCP icon/publisher round-trip through the translation layer', () => {
     expect(body.plugin.icon).toBe('icons/mcp-1/logo.png')
     expect(body.plugin.icon).not.toContain('presigned')
     expect(body.plugin.publisher).toBe('Ops Team')
+  })
+})
+
+// ── Server-identity + multi-server preservation (review B / C) ──────────────
+
+interface UpsertBody {
+  plugin: {
+    visibility: string
+    plugin_json: {
+      connector: { source: string }
+      attachments: { path: string; raw_content: string }[]
+    }
+  }
+}
+
+function writtenMcpServers(body: UpsertBody): Record<string, unknown> {
+  const att = body.plugin.plugin_json.attachments.find((a) => a.path === 'mcp.json')
+  return (JSON.parse(att!.raw_content) as { mcpServers: Record<string, unknown> })
+    .mcpServers
+}
+
+function connectorDetailWireWith(plugin: Record<string, unknown>) {
+  return { data: { data: { plugin, relations: [] } } }
+}
+
+describe('connector server identity — stored key round-trip (review B)', () => {
+  it('preserves a stored mcpServers key that differs from the display name instead of re-keying by it', async () => {
+    // Stored key `jira-server` ≠ display name `My Connector`; slug (manifest
+    // machine name) also `jira-server`, matching a backend-minted row.
+    const wire = connectorDetailWireWith({
+      plugin_id: 'mcp-9',
+      plugin_name: 'My Connector',
+      plugin_type: 'connector',
+      manifest_json: { name: 'jira-server', description: 's', labels: [] },
+      category_id: 'c-dev',
+      icon: '',
+      visibility: 'system',
+      tags: [],
+      plugin_json: {
+        attachments: [
+          {
+            path: 'mcp.json',
+            content_type: 'raw',
+            raw_content: JSON.stringify({
+              mcpServers: {
+                'jira-server': {
+                  type: 'streamable-http',
+                  url: 'https://remote.example/mcp',
+                },
+              },
+            }),
+          },
+        ],
+      },
+    })
+    mockGet.mockImplementation((url: string) =>
+      url.includes('plugin_categories')
+        ? Promise.resolve(CONNECTOR_CATEGORIES)
+        : Promise.resolve(wire)
+    )
+    mockPatch.mockResolvedValue({ data: { data: { plugin: { plugin_id: 'mcp-9' } } } })
+
+    const detail = await getSystemMcp('mcp-9')
+    // Read exposes the VERBATIM stored key.
+    expect(detail.quick_start.server_name).toBe('jira-server')
+
+    // Thread the read values back the way FormModal does.
+    await updateSystemMcp('mcp-9', {
+      name: detail.name,
+      slug: detail.quick_start.slug,
+      server_name: detail.quick_start.server_name,
+      extra_servers: detail.quick_start.extra_servers,
+      category: 'dev',
+      transport: detail.quick_start.transport,
+      url: detail.quick_start.url,
+      tools: [],
+    })
+
+    const body = mockPatch.mock.calls[0][1] as UpsertBody
+    const servers = writtenMcpServers(body)
+    expect(Object.keys(servers)).toEqual(['jira-server'])
+    // The display name must never become a server key (the bug this fixes).
+    expect(servers['My Connector']).toBeUndefined()
+    expect(body.plugin.plugin_json.connector.source).toBe('connector.jira-server')
+  })
+})
+
+describe('connector multi-server preservation (review C safeguard)', () => {
+  it('round-trips every server through read→write, never collapsing to the first', async () => {
+    const wire = connectorDetailWireWith({
+      plugin_id: 'mcp-10',
+      plugin_name: 'Multi',
+      plugin_type: 'connector',
+      manifest_json: { name: 'primary', description: '', labels: [] },
+      category_id: 'c-dev',
+      icon: '',
+      visibility: 'system',
+      tags: [],
+      plugin_json: {
+        attachments: [
+          {
+            path: 'mcp.json',
+            content_type: 'raw',
+            raw_content: JSON.stringify({
+              mcpServers: {
+                primary: { type: 'streamable-http', url: 'https://a.example/mcp' },
+                secondary: { type: 'stdio', command: 'run', args: ['--x'] },
+              },
+            }),
+          },
+        ],
+      },
+    })
+    mockGet.mockImplementation((url: string) =>
+      url.includes('plugin_categories')
+        ? Promise.resolve(CONNECTOR_CATEGORIES)
+        : Promise.resolve(wire)
+    )
+    mockPatch.mockResolvedValue({ data: { data: { plugin: { plugin_id: 'mcp-10' } } } })
+
+    const detail = await getSystemMcp('mcp-10')
+    // The modeled server is the first; the extra one is retained aside.
+    expect(detail.quick_start.server_name).toBe('primary')
+    expect(detail.quick_start.extra_servers).toEqual({
+      secondary: { type: 'stdio', command: 'run', args: ['--x'] },
+    })
+
+    await updateSystemMcp('mcp-10', {
+      name: detail.name,
+      slug: detail.quick_start.slug,
+      server_name: detail.quick_start.server_name,
+      extra_servers: detail.quick_start.extra_servers,
+      category: 'dev',
+      transport: detail.quick_start.transport,
+      url: detail.quick_start.url,
+      tools: [],
+    })
+
+    const servers = writtenMcpServers(mockPatch.mock.calls[0][1] as UpsertBody)
+    expect(Object.keys(servers).sort()).toEqual(['primary', 'secondary'])
+    // The unmodeled server survives byte-for-byte.
+    expect(servers.secondary).toEqual({ type: 'stdio', command: 'run', args: ['--x'] })
+    expect(servers.primary).toEqual({
+      type: 'streamable-http',
+      url: 'https://a.example/mcp',
+    })
+  })
+})
+
+describe('connector list — tags normalization (crash guard)', () => {
+  it('coerces string-encoded tags to an array so the page never maps a bare String', async () => {
+    mockGet.mockImplementation((url: string) =>
+      url.includes('plugin_categories')
+        ? Promise.resolve(CONNECTOR_CATEGORIES)
+        : Promise.resolve({
+            data: {
+              data: [
+                {
+                  plugin_id: 'mcp-1',
+                  plugin_name: 'X',
+                  plugin_type: 'connector',
+                  tags: JSON.stringify(['a', 'b']),
+                },
+              ],
+              pagination: { total: 1, page: 1, page_size: 20 },
+            },
+          })
+    )
+
+    const res = await listSystemMcps()
+    expect(res.items[0].tags).toEqual(['a', 'b'])
+  })
+})
+
+describe('connector update — visibility is not widened (review)', () => {
+  it('echoes the row existing space visibility instead of hard-coding system', async () => {
+    const spaceWire = connectorDetailWireWith({
+      plugin_id: 'mcp-s',
+      plugin_name: 'S',
+      plugin_type: 'connector',
+      manifest_json: { name: 's', description: '', labels: [] },
+      category_id: 'c-dev',
+      icon: '',
+      visibility: 'space',
+      space_id: 'sp-1',
+      tags: [],
+      plugin_json: {
+        attachments: [
+          {
+            path: 'mcp.json',
+            content_type: 'raw',
+            raw_content: JSON.stringify({
+              mcpServers: { s: { type: 'streamable-http', url: 'https://x/mcp' } },
+            }),
+          },
+        ],
+      },
+    })
+    mockGet.mockImplementation((url: string) =>
+      url.includes('plugin_categories')
+        ? Promise.resolve(CONNECTOR_CATEGORIES)
+        : Promise.resolve(spaceWire)
+    )
+    mockPatch.mockResolvedValue({ data: { data: { plugin: { plugin_id: 'mcp-s' } } } })
+
+    await updateSystemMcp('mcp-s', {
+      name: 'S',
+      category: 'dev',
+      transport: 'streamable-http',
+      url: 'https://x/mcp',
+      tools: [],
+    })
+
+    const body = mockPatch.mock.calls[0][1] as UpsertBody
+    expect(body.plugin.visibility).toBe('space')
+    expect(body.plugin.visibility).not.toBe('system')
   })
 })

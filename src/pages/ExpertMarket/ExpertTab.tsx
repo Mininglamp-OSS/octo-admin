@@ -116,14 +116,6 @@ export default function ExpertTab() {
           ),
       },
       {
-        title: t('table.skills'),
-        dataIndex: 'skill_count',
-        key: 'skill_count',
-        width: 80,
-        align: 'right',
-        render: (v?: number) => <span className="mono">{v ?? 0}</span>,
-      },
-      {
         title: t('table.visibility', { ns: 'common' }),
         dataIndex: 'scope',
         key: 'scope',
