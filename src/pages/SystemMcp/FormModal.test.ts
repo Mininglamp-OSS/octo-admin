@@ -134,6 +134,20 @@ describe('resolveConnectorSlug', () => {
     })
   })
 
+  it('rejects a hyphen-only slug that passes the charset test but normalizes to empty (review P2-1)', () => {
+    // `-` / `--` match ^[a-z0-9-]{1,64}$ yet slugifyName strips them to '',
+    // which would otherwise fall back to the `mcp-server` default. The
+    // normalized-slug check must reject them as invalid.
+    expect(resolveConnectorSlug('x', '-')).toEqual({
+      ok: false,
+      reason: 'invalid',
+    })
+    expect(resolveConnectorSlug('x', '--')).toEqual({
+      ok: false,
+      reason: 'invalid',
+    })
+  })
+
   it('auto-derives a valid slug from an ASCII name when no manual slug is given', () => {
     expect(resolveConnectorSlug('  My Cool  Server ', '')).toEqual({
       ok: true,

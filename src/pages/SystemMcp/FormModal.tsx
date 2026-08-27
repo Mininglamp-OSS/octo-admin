@@ -202,13 +202,16 @@ function slugifyName(input: string): string {
 }
 
 /**
- * Resolve the slug that a submit should carry, mirroring the backend's
- * `slug_required` guard so a name that can't auto-derive an ASCII slug (e.g. a
- * pure-CJK name → empty) forces the operator to type one instead of silently
- * collapsing to `mcp-server` on the write path.
+ * Resolve the slug that a submit should carry. This is a CLIENT-SIDE guard (the
+ * unified connector write path has no `slug_required` backend check): a name
+ * that can't auto-derive an ASCII slug (e.g. a pure-CJK name → empty) forces the
+ * operator to type one instead of silently collapsing to the `mcp-server`
+ * default server slug on write.
  *
- *   - A manually entered slug is validated against `^[a-z0-9-]{1,64}$`
- *     (`reason: 'invalid'` when it doesn't match — a CJK slug fails here).
+ *   - A manually entered slug is validated against `^[a-z0-9-]{1,64}$`, then
+ *     normalized; a value that PASSES the charset check but normalizes to the
+ *     empty string (e.g. `-` or `--`, which `slugifyName` strips to '') is also
+ *     rejected as `reason: 'invalid'` so it can't slip through to the fallback.
  *   - An empty manual slug auto-derives from the name; when the name yields no
  *     ASCII slug the result is `reason: 'required'` so the caller blocks submit.
  *   - Otherwise the concrete, already-normalized slug is returned so the write
@@ -223,7 +226,12 @@ export function resolveConnectorSlug(
   const raw = (slug ?? '').trim()
   if (raw) {
     if (!/^[a-z0-9-]{1,64}$/.test(raw)) return { ok: false, reason: 'invalid' }
-    return { ok: true, slug: slugifyName(raw) }
+    // Validate the NORMALIZED slug: `-` / `--` pass the charset test but
+    // slugifyName collapses them to '', which would otherwise fall back to the
+    // `mcp-server` default server slug on write. Reject them here.
+    const norm = slugifyName(raw)
+    if (!norm) return { ok: false, reason: 'invalid' }
+    return { ok: true, slug: norm }
   }
   const derived = slugifyName(name ?? '')
   if (!derived) return { ok: false, reason: 'required' }
@@ -416,7 +424,7 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
   // string-comparison against the localized copy.
   const firstError = (): { message: string; step: number } | null => {
     if (!form.name.trim()) return { message: t('form.nameRequired'), step: 0 }
-    // Mirror the backend's slug_required guard: a manual slug must be valid, and
+    // Client-side slug guard: a manual slug must normalize to a valid value, and
     // an empty manual slug must auto-derive a non-empty slug from the name.
     // Otherwise block submit (a pure-CJK name auto-derives to "") rather than
     // silently writing the `mcp-server` default server slug.
@@ -785,13 +793,24 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
 
               <Form.Item
                 label={t('form.slug')}
-                extra={t('form.slugHint')}
+                extra={
+                  isEdit
+                    ? t('form.slugLockedHint', {
+                        defaultValue:
+                          '服务标识是该 MCP 的服务身份，创建后不可修改；如需更改请重新创建。',
+                      })
+                    : t('form.slugHint')
+                }
               >
                 <Input
                   value={form.slug}
                   onChange={(e) => onSlugChange(e.target.value)}
                   placeholder={t('form.slugPlaceholder')}
                   maxLength={64}
+                  // Slug is the server identity (mcpServers key / connector
+                  // source). Editing it on the edit path would desync the stored
+                  // key from manifest.name, so lock it — create stays editable.
+                  disabled={isEdit}
                 />
               </Form.Item>
 

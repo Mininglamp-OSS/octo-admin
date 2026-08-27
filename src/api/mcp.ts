@@ -561,14 +561,26 @@ function mapMcpDetail(
 ): McpDetail {
   const item = mapMcpListItem(raw, idToKey)
   const manifest = raw.manifest_json ?? {}
+  const pkg = raw.plugin_json
   const servers =
-    jsonAttachment<McpJSONWire>(raw.plugin_json, 'mcp.json')?.mcpServers ?? {}
-  // One connector = one MODELED MCP server; the map key is the stored server
-  // name (verbatim — may differ from the slug for a backend-minted row). Any
-  // OTHER entries are retained aside and re-emitted verbatim on write so an
+    jsonAttachment<McpJSONWire>(pkg, 'mcp.json')?.mcpServers ?? {}
+  // One connector = one MODELED MCP server. Select the entry this record
+  // actually names — the manifest machine name (a.k.a. quick_start.slug) or the
+  // connector source (`connector.<name>`) — rather than the first-sorted key,
+  // so a multi-server document models the correct server. Fall back to the
+  // first key only when neither name resolves to a present entry. Any OTHER
+  // entries are retained aside and re-emitted verbatim on write so an
   // unexpected multi-server document is never silently collapsed (review C).
   const serverKeys = Object.keys(servers)
-  const serverName = serverKeys[0] ?? ''
+  const connectorSource = pkg?.connector?.source
+  const sourceName =
+    connectorSource && connectorSource.startsWith('connector.')
+      ? connectorSource.slice('connector.'.length)
+      : undefined
+  const namedKey =
+    (manifest.name && servers[manifest.name] ? manifest.name : undefined) ??
+    (sourceName && servers[sourceName] ? sourceName : undefined)
+  const serverName = namedKey ?? serverKeys[0] ?? ''
   const server = servers[serverName] ?? {}
   const extraServers: Record<string, McpServerEntryWire> = {}
   for (const k of serverKeys) {
@@ -578,7 +590,7 @@ function mapMcpDetail(
   const headers = splitPlaceholders(server.headers)
   const hasAuth = !!server.headers && AUTHORIZATION_HEADER_KEY in server.headers
   const tools =
-    jsonAttachment<McpTool[]>(raw.plugin_json, 'connector/tools.json') ?? []
+    jsonAttachment<McpTool[]>(pkg, 'connector/tools.json') ?? []
   return {
     ...item,
     // Detail is the authoritative tool source; the list projection uses the
@@ -884,6 +896,11 @@ export interface McpCategory {
   icon_key?: string
   sort_order: number
   count?: number
+  /** The row's stored plugin_types, carried through read→edit→write so a rename
+   *  from this (connector) tab echoes them back instead of NARROWING a category
+   *  shared across plugin types to the connector-only set. Absent on legacy
+   *  rows → the update falls back to the connector default. */
+  plugin_types?: string[]
 }
 
 // plugin_types the MCP category tab manages — connector-only.
@@ -897,6 +914,7 @@ function pluginCategoryToMcpCategory(c: PluginCategoryWire): McpCategory {
     icon_key: c.icon_key,
     sort_order: c.sort_order ?? 0,
     count: c.plugin_count,
+    plugin_types: c.plugin_types,
   }
 }
 
@@ -932,14 +950,25 @@ export async function createMcpCategory(params: {
  *  (mirrors updateExpertCategory). */
 export async function updateMcpCategory(
   id: string,
-  params: { name?: string; icon_key?: string; sort_order?: number }
+  params: {
+    name?: string
+    icon_key?: string
+    sort_order?: number
+    plugin_types?: string[]
+  }
 ): Promise<McpCategory> {
   const resp = await mcpApi.patch<{ data: PluginCategoryWire }>(
     `/admin/plugin_categories/${encodeURIComponent(id)}`,
     {
       name: params.name ?? '',
       icon_key: params.icon_key ?? '',
-      plugin_types: MCP_CATEGORY_PLUGIN_TYPES,
+      // Echo the row's EXISTING plugin_types when the caller supplies them so a
+      // rename from this connector tab never NARROWS a category that is shared
+      // across plugin types down to ["connector"]. Legacy callers that omit them
+      // fall back to the connector-only default.
+      plugin_types: params.plugin_types?.length
+        ? params.plugin_types
+        : MCP_CATEGORY_PLUGIN_TYPES,
       sort_order: params.sort_order ?? 0,
     }
   )

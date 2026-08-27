@@ -519,6 +519,7 @@ describe('expert category CRUD — unified /admin/plugin_categories surface', ()
         icon_key: 'wrench',
         sort_order: 2,
         count: 5,
+        plugin_types: ['expert', 'expert_team'],
       },
     ])
   })
@@ -564,6 +565,28 @@ describe('expert category CRUD — unified /admin/plugin_categories surface', ()
     })
     expect(updated.expert_category_id).toBe('c-dev')
     expect(updated.name).toBe('改名')
+  })
+
+  it('echoes the row existing plugin_types on update so a shared category is not narrowed (review P2-2)', async () => {
+    mockPatch.mockResolvedValue({
+      data: { data: { category_id: 'c-dev', name: '改名', sort_order: 1 } },
+    })
+
+    await updateExpertCategory('c-dev', {
+      name: '改名',
+      icon_key: 'wrench',
+      sort_order: 1,
+      // A category shared by expert + expert_team + connector: renaming it from
+      // this tab must preserve all three, not overwrite with the tab default.
+      plugin_types: ['expert', 'expert_team', 'connector'],
+    })
+
+    expect(mockPatch).toHaveBeenCalledWith('/admin/plugin_categories/c-dev', {
+      name: '改名',
+      icon_key: 'wrench',
+      plugin_types: ['expert', 'expert_team', 'connector'],
+      sort_order: 1,
+    })
   })
 
   it('deletes a category via the unified route', async () => {

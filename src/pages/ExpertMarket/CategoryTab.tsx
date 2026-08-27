@@ -62,6 +62,9 @@ export default function CategoryTab() {
           name: values.name,
           icon_key: editing.icon_key,
           sort_order: values.sort_order ?? 0,
+          // Echo the row's existing plugin_types so a rename doesn't narrow a
+          // shared category to the expert-only set.
+          plugin_types: editing.plugin_types,
         })
         message.success(t('category.success.updated'))
       } else {

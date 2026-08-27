@@ -79,6 +79,7 @@ describe('mcp category CRUD — unified /admin/plugin_categories surface', () =>
         icon_key: 'wrench',
         sort_order: 2,
         count: 5,
+        plugin_types: ['connector'],
       },
     ])
   })
@@ -124,6 +125,39 @@ describe('mcp category CRUD — unified /admin/plugin_categories surface', () =>
     })
     expect(updated.mcp_category_id).toBe('c-dev')
     expect(updated.name).toBe('改名')
+  })
+
+  it('echoes the row existing plugin_types on update so a shared category is not narrowed (review P2-2)', async () => {
+    mockPatch.mockResolvedValue({
+      data: { data: { category_id: 'c-dev', name: '改名', sort_order: 1 } },
+    })
+
+    await updateMcpCategory('c-dev', {
+      name: '改名',
+      icon_key: 'wrench',
+      sort_order: 1,
+      // A category shared by connector + skill: renaming it from the connector
+      // tab must keep BOTH types, not overwrite with ['connector'].
+      plugin_types: ['connector', 'skill'],
+    })
+
+    expect(mockPatch).toHaveBeenCalledWith('/admin/plugin_categories/c-dev', {
+      name: '改名',
+      icon_key: 'wrench',
+      plugin_types: ['connector', 'skill'],
+      sort_order: 1,
+    })
+  })
+
+  it('falls back to the connector-only plugin_types when the caller omits them', async () => {
+    mockPatch.mockResolvedValue({
+      data: { data: { category_id: 'c-dev', name: '改名', sort_order: 1 } },
+    })
+
+    await updateMcpCategory('c-dev', { name: '改名', sort_order: 1 })
+
+    const body = mockPatch.mock.calls[0][1] as { plugin_types: string[] }
+    expect(body.plugin_types).toEqual(['connector'])
   })
 
   it('deletes a category via the unified route', async () => {
@@ -407,6 +441,57 @@ describe('connector server identity — stored key round-trip (review B)', () =>
     // The display name must never become a server key (the bug this fixes).
     expect(servers['My Connector']).toBeUndefined()
     expect(body.plugin.plugin_json.connector.source).toBe('connector.jira-server')
+  })
+})
+
+describe('connector server selection — models the named server (review P1-4)', () => {
+  it('selects the mcpServers entry named by connector.source, not the first-sorted key', async () => {
+    const wire = connectorDetailWireWith({
+      plugin_id: 'mcp-11',
+      plugin_name: 'Multi',
+      plugin_type: 'connector',
+      // manifest.name matches NO server key, so selection must fall through to
+      // connector.source rather than grabbing the first-sorted key.
+      manifest_json: { name: 'unrelated', description: '', labels: [] },
+      category_id: 'c-dev',
+      icon: '',
+      visibility: 'system',
+      tags: [],
+      plugin_json: {
+        connector: { type: 'mcp', source: 'connector.secondary' },
+        attachments: [
+          {
+            path: 'mcp.json',
+            content_type: 'raw',
+            raw_content: JSON.stringify({
+              mcpServers: {
+                alpha: {
+                  type: 'streamable-http',
+                  url: 'https://alpha.example/mcp',
+                },
+                secondary: { type: 'stdio', command: 'run', args: ['--x'] },
+              },
+            }),
+          },
+        ],
+      },
+    })
+    mockGet.mockImplementation((url: string) =>
+      url.includes('plugin_categories')
+        ? Promise.resolve(CONNECTOR_CATEGORIES)
+        : Promise.resolve(wire)
+    )
+
+    const detail = await getSystemMcp('mcp-11')
+    // The record names `secondary` via connector.source; it is the modeled
+    // server even though `alpha` is the first-sorted key. `alpha` is retained
+    // aside as an extra server.
+    expect(detail.quick_start.server_name).toBe('secondary')
+    expect(detail.quick_start.transport).toBe('stdio')
+    expect(detail.quick_start.command).toBe('run')
+    expect(detail.quick_start.extra_servers).toEqual({
+      alpha: { type: 'streamable-http', url: 'https://alpha.example/mcp' },
+    })
   })
 })
 

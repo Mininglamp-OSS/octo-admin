@@ -21,6 +21,17 @@ import { getSpace } from '../api/space'
  * that id permanently unresolved. Instead `nameOf` only RECORDS the observed id
  * (a ref mutation), and a post-commit `useEffect` issues the fetches — effects
  * run only for committed renders, so an abandoned render never strands an id.
+ *
+ * The fetch effect is intentionally dependency-less: it re-runs after every
+ * commit to pick up newly observed ids, and `requested` de-dupes so each id is
+ * fetched at most once. Because it re-runs per render, its resolutions are
+ * guarded by a MOUNT-LIFETIME `mountedRef` — NOT a per-effect `alive` flag. A
+ * per-effect cleanup would flip `alive=false` on every re-render, so when the
+ * first of two concurrent Space fetches resolved (triggering a re-render), the
+ * cleanup would cancel the second still-in-flight fetch; since its id already
+ * sits in `requested` it would never be re-issued, stranding every-but-one
+ * Space name on its raw UUID. `mountedRef` invalidates ONLY on unmount, so a
+ * per-render re-run never drops a live resolution.
  */
 
 export interface SpaceNameMap {
@@ -39,9 +50,26 @@ export function useSpaceNameMap(): SpaceNameMap {
   const observed = useRef<Set<string>>(new Set())
   const requested = useRef<Set<string>>(new Set())
 
+  // Mount-lifetime flag: true while this component is mounted. Guards the
+  // async resolutions below so a fetch that lands after unmount is dropped,
+  // while a per-render re-run of the fetch effect never cancels an in-flight
+  // request. Set from a SEPARATE unmount-only effect (empty deps) so it flips
+  // false exactly once, on unmount — see the header note on why a per-effect
+  // `alive` flag stranded concurrent fetches.
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+
   // Resolve any observed-but-unrequested ids AFTER commit. Runs after every
   // render and self-limits via `requested`, so only committed renders trigger a
-  // fetch and each id is fetched at most once.
+  // fetch and each id is fetched at most once. No per-effect cleanup: a fetch
+  // stays live across re-renders and is only ignored once the hook unmounts
+  // (mountedRef), so the first resolution's re-render can't drop a sibling
+  // fetch that is still in flight.
   useEffect(() => {
     const pending: string[] = []
     observed.current.forEach((id) => {
@@ -51,18 +79,14 @@ export function useSpaceNameMap(): SpaceNameMap {
       }
     })
     if (pending.length === 0) return
-    let alive = true
     for (const id of pending) {
       getSpace(id)
         .then((s) => {
-          if (alive) setNames((m) => new Map(m).set(id, s?.name || ''))
+          if (mountedRef.current) setNames((m) => new Map(m).set(id, s?.name || ''))
         })
         .catch(() => {
-          if (alive) setNames((m) => new Map(m).set(id, ''))
+          if (mountedRef.current) setNames((m) => new Map(m).set(id, ''))
         })
-    }
-    return () => {
-      alive = false
     }
   })
 

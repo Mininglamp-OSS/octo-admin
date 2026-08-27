@@ -148,6 +148,11 @@ export interface ExpertCategory {
   icon_key?: string
   sort_order: number
   count?: number
+  /** The row's stored plugin_types, carried through read→edit→write so a rename
+   *  from this tab echoes them back instead of narrowing a shared category to
+   *  the expert-only set. Absent on legacy rows → update falls back to the
+   *  expert default. */
+  plugin_types?: string[]
 }
 
 // ─── List params + response projection ──────────────────────────────────────
@@ -774,6 +779,7 @@ function toExpertCategory(c: PluginCategoryWire): ExpertCategory {
     icon_key: c.icon_key,
     sort_order: c.sort_order ?? 0,
     count: c.plugin_count,
+    plugin_types: c.plugin_types,
   }
 }
 
@@ -809,14 +815,24 @@ export async function createExpertCategory(params: {
 
 export async function updateExpertCategory(
   id: string,
-  params: { name?: string; icon_key?: string; sort_order?: number }
+  params: {
+    name?: string
+    icon_key?: string
+    sort_order?: number
+    plugin_types?: string[]
+  }
 ): Promise<ExpertCategory> {
   const resp = await expertApi.patch<{ data: PluginCategoryWire }>(
     `/admin/plugin_categories/${encodeURIComponent(id)}`,
     {
       name: params.name ?? '',
       icon_key: params.icon_key ?? '',
-      plugin_types: EXPERT_CATEGORY_PLUGIN_TYPES,
+      // Echo the row's EXISTING plugin_types when supplied so a rename from this
+      // tab never narrows a category shared across plugin types; fall back to
+      // the expert default for callers that omit them.
+      plugin_types: params.plugin_types?.length
+        ? params.plugin_types
+        : EXPERT_CATEGORY_PLUGIN_TYPES,
       sort_order: params.sort_order ?? 0,
     }
   )
