@@ -189,6 +189,7 @@ export default function SquadTab() {
         loading={loading}
         columns={columns}
         dataSource={rows}
+        scroll={{ x: 'max-content' }}
         locale={{ emptyText: t('emptySquad') }}
         onRow={(r) => ({
           onClick: () => setDrawerId(r.squad_id),

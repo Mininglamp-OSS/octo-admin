@@ -214,6 +214,7 @@ export default function SkillTab() {
       title: t('skill.table.actions'),
       key: 'actions',
       width: 200,
+      fixed: 'right' as const,
       render: (_, record) => (
         <Space size="small" onClick={(event) => event.stopPropagation()}>
           <Button type="link" size="small" onClick={() => openDetail(record)}>
@@ -287,6 +288,7 @@ export default function SkillTab() {
         columns={columns}
         dataSource={rows}
         loading={loading}
+        scroll={{ x: 'max-content' }}
         pagination={{
           current: page,
           pageSize: PAGE_SIZE,

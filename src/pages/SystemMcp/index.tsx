@@ -272,6 +272,7 @@ export default function SystemMcp() {
                   loading={loading}
                   columns={columns}
                   dataSource={rows}
+                  scroll={{ x: 'max-content' }}
                   locale={{ emptyText: t('empty') }}
                   onRow={(r) => ({
                     onClick: () => openDetail(r.mcp_id),

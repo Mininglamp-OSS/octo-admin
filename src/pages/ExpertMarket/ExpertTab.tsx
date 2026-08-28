@@ -177,6 +177,7 @@ export default function ExpertTab() {
         loading={loading}
         columns={columns}
         dataSource={rows}
+        scroll={{ x: 'max-content' }}
         locale={{ emptyText: t('emptyExpert') }}
         onRow={(r) => ({
           onClick: () => setDrawerId(r.expert_id),
