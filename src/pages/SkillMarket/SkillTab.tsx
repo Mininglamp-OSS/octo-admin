@@ -8,14 +8,16 @@ import {
   deleteAdminSkill,
   downloadAdminSkillPackage,
   listSkillCategories,
+  getAdminSkill,
   type SkillListItem,
+  type SkillDetail,
   type CategoryItem,
 } from '../../api/skill'
 import { ApiError } from '../../api'
 import { hasManagerCapability } from '../../auth/capabilities'
 import { useAuthStore } from '../../store/auth'
 import SkillDetailDrawer from './SkillDetailDrawer'
-import SkillEditModal from './SkillEditModal'
+import SkillFormModal from '../SystemSkill/SkillFormModal'
 import SkillUploadModal from './SkillUploadModal'
 import VisibilityTag from '../../components/VisibilityTag'
 import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
@@ -42,7 +44,7 @@ export default function SkillTab() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
   const [editOpen, setEditOpen] = useState(false)
-  const [editingSkill, setEditingSkill] = useState<SkillListItem | null>(null)
+  const [editSkill, setEditSkill] = useState<SkillDetail | null>(null)
   const [uploadOpen, setUploadOpen] = useState(false)
 
   const load = useCallback(
@@ -113,9 +115,20 @@ export default function SkillTab() {
     setDrawerOpen(true)
   }
 
-  const openEdit = (record: SkillListItem) => {
-    setEditingSkill(record)
-    setEditOpen(true)
+  const openEdit = async (record: SkillListItem) => {
+    // SkillFormModal edits the full SkillDetail (name/version/tags/… + the
+    // upload→parse→reupload flow), so fetch the authoritative detail before
+    // opening. A version-less/backfilled row still edits fine.
+    const hide = message.loading(t('skill.editModal.loading'), 0)
+    try {
+      const detail = await getAdminSkill(record.skill_id)
+      setEditSkill(detail)
+      setEditOpen(true)
+    } catch (err) {
+      message.error(err instanceof ApiError ? err.message : t('skill.loadFailed'))
+    } finally {
+      hide()
+    }
   }
 
   const getCategoryName = (catId: string) => {
@@ -308,10 +321,10 @@ export default function SkillTab() {
         categories={categories}
         onClose={() => setDrawerOpen(false)}
       />
-      <SkillEditModal
+      <SkillFormModal
         open={editOpen}
-        skill={editingSkill}
-        categories={categories}
+        editSkill={editSkill}
+        canWrite={canWrite}
         onClose={() => setEditOpen(false)}
         onSuccess={() => {
           setEditOpen(false)
