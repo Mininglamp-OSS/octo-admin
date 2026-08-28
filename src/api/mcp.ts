@@ -723,11 +723,15 @@ function toConnectorUpsert(
     examples: usage.map((input, i) => ({ title: `使用示例 ${i + 1}`, input })),
   }
   // Seed from the RAW stored modeled-server object so keys this form does not
-  // model (cwd, timeout, disabled, a mis-defaulted remote url) survive; the
-  // modeled form fields below overwrite their slots. Empty ({}) on a fresh
-  // create. Secret-blanking still applies: env/headers are re-derived through
-  // valueMapWithPlaceholders and overwrite the seeded values below.
+  // model (cwd, timeout, disabled, …) survive a metadata edit. But every key the
+  // form DOES model must come from the current form only — otherwise clearing a
+  // field (deleting all env/headers, clearing args, flipping transport) would
+  // leave the stale seeded value behind (a removed credential would silently
+  // persist). So drop the modeled keys from the seed, then overlay the form.
   const server: Record<string, unknown> = { ...(params.raw_server ?? {}) }
+  for (const k of ['type', 'url', 'command', 'args', 'env', 'headers']) {
+    delete server[k]
+  }
   if (params.transport) server.type = params.transport
   if (params.url) server.url = params.url
   if (params.command) server.command = params.command

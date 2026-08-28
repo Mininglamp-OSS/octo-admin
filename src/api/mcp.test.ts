@@ -829,4 +829,69 @@ describe('connector metadata edit — preserves unmodeled server keys (review fi
     expect(local.command).toBe('run')
     expect(local.args).toEqual(['--x'])
   })
+
+  it('clears removed env/args from the modeled server (a deleted credential must not persist) while unmodeled keys survive', async () => {
+    const wire = connectorDetailWireWith({
+      plugin_id: 'mcp-14',
+      plugin_name: 'Local',
+      plugin_type: 'connector',
+      manifest_json: { name: 'local', description: '', labels: [] },
+      category_id: 'c-dev',
+      icon: '',
+      visibility: 'system',
+      tags: [],
+      plugin_json: {
+        connector: { type: 'mcp', source: 'connector.local' },
+        attachments: [
+          {
+            path: 'mcp.json',
+            content_type: 'raw',
+            raw_content: JSON.stringify({
+              mcpServers: {
+                local: {
+                  type: 'stdio',
+                  command: 'run',
+                  args: ['--x'],
+                  env: { OLD_TOKEN: '${OLD_TOKEN}' },
+                  cwd: '/srv/app',
+                  timeout: 60,
+                },
+              },
+            }),
+          },
+        ],
+      },
+    })
+    mockGet.mockImplementation((url: string) =>
+      url.includes('plugin_categories')
+        ? Promise.resolve(CONNECTOR_CATEGORIES)
+        : Promise.resolve(wire)
+    )
+    mockPatch.mockResolvedValue({ data: { data: { plugin: { plugin_id: 'mcp-14' } } } })
+
+    const detail = await getSystemMcp('mcp-14')
+    // The operator deleted the env entry and cleared args in the form: the write
+    // carries the preserved raw_server but NO env / NO args.
+    await updateSystemMcp('mcp-14', {
+      name: detail.name,
+      slug: detail.quick_start.slug,
+      server_name: detail.quick_start.server_name,
+      raw_server: detail.quick_start.raw_server,
+      category: 'dev',
+      transport: 'stdio',
+      command: 'run',
+      // args + env intentionally omitted (cleared in the form)
+      tools: [],
+    })
+
+    const local = writtenMcpServers(mockPatch.mock.calls[0][1] as UpsertBody)
+      .local as Record<string, unknown>
+    // Removed modeled keys must NOT survive from the seed.
+    expect('env' in local).toBe(false)
+    expect('args' in local).toBe(false)
+    // Unmodeled keys still survive.
+    expect(local.cwd).toBe('/srv/app')
+    expect(local.timeout).toBe(60)
+    expect(local.command).toBe('run')
+  })
 })
