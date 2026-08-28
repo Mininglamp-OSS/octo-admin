@@ -207,7 +207,10 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
           name: values.name,
           display_name: values.display_name,
           description: values.description,
-          category_id: values.category_id,
+          // An explicit clear (allowClear ✕) leaves category_id undefined; send
+          // '' so updateAdminSkill OMITS category_id from the PATCH and the
+          // backend NULLs it. An untouched value still carries the real id.
+          category_id: values.category_id ?? '',
           tags: values.tags,
           // Echo the existing visibility instead of hard-coding system — an
           // edit must not widen a space/private skill.
@@ -383,7 +386,7 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
             </Form.Item>
               </>
             )}
-            <Form.Item name="category_id" label={t('upload.form.category')} rules={[{ required: true }]}>
+            <Form.Item name="category_id" label={t('upload.form.category')} rules={[{ required: !activeEditSkill || !!parseTaskId }]}>
               <Select
                 options={categories.map((c) => ({ value: c.id, label: c.name }))}
                 allowClear

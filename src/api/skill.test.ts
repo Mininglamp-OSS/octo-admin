@@ -152,6 +152,23 @@ describe('skill icon/publisher round-trip through the translation layer', () => 
     expect('category_id' in body.plugin).toBe(false)
   })
 
+  it('RETAINS the existing category when category_id is undefined (untouched edit)', async () => {
+    // The SkillFormModal edit path maps an untouched category to its real id and
+    // an explicit clear to '' (values.category_id ?? ''). This asserts the other
+    // half of that contract: an undefined category_id must NOT clear the row — it
+    // falls back to the freshly fetched plugin.category_id — which is exactly why
+    // the modal must send '' (not undefined) to make a deliberate clear stick.
+    await updateAdminSkill('skill-1', {
+      name: 'skill-one',
+      description: 'An ops skill.',
+      category_id: undefined,
+      tags: ['tag-1'],
+    })
+
+    const body = mockPatch.mock.calls[0][1] as { plugin: { category_id?: string } }
+    expect(body.plugin.category_id).toBe('cat-ops')
+  })
+
   it('stamps the canonical manifest + package $schema on the upsert', async () => {
     await updateAdminSkill('skill-1', { name: 'skill-one', tags: [] })
 
