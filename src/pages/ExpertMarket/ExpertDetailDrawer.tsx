@@ -93,13 +93,16 @@ export default function ExpertDetailDrawer({
     }
   }
 
-  const handleReupload = async (file: File, parsed: ParsedContainer) => {
+  const handleReupload = async (file: File, _parsed: ParsedContainer) => {
     if (!detail) return
     // Send the ORIGINAL zip to the server-side container reupload, which rebuilds
     // the expert in place (preserving id/visibility/Space/owner) and re-parses
-    // the package + bundled skills. The manifest category (a name) is resolved to
-    // a unified category id in the client, mirroring importExpertContainer.
-    await reuploadExpertContainer(detail.expert_id, file, parsed.manifest.category || undefined)
+    // the package + bundled skills. Reupload intentionally does NOT pass a
+    // category: the manifest category would otherwise silently revert an
+    // operator's curated choice (and hard-block reupload when the manifest names
+    // a category absent from the taxonomy). Omitting it makes the backend keep
+    // the stored category — reupload only swaps content.
+    await reuploadExpertContainer(detail.expert_id, file, undefined)
     // The rebuild is committed server-side. Refresh the parent list, then refetch
     // the drawer detail best-effort — a transient refetch failure must not surface
     // as a reupload error (reopening the drawer recovers the fresh state).

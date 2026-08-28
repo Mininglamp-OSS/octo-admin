@@ -328,7 +328,7 @@ describe('uploadIcon', () => {
 
     const result = await uploadIcon(file)
 
-    expect(mockPost).toHaveBeenCalledWith('/skill_icon_uploads', {
+    expect(mockPost).toHaveBeenCalledWith('/admin/skill_icon_uploads', {
       file_name: 'logo.png',
       file_size: file.size,
     })

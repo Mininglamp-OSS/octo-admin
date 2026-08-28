@@ -981,9 +981,10 @@ export async function createSkill(data: CreateSkillParams): Promise<SkillDetail>
 
 export async function uploadIcon(file: File): Promise<{ object_key: string }> {
   // Mirrors octo-web's dmworkskillmarket icon flow: initialize through the
-  // shared skill icon endpoint, PUT bytes to the returned presigned URL, then
-  // persist the returned object_key on the skill metadata. The surrounding
-  // admin CRUD still uses /admin/* endpoints.
+  // admin skill-icon endpoint, PUT bytes to the returned presigned URL, then
+  // persist the returned object_key on the skill metadata. The admin twin
+  // (/admin/skill_icon_uploads) is used rather than the tenant route, whose
+  // authenticator requires an X-Space-Id header the admin client does not send.
   const resp = await skillApi.post<{
     data: {
       object_key: string
@@ -991,7 +992,7 @@ export async function uploadIcon(file: File): Promise<{ object_key: string }> {
       method?: string
       headers?: Record<string, string>
     }
-  }>('/skill_icon_uploads', {
+  }>('/admin/skill_icon_uploads', {
     file_name: file.name,
     file_size: file.size,
   })

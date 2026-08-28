@@ -89,13 +89,15 @@ export default function SquadDetailDrawer({
     }
   }
 
-  const handleReupload = async (file: File, parsed: ParsedContainer) => {
+  const handleReupload = async (file: File, _parsed: ParsedContainer) => {
     if (!detail) return
     // Send the ORIGINAL zip to the server-side container reupload, which rebuilds
     // the squad in place (preserving id/visibility/Space/owner) and swaps the
-    // member experts + their skills. The manifest category (a name) is resolved
-    // to a unified category id in the client, mirroring importExpertContainer.
-    await reuploadSquadContainer(detail.squad_id, file, parsed.manifest.category || undefined)
+    // member experts + their skills. Reupload intentionally does NOT pass a
+    // category (see ExpertDetailDrawer): the manifest category would silently
+    // revert the operator's curated choice and hard-block on an unknown category.
+    // Omitting it keeps the stored category — reupload only swaps content.
+    await reuploadSquadContainer(detail.squad_id, file, undefined)
     // The rebuild is committed server-side. Refresh the parent list, then refetch
     // the drawer detail best-effort — a transient refetch failure must not surface
     // as a reupload error (reopening the drawer recovers the fresh state).
