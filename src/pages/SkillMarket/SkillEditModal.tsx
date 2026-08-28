@@ -40,7 +40,11 @@ export default function SkillEditModal({ open, skill, categories, onClose, onSuc
       await updateAdminSkill(skill.skill_id, {
         name: values.name,
         description: values.description,
-        category_id: values.category_id || undefined,
+        // An explicit clear (allowClear → undefined) must send "" so
+        // updateAdminSkill omits category_id from the PATCH and the backend
+        // NULLs it; a truthy value sets it. (Field-omission = retain is for
+        // partial API callers, which this always-populated form is not.)
+        category_id: values.category_id ?? '',
         tags: values.tags,
         icon_url: values.icon_url || undefined,
       })
