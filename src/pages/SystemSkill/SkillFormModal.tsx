@@ -137,18 +137,32 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
             clearInterval(pollRef.current!)
             setUploadProgress(100)
             setUploading(false)
-            // Pre-fill form from parse results
-            form.setFieldsValue({
-              name: status.result_name,
-              display_name: status.result_name,
-              description: status.result_description,
-              tags: status.result_tags || [],
-              version: activeEditSkill ? bumpPatch(activeEditSkill.version || DEFAULT_VERSION) : (status.result_version || DEFAULT_VERSION),
-              changelog: activeEditSkill ? '' : t('upload.initialChangelog'),
-              // Preserve the existing row's visibility on reupload; only a fresh
-              // create defaults to system.
-              visibility: activeEditSkill?.visibility || 'system',
-            })
+            // Pre-fill form from parse results.
+            if (activeEditSkill) {
+              // Reupload into an EXISTING record: the package's machine `name`
+              // and a bumped version reflect the new artifact, but the curated
+              // market-facing fields (display_name/description/tags) were seeded
+              // from the record when the modal opened and MUST NOT be clobbered
+              // by the parsed values. The operator edits them explicitly.
+              form.setFieldsValue({
+                name: status.result_name,
+                version: bumpPatch(activeEditSkill.version || DEFAULT_VERSION),
+                changelog: '',
+                // Preserve the existing row's visibility on reupload.
+                visibility: activeEditSkill.visibility || 'system',
+              })
+            } else {
+              // Brand-new create: seed everything from the parse result.
+              form.setFieldsValue({
+                name: status.result_name,
+                display_name: status.result_name,
+                description: status.result_description,
+                tags: status.result_tags || [],
+                version: status.result_version || DEFAULT_VERSION,
+                changelog: t('upload.initialChangelog'),
+                visibility: 'system',
+              })
+            }
             if (activeEditSkill) setReuploadedFileName(file.name)
           } else if (status.status === 'failed') {
             clearInterval(pollRef.current!)
@@ -386,7 +400,7 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
             </Form.Item>
               </>
             )}
-            <Form.Item name="category_id" label={t('upload.form.category')} rules={[{ required: !activeEditSkill || !!parseTaskId }]}>
+            <Form.Item name="category_id" label={t('upload.form.category')} rules={[{ required: !activeEditSkill }]}>
               <Select
                 options={categories.map((c) => ({ value: c.id, label: c.name }))}
                 allowClear
