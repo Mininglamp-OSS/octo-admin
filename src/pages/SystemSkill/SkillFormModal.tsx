@@ -184,13 +184,16 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
 
   const handleSubmit = async () => {
     if (!canWrite) return
-    const values = await form.validateFields()
     if (!activeEditSkill && !parseTaskId) {
       message.error(t('upload.noParsedFile'))
       return
     }
     setSubmitting(true)
     try {
+      // validateFields lives INSIDE the try so a validation rejection is handled
+      // (finally clears the busy state, inline field errors surface) rather than
+      // escaping as an unhandled rejection that leaves the modal stuck.
+      const values = await form.validateFields()
       if (activeEditSkill) {
         if (parseTaskId) {
           await commitAdminSkillReupload(activeEditSkill.id, {
@@ -352,7 +355,7 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
             {t('upload.versionSection')}
           </Typography.Title>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <Form.Item name="version" label={t('upload.form.version')} rules={[{ required: true }]}>
+            <Form.Item name="version" label={t('upload.form.version')} rules={[{ required: !activeEditSkill || !!parseTaskId }]}>
               <Input placeholder={DEFAULT_VERSION} disabled={!!activeEditSkill && !parseTaskId} />
             </Form.Item>
             <Form.Item name="changelog" label={t('upload.form.changelog')} rules={[{ required: !activeEditSkill || !!parseTaskId }]}>

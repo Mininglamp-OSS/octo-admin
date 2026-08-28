@@ -274,6 +274,11 @@ interface FormValues {
    *  re-emitted verbatim on write so a multi-server document isn't collapsed
    *  (review C). */
   extraServers: Record<string, McpServerEntryWire>
+  /** Raw stored modeled-server object, carried through so a metadata edit
+   *  preserves keys this form doesn't model (cwd/timeout/disabled/url). Seeded
+   *  from the record's quick_start.raw_server; the write seeds the server from
+   *  it and overlays the modeled fields on top. */
+  rawServer: Record<string, unknown>
   category: string
   /** Canonical icon value written back on submit (object key / emoji / URL).
    *  Seeded from the record's canonical `icon`, replaced only by a fresh
@@ -303,6 +308,7 @@ const EMPTY: FormValues = {
   slug: '',
   serverName: '',
   extraServers: {},
+  rawServer: {},
   category: '',
   icon: '',
   iconUrl: '',
@@ -334,6 +340,7 @@ function detailToValues(d: McpDetail): FormValues {
     // save round-trips them verbatim (review B / C).
     serverName: q.server_name || '',
     extraServers: q.extra_servers ?? {},
+    rawServer: q.raw_server ?? {},
     category: d.category || '',
     icon: d.icon || '',
     iconUrl: d.icon_url || '',
@@ -529,6 +536,9 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
       extra_servers: Object.keys(form.extraServers).length
         ? form.extraServers
         : undefined,
+      // Seed the write from the raw stored server so unmodeled keys
+      // (cwd/timeout/disabled/url) survive a metadata edit (review C).
+      raw_server: Object.keys(form.rawServer).length ? form.rawServer : undefined,
       category: form.category,
       icon: form.icon.trim() || undefined,
       // Carry the existing publisher back on edit so the backend's

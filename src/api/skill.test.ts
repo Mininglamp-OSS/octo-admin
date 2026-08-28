@@ -137,6 +137,56 @@ describe('skill icon/publisher round-trip through the translation layer', () => 
     // Existing publisher echoed so the backend's unconditional stamp can't blank it.
     expect(body.plugin.publisher).toBe('Ops Team')
   })
+
+  it('omits category_id from the PATCH body when the category is explicitly cleared', async () => {
+    await updateAdminSkill('skill-1', {
+      name: 'skill-one',
+      description: 'An ops skill.',
+      // An explicit clear (SkillEditModal sends "") must OMIT category_id so the
+      // backend NULLs it — a truthy id would set it, a missing key would retain.
+      category_id: '',
+      tags: ['tag-1'],
+    })
+
+    const body = mockPatch.mock.calls[0][1] as { plugin: Record<string, unknown> }
+    expect('category_id' in body.plugin).toBe(false)
+  })
+
+  it('stamps the canonical manifest + package $schema on the upsert', async () => {
+    await updateAdminSkill('skill-1', { name: 'skill-one', tags: [] })
+
+    const body = mockPatch.mock.calls[0][1] as {
+      plugin: {
+        manifest_json: { $schema: string }
+        plugin_json: { $schema: string }
+      }
+    }
+    expect(body.plugin.manifest_json.$schema).toBe('cowork-plugin-manifest-2.0.json')
+    expect(body.plugin.plugin_json.$schema).toBe('cowork-plugin-package-2.0.json')
+  })
+
+  it('trims + dedupes tags and trims the display name so the backend byte-match holds', async () => {
+    await updateAdminSkill('skill-1', {
+      display_name: '  Skill One  ',
+      name: '  skill-one  ',
+      tags: [' tag-1 ', 'tag-1', '', '  '],
+    })
+
+    const body = mockPatch.mock.calls[0][1] as {
+      plugin: {
+        plugin_name: string
+        tags: string[]
+        manifest_json: { plugin_name: string; name: string; labels: string[] }
+      }
+    }
+    // Trimmed name round-trips to plugin_name and manifest.plugin_name.
+    expect(body.plugin.plugin_name).toBe('Skill One')
+    expect(body.plugin.manifest_json.plugin_name).toBe('Skill One')
+    expect(body.plugin.manifest_json.name).toBe('skill-one')
+    // Tags trimmed, empties dropped, deduped — matches manifest.labels.
+    expect(body.plugin.tags).toEqual(['tag-1'])
+    expect(body.plugin.manifest_json.labels).toEqual(['tag-1'])
+  })
 })
 
 describe('createAdminSkill', () => {

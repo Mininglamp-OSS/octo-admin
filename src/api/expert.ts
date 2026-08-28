@@ -675,6 +675,13 @@ export interface ImportContainerResult {
   plugin_id: string
 }
 
+/** Upload budget for the whole-container zip POSTs (import + reupload). Well
+ *  above the shared 30 s axios timeout so a realistic large upload (server cap
+ *  is 100 MiB) still completes, but FINITE — an uncapped `timeout: 0` left a
+ *  blackholed connection hanging forever with no AbortSignal from the drawer
+ *  call sites, sticking the button's busy state until a reload. */
+const CONTAINER_UPLOAD_TIMEOUT_MS = 300000
+
 /**
  * Upload a WHOLE expert/expert_team container zip to the server-side importer
  * (`POST /admin/plugins/import`, multipart `file` + optional `category_id`). The
@@ -705,9 +712,10 @@ export async function importExpertContainer(
     '/admin/plugins/import',
     form,
     // Whole-container zips run up to the server's 100 MiB cap; the shared axios
-    // 30 s timeout would abort a realistic large upload mid-flight. Disable it
-    // here and rely on the caller's AbortSignal for cancellation.
-    { signal: opts.signal, timeout: 0 }
+    // 30 s timeout would abort a realistic large upload mid-flight. Use a
+    // generous but FINITE budget so a blackholed connection eventually aborts
+    // instead of hanging forever (no AbortSignal is passed by the drawer).
+    { signal: opts.signal, timeout: CONTAINER_UPLOAD_TIMEOUT_MS }
   )
   return { plugin_id: resp.data.data.plugin.plugin_id }
 }
@@ -762,8 +770,9 @@ async function reuploadContainer(
     `/admin/plugins/container_reupload/${encodeURIComponent(id)}`,
     form,
     // See importExpertContainer: whole-zip reupload must not be capped by the
-    // shared 30 s timeout; rely on the caller's AbortSignal instead.
-    { signal: opts.signal, timeout: 0 }
+    // shared 30 s timeout, but a FINITE generous budget still lets a stuck
+    // connection abort (the drawer call sites pass no AbortSignal).
+    { signal: opts.signal, timeout: CONTAINER_UPLOAD_TIMEOUT_MS }
   )
 }
 

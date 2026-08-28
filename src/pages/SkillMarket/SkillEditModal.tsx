@@ -46,7 +46,11 @@ export default function SkillEditModal({ open, skill, categories, onClose, onSuc
         // partial API callers, which this always-populated form is not.)
         category_id: values.category_id ?? '',
         tags: values.tags,
-        icon_url: values.icon_url || undefined,
+        // The form seeds icon_url from the record's canonical `icon` on open, so
+        // an untouched edit re-sends the seeded value. An explicit clear yields
+        // "" (NOT undefined) so updateAdminSkill forwards icon:"" and the backend
+        // clears it — `|| undefined` would collapse the clear into "retain".
+        icon_url: values.icon_url ?? '',
       })
       message.success(t('skill.editModal.success'))
       onSuccess()

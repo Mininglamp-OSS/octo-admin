@@ -732,3 +732,101 @@ describe('connector update — visibility is not widened (review)', () => {
     expect(body.plugin.visibility).not.toBe('system')
   })
 })
+
+describe('connector upsert — canonical $schema stamps', () => {
+  it('stamps the manifest + package $schema the backfill mints', async () => {
+    mockGet.mockImplementation((url: string) =>
+      url.includes('plugin_categories')
+        ? Promise.resolve(CONNECTOR_CATEGORIES)
+        : Promise.resolve(connectorDetailWire())
+    )
+    mockPatch.mockResolvedValue({ data: { data: { plugin: { plugin_id: 'mcp-1' } } } })
+
+    await updateSystemMcp('mcp-1', {
+      name: 'My Connector',
+      category: 'dev',
+      transport: 'streamable-http',
+      url: 'https://remote.example/mcp',
+      tools: [],
+    })
+
+    const body = mockPatch.mock.calls[0][1] as {
+      plugin: {
+        manifest_json: { $schema: string }
+        plugin_json: { $schema: string }
+      }
+    }
+    expect(body.plugin.manifest_json.$schema).toBe('cowork-plugin-manifest-2.0.json')
+    expect(body.plugin.plugin_json.$schema).toBe('cowork-plugin-package-2.0.json')
+  })
+})
+
+describe('connector metadata edit — preserves unmodeled server keys (review fix)', () => {
+  it('threads a stored server cwd/timeout/disabled through a metadata edit instead of dropping them', async () => {
+    const wire = connectorDetailWireWith({
+      plugin_id: 'mcp-13',
+      plugin_name: 'Local',
+      plugin_type: 'connector',
+      manifest_json: { name: 'local', description: '', labels: [] },
+      category_id: 'c-dev',
+      icon: '',
+      visibility: 'system',
+      tags: [],
+      plugin_json: {
+        connector: { type: 'mcp', source: 'connector.local' },
+        attachments: [
+          {
+            path: 'mcp.json',
+            content_type: 'raw',
+            raw_content: JSON.stringify({
+              mcpServers: {
+                local: {
+                  type: 'stdio',
+                  command: 'run',
+                  args: ['--x'],
+                  // Keys the form doesn't model — must survive a metadata edit.
+                  cwd: '/srv/app',
+                  timeout: 60,
+                  disabled: false,
+                },
+              },
+            }),
+          },
+        ],
+      },
+    })
+    mockGet.mockImplementation((url: string) =>
+      url.includes('plugin_categories')
+        ? Promise.resolve(CONNECTOR_CATEGORIES)
+        : Promise.resolve(wire)
+    )
+    mockPatch.mockResolvedValue({ data: { data: { plugin: { plugin_id: 'mcp-13' } } } })
+
+    const detail = await getSystemMcp('mcp-13')
+    // Thread the read values back the way FormModal.buildPayload does, including
+    // the preserved raw modeled-server object.
+    await updateSystemMcp('mcp-13', {
+      name: detail.name,
+      slug: detail.quick_start.slug,
+      server_name: detail.quick_start.server_name,
+      extra_servers: detail.quick_start.extra_servers,
+      raw_server: detail.quick_start.raw_server,
+      category: 'dev',
+      transport: detail.quick_start.transport,
+      command: detail.quick_start.command,
+      args: detail.quick_start.args,
+      tools: [],
+    })
+
+    const servers = writtenMcpServers(mockPatch.mock.calls[0][1] as UpsertBody)
+    const local = servers.local as Record<string, unknown>
+    // Unmodeled keys survive the round-trip.
+    expect(local.cwd).toBe('/srv/app')
+    expect(local.timeout).toBe(60)
+    expect(local.disabled).toBe(false)
+    // Modeled keys still present + correct.
+    expect(local.type).toBe('stdio')
+    expect(local.command).toBe('run')
+    expect(local.args).toEqual(['--x'])
+  })
+})

@@ -50,6 +50,12 @@ export interface McpQuickStart {
    *  write (review C safeguard). Absent/empty for the common single-server
    *  connector. */
   extra_servers?: Record<string, McpServerEntryWire>
+  /** The RAW stored modeled-server object (the mcpServers[serverKey] entry) as
+   *  it arrived on the wire, carried through read→edit→write so keys this form
+   *  does not model (cwd, timeout, disabled, a mis-defaulted remote url, …)
+   *  survive a metadata edit instead of being rebuilt away. The write seeds the
+   *  server from this and overlays the modeled form fields on top. */
+  raw_server?: Record<string, unknown>
   /** ASCII identifier used as the JSON key in the generated mcpServers
    *  snippet (mcp-v1.md §3, "服务标识"). Present on records created after
    *  migration 03; matches `^[a-z0-9-]{1,64}$`. Empty on legacy rows. */
@@ -129,6 +135,9 @@ export interface CreateMcpParams {
   /** Extra mcpServers entries to re-emit verbatim alongside the modeled server
    *  (review C safeguard). Threaded straight through from read. */
   extra_servers?: Record<string, McpServerEntryWire>
+  /** Raw stored modeled-server object, seeded into the write so unmodeled keys
+   *  (cwd/timeout/disabled/…) survive. Threaded straight through from read. */
+  raw_server?: Record<string, unknown>
   category: string
   icon?: string
   /** Existing publisher, echoed on update so the backend doesn't blank it.
@@ -179,6 +188,8 @@ export interface PatchMcpParams {
   server_name?: string
   /** See CreateMcpParams.extra_servers — extra servers re-emitted verbatim. */
   extra_servers?: Record<string, McpServerEntryWire>
+  /** See CreateMcpParams.raw_server — seeds the write so unmodeled keys survive. */
+  raw_server?: Record<string, unknown>
   category?: string
   icon?: string
   /** Existing publisher, echoed on update so the backend doesn't blank it. */
@@ -610,6 +621,9 @@ function mapMcpDetail(
       // (review B). Empty when the record carries no mcp.json server.
       server_name: serverName,
       extra_servers: Object.keys(extraServers).length ? extraServers : undefined,
+      // Carry the RAW modeled-server object so the write can seed from it and
+      // preserve keys this form doesn't model (cwd/timeout/disabled/url).
+      raw_server: server as Record<string, unknown>,
       // The manifest machine name carries the legacy slug for connectors.
       slug: manifest.name,
       url: server.url,
@@ -708,7 +722,12 @@ function toConnectorUpsert(
     labels: tags,
     examples: usage.map((input, i) => ({ title: `使用示例 ${i + 1}`, input })),
   }
-  const server: Record<string, unknown> = {}
+  // Seed from the RAW stored modeled-server object so keys this form does not
+  // model (cwd, timeout, disabled, a mis-defaulted remote url) survive; the
+  // modeled form fields below overwrite their slots. Empty ({}) on a fresh
+  // create. Secret-blanking still applies: env/headers are re-derived through
+  // valueMapWithPlaceholders and overwrite the seeded values below.
+  const server: Record<string, unknown> = { ...(params.raw_server ?? {}) }
   if (params.transport) server.type = params.transport
   if (params.url) server.url = params.url
   if (params.command) server.command = params.command
@@ -1000,9 +1019,9 @@ export async function deleteMcpCategory(id: string): Promise<void> {
   await mcpApi.delete(`/admin/plugin_categories/${encodeURIComponent(id)}`)
 }
 
-// ─── Probe (legacy /admin/mcps route) ──────────────────────────────────────
+// ─── Probe (/admin/mcps/_probe route) ──────────────────────────────────────
 
-/** POST /admin/api/v1/mcps/probe body. Mirrors service.ProbeRequest exactly
+/** POST /admin/mcps/_probe body. Mirrors service.ProbeRequest exactly
  *  — the marketplace decodes with DisallowUnknownFields, so any extra field
  *  is rejected as "request body is not valid JSON". A Bearer token, when
  *  set, lives inside `headers.Authorization` and reaches the remote MCP
@@ -1014,7 +1033,7 @@ export interface McpProbeRequest {
   headers?: Record<string, string>
 }
 
-/** POST /admin/api/v1/mcps/probe response envelope. Wire never omits fields
+/** POST /admin/mcps/_probe response envelope. Wire never omits fields
  *  even on failure — server sets tools=[] and is_ok=false + error.code. */
 export interface McpProbeResponse {
   is_ok: boolean
@@ -1037,7 +1056,7 @@ export async function probeSystemMcp(
 
 // ─── Icon upload (presigned URL flow, /admin/mcp_icon_uploads) ─────────────
 
-/** POST /admin/api/v1/mcps/upload/icon response. Mirrors
+/** POST /admin/mcp_icon_uploads response. Mirrors
  *  service.parse.IconUploadResult in the marketplace. `download_url` is the
  *  persistent public URL that callers store on the MCP record after
  *  successfully PUTting the bytes to `presigned_url`. */

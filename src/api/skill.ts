@@ -273,21 +273,28 @@ interface SkillRefWire {
   zip_object_key?: string
 }
 
-/** Safely coerce tags to string[]. Backend may return a JSON-encoded string. */
+/** Safely coerce tags to string[]. Backend may return a JSON-encoded string.
+ *  The result is trimmed, empties dropped, and deduped — mirroring the
+ *  connector writer's normalization (mcp.ts toConnectorUpsert) so the backend's
+ *  own trimmed+deduped normalization of manifest labels byte-matches the tags
+ *  we send (the backend byte-compares the two). */
 function normalizeTagsList(tags: unknown): string[] {
-  if (Array.isArray(tags))
-    return tags.filter((t): t is string => typeof t === 'string')
-  if (typeof tags === 'string') {
-    try {
-      const parsed = JSON.parse(tags)
-      if (Array.isArray(parsed))
-        return parsed.filter((t): t is string => typeof t === 'string')
-    } catch {
-      /* not JSON — treat as a single tag */
+  const collect = (): string[] => {
+    if (Array.isArray(tags))
+      return tags.filter((t): t is string => typeof t === 'string')
+    if (typeof tags === 'string') {
+      try {
+        const parsed = JSON.parse(tags)
+        if (Array.isArray(parsed))
+          return parsed.filter((t): t is string => typeof t === 'string')
+      } catch {
+        /* not JSON — treat as a single tag */
+      }
+      return [tags]
     }
-    return tags.trim() ? [tags.trim()] : []
+    return []
   }
-  return []
+  return [...new Set(collect().map((t) => t.trim()).filter(Boolean))]
 }
 
 function rawAttachment(
@@ -594,8 +601,11 @@ export async function updateAdminSkill(
 ): Promise<SkillDetail> {
   const plugin = await fetchSkillPluginDetail(id)
   const manifest = plugin.manifest_json ?? {}
-  const displayName = params.display_name ?? plugin.plugin_name ?? ''
-  const name = params.name ?? manifest.name ?? plugin.plugin_name ?? ''
+  // Trim the display name: the backend requires manifest.plugin_name to equal the
+  // trimmed row name, and byte-compares them, so whitespace here hard-fails the
+  // save. Mirror the connector writer, which pre-normalizes the same way.
+  const displayName = (params.display_name ?? plugin.plugin_name ?? '').trim()
+  const name = (params.name ?? manifest.name ?? plugin.plugin_name ?? '').trim()
   const description = params.description ?? manifest.description ?? ''
   const tags = normalizeTagsList(params.tags ?? plugin.tags)
   const visibility = params.visibility ?? plugin.visibility
