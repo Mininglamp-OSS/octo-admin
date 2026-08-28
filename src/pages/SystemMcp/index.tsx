@@ -122,6 +122,8 @@ export default function SystemMcp() {
                 icon: updated.icon,
                 icon_url: updated.icon_url,
                 publisher: updated.publisher,
+                scope: updated.scope,
+                space_id: updated.space_id,
                 tags: updated.tags,
                 tool_count: updated.tool_count,
                 creator_name: updated.creator_name,

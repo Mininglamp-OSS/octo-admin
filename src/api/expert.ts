@@ -704,7 +704,10 @@ export async function importExpertContainer(
   const resp = await expertApi.post<{ data: { plugin: { plugin_id: string } } }>(
     '/admin/plugins/import',
     form,
-    { signal: opts.signal }
+    // Whole-container zips run up to the server's 100 MiB cap; the shared axios
+    // 30 s timeout would abort a realistic large upload mid-flight. Disable it
+    // here and rely on the caller's AbortSignal for cancellation.
+    { signal: opts.signal, timeout: 0 }
   )
   return { plugin_id: resp.data.data.plugin.plugin_id }
 }
@@ -758,7 +761,9 @@ async function reuploadContainer(
   await expertApi.post(
     `/admin/plugins/container_reupload/${encodeURIComponent(id)}`,
     form,
-    { signal: opts.signal }
+    // See importExpertContainer: whole-zip reupload must not be capped by the
+    // shared 30 s timeout; rely on the caller's AbortSignal instead.
+    { signal: opts.signal, timeout: 0 }
   )
 }
 

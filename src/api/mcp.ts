@@ -13,7 +13,10 @@
  * and from the plugin wire model (manifest_json display document + plugin_json
  * connector package of mcp.json + connector/* attachments) in the translation
  * layer below, so the consuming pages need no change. `probe` and icon upload
- * stay on the legacy `/admin/mcps/*` routes.
+ * are tooling endpoints outside the catalog CRUD; they target the current
+ * `/admin/mcps/_probe` and `/admin/mcp_icon_uploads` routes (the pre-migration
+ * `/admin/mcps/probe` and `/admin/mcps/upload/icon` aliases are deprecated with
+ * a 2026-10-01 sunset).
  */
 
 import { marketplaceApi as mcpApi, putPresignedFile } from './marketplace'
@@ -1026,13 +1029,13 @@ export async function probeSystemMcp(
   req: McpProbeRequest,
 ): Promise<McpProbeResponse> {
   const resp = await mcpApi.post<{ data: McpProbeResponse }>(
-    '/admin/mcps/probe',
+    '/admin/mcps/_probe',
     req
   )
   return resp.data.data
 }
 
-// ─── Icon upload (presigned URL flow, legacy /admin/mcps route) ────────────
+// ─── Icon upload (presigned URL flow, /admin/mcp_icon_uploads) ─────────────
 
 /** POST /admin/api/v1/mcps/upload/icon response. Mirrors
  *  service.parse.IconUploadResult in the marketplace. `download_url` is the
@@ -1050,13 +1053,13 @@ export interface McpIconInitResponse {
 /** Two-step icon upload: hit marketplace for a presigned PUT URL, then
  *  PUT the file bytes directly to that URL, then hand back the persistent
  *  download URL to store on the MCP record. Marketplace-side handler is
- *  `POST /api/v1/admin/mcps/upload/icon` (added in
- *  handler/mcp_icon.go); admin auth flows through WrapMarketAdmin — the
- *  operator's Octo login token + role=superAdmin — same as every other
- *  mcpApi call. */
+ *  `POST /api/v1/admin/mcp_icon_uploads` (handler/mcp_icon.go; the legacy
+ *  `/admin/mcps/upload/icon` alias is deprecated with a 2026-10-01 sunset);
+ *  admin auth flows through WrapMarketAdmin — the operator's Octo login token
+ *  + role=superAdmin — same as every other mcpApi call. */
 export async function uploadMcpIcon(file: File): Promise<string> {
   const initResp = await mcpApi.post<{ data: McpIconInitResponse }>(
-    '/admin/mcps/upload/icon',
+    '/admin/mcp_icon_uploads',
     {
       file_name: file.name,
       file_size: file.size,
