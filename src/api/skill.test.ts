@@ -414,6 +414,7 @@ describe('downloadAdminSkillPackage', () => {
 
     expect(mockGet).toHaveBeenCalledWith('/admin/plugins/skill-1/download', {
       responseType: 'blob',
+      timeout: 300000,
     })
     // Never the tenant route that needs X-Space-Id and applies tenant scope.
     const url = mockGet.mock.calls[0][0] as string

@@ -713,7 +713,11 @@ export async function downloadAdminSkillPackage(
 ): Promise<void> {
   const resp = await skillApi.get(
     `/admin/plugins/${encodeURIComponent(id)}/download`,
-    { responseType: 'blob' }
+    // Whole-zip download: override the shared 30s marketplace timeout (a large
+    // package on a slow link would otherwise abort mid-stream). 300s matches the
+    // sibling upload budget; merge-base streamed via window.open with no client
+    // timeout at all.
+    { responseType: 'blob', timeout: 300000 }
   )
   const blob = resp.data as Blob
   const disposition = String(
