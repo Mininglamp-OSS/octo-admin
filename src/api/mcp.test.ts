@@ -958,5 +958,38 @@ describe('connector metadata edit — preserves unmodeled server keys (review fi
     const custom = written.find((a) => a.path === 'connector/custom.json')
     expect(custom?.raw_content).toBe('{"kept":true}')
   })
+
+  it('refuses loudly to edit a non-mcp connector descriptor instead of flipping it to mcp', async () => {
+    const wire = connectorDetailWireWith({
+      plugin_id: 'mcp-16',
+      plugin_name: 'CLI Tool',
+      plugin_type: 'connector',
+      manifest_json: { name: 'cli-tool', description: '', labels: [] },
+      category_id: 'c-dev',
+      icon: '',
+      visibility: 'system',
+      tags: [],
+      plugin_json: {
+        // A non-mcp descriptor (valid under the 2.0 contract) the mcp-only form
+        // cannot faithfully rebuild.
+        connector: { type: 'cli', source: 'connector.cli-tool' },
+        attachments: [
+          { path: 'cli/manifest.json', content_type: 'raw', raw_content: '{"bin":"x"}' },
+        ],
+      },
+    })
+    mockGet.mockImplementation((url: string) =>
+      url.includes('plugin_categories')
+        ? Promise.resolve(CONNECTOR_CATEGORIES)
+        : Promise.resolve(wire)
+    )
+    mockPatch.mockResolvedValue({ data: { data: { plugin: { plugin_id: 'mcp-16' } } } })
+
+    await expect(
+      updateSystemMcp('mcp-16', { name: 'CLI Tool renamed', category: 'dev', transport: 'stdio', tools: [] })
+    ).rejects.toMatchObject({ code: 'unsupported_connector_type' })
+    // The corrupting PATCH is never sent.
+    expect(mockPatch).not.toHaveBeenCalled()
+  })
 })
 

@@ -949,6 +949,21 @@ export async function updateSystemMcp(
     data: { plugin: PluginDetailPluginWire; relations: unknown[] }
   }>(`/admin/plugins/${encodeURIComponent(id)}`)
   const visibility = mapVisibility(current.data.data.plugin.visibility)
+  // Refuse loudly for a non-`mcp` connector descriptor. This form models only
+  // the mcp shape (it rebuilds mcp.json + connector/*.json wholesale), so a
+  // metadata edit of a cli / skill-only / openconnector row would flip
+  // connector.type to `mcp` and fabricate empty mcp files — a silent, permanent
+  // corruption under the 2.0 contract. No such rows exist from current authoring
+  // paths, so this guard costs nothing today and prevents future corruption.
+  const descriptorType =
+    current.data.data.plugin.plugin_json?.connector?.type ?? 'mcp'
+  if (descriptorType !== 'mcp') {
+    throw new ApiError(
+      `Cannot edit a non-mcp connector (descriptor type "${descriptorType}") from the admin console`,
+      400,
+      'unsupported_connector_type'
+    )
+  }
   await mcpApi.patch(
     `/admin/plugins/${encodeURIComponent(id)}`,
     toConnectorUpsert(params, {

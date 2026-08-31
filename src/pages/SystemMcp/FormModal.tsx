@@ -64,19 +64,21 @@ const TRANSPORT_OPTIONS: McpTransport[] = ['streamable-http', 'sse', 'stdio']
 // sentinel means the downstream user should substitute their own token".
 // The ephemeral probe field is deliberately separate and never seeded here.
 // Marketplace-shared sentinel (octo-marketplace/docs/api/mcp-v1.md §0 /
-// §5.1). Since the §5.1 relaxation, user-supplied values are stored
-// verbatim for the owner and blanked to non-owners at read time — the
-// admin no longer needs to substitute the sentinel on submit. The
-// constant is kept because `entriesFromWire` still normalizes it back to
-// "" when reading a legacy record that persisted the sentinel literal.
+// §5.1). Since the §5.1 relaxation, user-supplied values are stored and
+// returned VERBATIM on every read — the unified backend has NO secret scanner
+// and does NOT blank values to non-owners. The only protection is client-side:
+// user-supplied keys render as a fill-in placeholder in the market snippet, so
+// owners must not type real secrets under a shared key. The constant is kept
+// because `entriesFromWire` still normalizes a legacy sentinel literal back to
+// "" when reading an old record.
 const SECRET_PLACEHOLDER_SENTINEL = '__OCTO_SECRET_PLACEHOLDER__'
 
 /** One row in the structured Headers / Env editor. Each row carries a
  *  per-key toggle for the wire's `headers_user_supplied` /
  *  `env_user_supplied` arrays (mcp-v1.md §5.1). `userSupplied=true` means
- *  each consumer fills the value locally; the value stored on the wire is
- *  owner-visible for round-trip but blanked to non-owners by
- *  `detailForCaller` on read. */
+ *  each consumer fills the value locally; the value is stored and returned
+ *  verbatim on read (the backend does NOT blank it), so masking is purely
+ *  client-side — owners must not type real secrets under a shared key. */
 export interface KvEntry {
   key: string
   value: string
