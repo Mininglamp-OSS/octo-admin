@@ -48,6 +48,7 @@ import {
   type McpServerEntryWire,
   type McpTool,
   type McpTransport,
+  type PluginAttachmentWire,
 } from '../../api/mcp'
 import {
   buildProbeRequest,
@@ -279,6 +280,10 @@ interface FormValues {
    *  from the record's quick_start.raw_server; the write seeds the server from
    *  it and overlays the modeled fields on top. */
   rawServer: Record<string, unknown>
+  /** Stored connector-package attachments the form doesn't model, carried
+   *  through read→write so a metadata edit re-emits them and the wholesale
+   *  plugin_json replace doesn't drop them. Empty for a fresh create. */
+  extraAttachments: PluginAttachmentWire[]
   category: string
   /** Canonical icon value written back on submit (object key / emoji / URL).
    *  Seeded from the record's canonical `icon`, replaced only by a fresh
@@ -309,6 +314,7 @@ const EMPTY: FormValues = {
   serverName: '',
   extraServers: {},
   rawServer: {},
+  extraAttachments: [],
   category: '',
   icon: '',
   iconUrl: '',
@@ -341,6 +347,7 @@ function detailToValues(d: McpDetail): FormValues {
     serverName: q.server_name || '',
     extraServers: q.extra_servers ?? {},
     rawServer: q.raw_server ?? {},
+    extraAttachments: q.extra_attachments ?? [],
     category: d.category || '',
     icon: d.icon || '',
     iconUrl: d.icon_url || '',
@@ -539,6 +546,11 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
       // Seed the write from the raw stored server so unmodeled keys
       // (cwd/timeout/disabled/url) survive a metadata edit (review C).
       raw_server: Object.keys(form.rawServer).length ? form.rawServer : undefined,
+      // Re-emit stored attachments the form doesn't model so the wholesale
+      // plugin_json replace keeps them (Gate 2).
+      extra_attachments: form.extraAttachments.length
+        ? form.extraAttachments
+        : undefined,
       category: form.category,
       icon: form.icon.trim() || undefined,
       // Carry the existing publisher back on edit so the backend's

@@ -56,6 +56,11 @@ export interface McpQuickStart {
    *  survive a metadata edit instead of being rebuilt away. The write seeds the
    *  server from this and overlays the modeled form fields on top. */
   raw_server?: Record<string, unknown>
+  /** Stored connector-package attachments this form does not model (any path
+   *  outside MODELED_CONNECTOR_ATTACHMENTS), retained verbatim from read so a
+   *  metadata edit re-emits them and the wholesale plugin_json replace does not
+   *  drop them. Absent/empty for the common connector authored entirely here. */
+  extra_attachments?: PluginAttachmentWire[]
   /** ASCII identifier used as the JSON key in the generated mcpServers
    *  snippet (mcp-v1.md §3, "服务标识"). Present on records created after
    *  migration 03; matches `^[a-z0-9-]{1,64}$`. Empty on legacy rows. */
@@ -138,6 +143,10 @@ export interface CreateMcpParams {
   /** Raw stored modeled-server object, seeded into the write so unmodeled keys
    *  (cwd/timeout/disabled/…) survive. Threaded straight through from read. */
   raw_server?: Record<string, unknown>
+  /** Stored connector-package attachments this form does not model, re-emitted
+   *  verbatim so the wholesale plugin_json replace does not drop them. Threaded
+   *  straight through from read (no-op on a fresh create). */
+  extra_attachments?: PluginAttachmentWire[]
   category: string
   icon?: string
   /** Existing publisher, echoed on update so the backend doesn't blank it.
@@ -190,6 +199,9 @@ export interface PatchMcpParams {
   extra_servers?: Record<string, McpServerEntryWire>
   /** See CreateMcpParams.raw_server — seeds the write so unmodeled keys survive. */
   raw_server?: Record<string, unknown>
+  /** See CreateMcpParams.extra_attachments — stored attachments this form does
+   *  not model, re-emitted so the wholesale plugin_json replace keeps them. */
+  extra_attachments?: PluginAttachmentWire[]
   category?: string
   icon?: string
   /** Existing publisher, echoed on update so the backend doesn't blank it. */
@@ -247,7 +259,7 @@ interface PluginManifestWire {
   examples?: PluginManifestExampleWire[]
 }
 
-interface PluginAttachmentWire {
+export interface PluginAttachmentWire {
   path: string
   content_type: 'raw' | 'storage'
   mime_type?: string
@@ -256,6 +268,19 @@ interface PluginAttachmentWire {
   content_size?: number
   content_hash?: string
 }
+
+/** The connector package attachments this form fully models and rebuilds from
+ *  the current form on every write. Any OTHER stored attachment must be carried
+ *  through read→edit→write verbatim: the backend upsert replaces plugin_json
+ *  wholesale, so a path we neither model nor re-emit would be silently dropped
+ *  on a metadata edit (mirrors the extra_servers/raw_server safeguard). */
+const MODELED_CONNECTOR_ATTACHMENTS = [
+  'mcp.json',
+  'connector/tools.json',
+  'connector/examples.json',
+  'connector/faqs.json',
+  'connector/notes.json',
+] as const
 
 interface PluginPackageWire {
   $schema?: string
@@ -610,6 +635,12 @@ function mapMcpDetail(
   const hasAuth = !!server.headers && AUTHORIZATION_HEADER_KEY in server.headers
   const tools =
     jsonAttachment<McpTool[]>(pkg, 'connector/tools.json') ?? []
+  // Retain any stored attachment this form does not model so a metadata edit
+  // re-emits it verbatim (the upsert replaces plugin_json wholesale).
+  const modeledPaths = new Set<string>(MODELED_CONNECTOR_ATTACHMENTS)
+  const extraAttachments = (pkg?.attachments ?? []).filter(
+    (a) => !modeledPaths.has(a.path)
+  )
   return {
     ...item,
     // Detail is the authoritative tool source; the list projection uses the
@@ -621,6 +652,7 @@ function mapMcpDetail(
       // (review B). Empty when the record carries no mcp.json server.
       server_name: serverName,
       extra_servers: Object.keys(extraServers).length ? extraServers : undefined,
+      extra_attachments: extraAttachments.length ? extraAttachments : undefined,
       // Carry the RAW modeled-server object so the write can seed from it and
       // preserve keys this form doesn't model (cwd/timeout/disabled/url).
       raw_server: server as Record<string, unknown>,
@@ -668,7 +700,7 @@ interface ConnectorUpsertBody {
     plugin_json: {
       $schema: string
       connector: { type: 'mcp'; source: string }
-      attachments: ConnectorAttachmentBody[]
+      attachments: (ConnectorAttachmentBody | PluginAttachmentWire)[]
     }
   }
   relations: []
@@ -776,6 +808,14 @@ function toConnectorUpsert(
       goCanonicalJSON((params.notes ?? []).map((s) => s.trim()).filter(Boolean))
     ),
   ]
+  // Re-emit any stored attachment this form does not model VERBATIM so the
+  // wholesale plugin_json replace doesn't drop it (mirrors extra_servers). Guard
+  // against a stale extra that now collides with a modeled path — the modeled
+  // rebuild always wins.
+  const modeledPaths = new Set<string>(MODELED_CONNECTOR_ATTACHMENTS)
+  const preservedAttachments = (params.extra_attachments ?? []).filter(
+    (a) => !modeledPaths.has(a.path)
+  )
   return {
     plugin: {
       ...(opts.pluginId ? { plugin_id: opts.pluginId } : {}),
@@ -799,7 +839,7 @@ function toConnectorUpsert(
         // same identifier used for manifest.name and the mcpServers key, so the
         // three never disagree (review P1-A).
         connector: { type: 'mcp', source: `connector.${mapKey}` },
-        attachments,
+        attachments: [...attachments, ...preservedAttachments],
       },
     },
     relations: [],

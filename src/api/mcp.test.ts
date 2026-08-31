@@ -894,4 +894,69 @@ describe('connector metadata edit — preserves unmodeled server keys (review fi
     expect(local.timeout).toBe(60)
     expect(local.command).toBe('run')
   })
+
+  it('re-emits a stored attachment the form does not model instead of dropping it on a metadata edit', async () => {
+    const wire = connectorDetailWireWith({
+      plugin_id: 'mcp-15',
+      plugin_name: 'Local',
+      plugin_type: 'connector',
+      manifest_json: { name: 'local', description: '', labels: [] },
+      category_id: 'c-dev',
+      icon: '',
+      visibility: 'system',
+      tags: [],
+      plugin_json: {
+        connector: { type: 'mcp', source: 'connector.local' },
+        attachments: [
+          {
+            path: 'mcp.json',
+            content_type: 'raw',
+            raw_content: JSON.stringify({
+              mcpServers: { local: { type: 'stdio', command: 'run' } },
+            }),
+          },
+          // An attachment the form neither reads nor rebuilds — the wholesale
+          // plugin_json replace would drop it unless it is carried through.
+          {
+            path: 'connector/custom.json',
+            content_type: 'raw',
+            raw_content: '{"kept":true}',
+          },
+        ],
+      },
+    })
+    mockGet.mockImplementation((url: string) =>
+      url.includes('plugin_categories')
+        ? Promise.resolve(CONNECTOR_CATEGORIES)
+        : Promise.resolve(wire)
+    )
+    mockPatch.mockResolvedValue({ data: { data: { plugin: { plugin_id: 'mcp-15' } } } })
+
+    const detail = await getSystemMcp('mcp-15')
+    // FormModal threads the read-side extra_attachments back on write.
+    expect(detail.quick_start.extra_attachments).toEqual([
+      { path: 'connector/custom.json', content_type: 'raw', raw_content: '{"kept":true}' },
+    ])
+    await updateSystemMcp('mcp-15', {
+      name: detail.name,
+      slug: detail.quick_start.slug,
+      server_name: detail.quick_start.server_name,
+      raw_server: detail.quick_start.raw_server,
+      extra_attachments: detail.quick_start.extra_attachments,
+      category: 'dev',
+      transport: 'stdio',
+      command: 'run',
+      tools: [],
+    })
+
+    const written = (mockPatch.mock.calls[0][1] as UpsertBody).plugin.plugin_json
+      .attachments
+    const paths = written.map((a) => a.path)
+    // The unmodeled attachment survives alongside the five modeled files.
+    expect(paths).toContain('connector/custom.json')
+    expect(paths).toContain('mcp.json')
+    const custom = written.find((a) => a.path === 'connector/custom.json')
+    expect(custom?.raw_content).toBe('{"kept":true}')
+  })
 })
+
