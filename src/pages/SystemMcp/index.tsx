@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Button, Input, Space as AntSpace, Table, Tag, message } from 'antd'
+import { Button, Input, Space as AntSpace, Table, Tabs, Tag, message } from 'antd'
 import {
   PlusOutlined,
   ReloadOutlined,
@@ -17,6 +17,9 @@ import { hasManagerCapability } from '../../auth/capabilities'
 import { useAuthStore } from '../../store/auth'
 import McpDetailDrawer from './DetailDrawer'
 import McpFormModal from './FormModal'
+import CategoryTab from './CategoryTab'
+import VisibilityTag from '../../components/VisibilityTag'
+import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
 import './systemMcp.css'
 
 const PAGE_SIZE = 20
@@ -30,6 +33,7 @@ const PAGE_SIZE = 20
  */
 export default function SystemMcp() {
   const { t } = useTranslation(['systemMcp', 'common'])
+  const { nameOf } = useSpaceNameMap()
   const canWrite = useAuthStore((s) =>
     hasManagerCapability(s.managerCapabilities, 'mcp.write')
   )
@@ -116,6 +120,10 @@ export default function SystemMcp() {
                 slogan: updated.slogan,
                 category: updated.category,
                 icon: updated.icon,
+                icon_url: updated.icon_url,
+                publisher: updated.publisher,
+                scope: updated.scope,
+                space_id: updated.space_id,
                 tags: updated.tags,
                 tool_count: updated.tool_count,
                 creator_name: updated.creator_name,
@@ -142,11 +150,11 @@ export default function SystemMcp() {
         render: (name: string, r) => (
           <div className="mcp-cell-name">
             <span className="mcp-cell-name__icon">
-              {r.icon &&
-              (r.icon.startsWith('http') || r.icon.startsWith('data:')) ? (
-                <img src={r.icon} alt={name} />
+              {r.icon_url &&
+              (r.icon_url.startsWith('http') || r.icon_url.startsWith('data:')) ? (
+                <img src={r.icon_url} alt={name} />
               ) : (
-                r.icon || '🧩'
+                r.icon_url || '🧩'
               )}
             </span>
             <div className="mcp-cell-name__text">
@@ -197,6 +205,20 @@ export default function SystemMcp() {
         render: (v: number) => <span className="mono">{v}</span>,
       },
       {
+        title: t('table.visibility', { ns: 'common' }),
+        dataIndex: 'scope',
+        key: 'scope',
+        width: 110,
+        render: (scope: string) => <VisibilityTag scope={scope} />,
+      },
+      {
+        title: t('table.space', { ns: 'common' }),
+        dataIndex: 'space_id',
+        key: 'space_id',
+        width: 160,
+        render: (spaceId?: string) => nameOf(spaceId),
+      },
+      {
         title: t('table.creator'),
         dataIndex: 'creator_name',
         key: 'creator_name',
@@ -205,7 +227,7 @@ export default function SystemMcp() {
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [t]
+    [t, nameOf]
   )
 
   return (
@@ -213,47 +235,66 @@ export default function SystemMcp() {
       <h1 className="page-title">{t('pageTitle')}</h1>
       <p className="page-subtitle">{t('pageDesc')}</p>
 
-      <div className="toolbar">
-        <Input
-          allowClear
-          prefix={<SearchOutlined />}
-          placeholder={t('searchPlaceholder')}
-          value={pendingKeyword}
-          onChange={(e) => setPendingKeyword(e.target.value)}
-          onPressEnter={handleSearch}
-          onBlur={handleSearch}
-          style={{ width: 280 }}
-        />
-        <div className="toolbar-spacer" />
-        <Button
-          icon={<ReloadOutlined />}
-          onClick={() => load(page, keyword)}
-          loading={loading}
-        />
-        {canWrite && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-            {t('create')}
-          </Button>
-        )}
-      </div>
+      <Tabs
+        defaultActiveKey="mcps"
+        items={[
+          {
+            key: 'mcps',
+            label: t('tab.mcps'),
+            children: (
+              <>
+                <div className="toolbar">
+                  <Input
+                    allowClear
+                    prefix={<SearchOutlined />}
+                    placeholder={t('searchPlaceholder')}
+                    value={pendingKeyword}
+                    onChange={(e) => setPendingKeyword(e.target.value)}
+                    onPressEnter={handleSearch}
+                    onBlur={handleSearch}
+                    style={{ width: 280 }}
+                  />
+                  <div className="toolbar-spacer" />
+                  <Button
+                    icon={<ReloadOutlined />}
+                    onClick={() => load(page, keyword)}
+                    loading={loading}
+                  />
+                  {canWrite && (
+                    <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+                      {t('create')}
+                    </Button>
+                  )}
+                </div>
 
-      <Table<McpListItem>
-        rowKey="mcp_id"
-        loading={loading}
-        columns={columns}
-        dataSource={rows}
-        locale={{ emptyText: t('empty') }}
-        onRow={(r) => ({
-          onClick: () => openDetail(r.mcp_id),
-          style: { cursor: 'pointer' },
-        })}
-        pagination={{
-          current: page,
-          pageSize: PAGE_SIZE,
-          total,
-          showSizeChanger: false,
-          onChange: (p) => load(p, keyword),
-        }}
+                <Table<McpListItem>
+                  rowKey="mcp_id"
+                  loading={loading}
+                  columns={columns}
+                  dataSource={rows}
+                  scroll={{ x: 'max-content' }}
+                  locale={{ emptyText: t('empty') }}
+                  onRow={(r) => ({
+                    onClick: () => openDetail(r.mcp_id),
+                    style: { cursor: 'pointer' },
+                  })}
+                  pagination={{
+                    current: page,
+                    pageSize: PAGE_SIZE,
+                    total,
+                    showSizeChanger: false,
+                    onChange: (p) => load(p, keyword),
+                  }}
+                />
+              </>
+            ),
+          },
+          {
+            key: 'categories',
+            label: t('tab.categories'),
+            children: <CategoryTab />,
+          },
+        ]}
       />
 
       <McpDetailDrawer

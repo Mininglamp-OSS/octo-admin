@@ -8,40 +8,62 @@
  * + endpoint wrappers. Same pattern as ./mcp.ts and ./skill.ts.
  *
  * Wire contract: marketplace wraps every success payload as `{data: T}` (lists
- * add `pagination`) and every field is snake_case. Types here mirror the wire
- * exactly — page code reads snake_case directly.
+ * add `pagination`) and every field is snake_case. The Expert/Squad list/get/
+ * delete reads now target octo-marketplace's UNIFIED plugin surface
+ * (`/admin/plugins*`, plugin_type=expert / expert_team). The flat snake_case
+ * ExpertDetail/SquadDetail shapes the pages consume are mapped from the plugin
+ * wire model (manifest_json display document + plugin_json package of AGENTS.md
+ * / mcp.json + expert_skill / expert_team_expert relations) in the translation
+ * layer below, so the consuming pages need no change. Same pattern as ./skill.ts
+ * and ./mcp.ts.
  *
- * Creation model (see plan async-honking-yao): the admin never uploads the
- * container zip. The browser unzips it (parseContainer.ts), presigns + PUTs
- * each bundled skill package via `uploadExpertSkill`, then submits a flat JSON
- * manifest to create/patch. Mirrors octo-cli `marketplace expert create`.
+ * Creation model: the admin uploads the WHOLE container zip to the server-side
+ * importer (`POST /admin/plugins/import`, multipart), which parses the container
+ * and transactionally mints the expert/team plugin, its bundled skills as skill
+ * plugins, and the relations wiring them (see importExpertContainer). The old
+ * client-side unzip + per-skill presign + flat `/admin/experts` create path is
+ * gone; parseContainer.ts is retained only for pre-upload preview/validation.
+ *
+ * Edit / re-upload is the same server-side container flow targeting an EXISTING
+ * plugin: the admin re-uploads the WHOLE zip to
+ * `POST /admin/plugins/container_reupload/{id}` (multipart), which rebuilds the
+ * plugin in place — preserving plugin_id / visibility / Space / owner while
+ * re-parsing the zip and swapping the embedded skills/members (see
+ * reuploadExpertContainer / reuploadSquadContainer). The old client-side unzip +
+ * per-skill presign + flat `/admin/experts` / `/admin/squads` PATCH path is gone.
+ * SKILL.md preview is loaded on demand by the drawers from the admin
+ * `GET /admin/plugins/{id}/skill_md` route (see detailParts.loadSkillMd), keyed
+ * by the resolved skill plugin id, falling back to the inline SKILL.md
+ * (SkillRef.skill_md) when the id is absent or the endpoint 404s. The
+ * ExpertMarket surface no longer calls any legacy
+ * `/admin/experts|squads|expert_categories|expert_tags|expert_skill_uploads`
+ * route — everything goes through `/admin/plugins*`.
  */
 
-import { marketplaceApi as expertApi, putPresignedFile } from './marketplace'
+import { marketplaceApi as expertApi } from './marketplace'
+import { ApiError } from './index'
 
 // ─── Shared types (mirror octo-marketplace internal/model/expert_dto.go) ───
 
 export type ExpertKind = 'agent' | 'squad'
-export type ExpertVisibility = 'public' | 'private' | 'system'
+export type ExpertVisibility = 'system' | 'space' | 'private'
 
 /** Read projection of a skill on an expert/squad (never echoes bytes). */
 export interface SkillRef {
   name: string
+  /** The source skill plugin's id, when resolved from an expert_skill relation.
+   *  Lets the drawer fetch the authoritative SKILL.md from
+   *  `GET /admin/plugins/{id}/skill_md` instead of the inline stub. */
+  skill_plugin_id?: string
   has_content?: boolean
   can_download?: boolean
   file_name?: string
   file_size?: number
   files?: string[]
-}
-
-/** Write shape referenced in create/patch `skills[]`. A name-only entry keeps
- *  (on patch) or omits (on create) the stored package; an `upload_object_key`
- *  binds a freshly presigned-uploaded package. */
-export interface SkillWrite {
-  name: string
-  upload_object_key?: string
-  file_name?: string
-  file_size?: number
+  /** Raw SKILL.md text of the source skill plugin, when present. Carried on the
+   *  detail read (from the resolved skill plugin's SKILL.md attachment) so the
+   *  SKILL.md viewer renders client-side with no extra network call. */
+  skill_md?: string
 }
 
 // ─── Expert (single agent) ─────────────────────────────────────────────────
@@ -54,6 +76,13 @@ export interface ExpertListItem {
   category: string
   tags: string[]
   visibility: ExpertVisibility
+  /** Raw unified-plugin visibility (`system`/`space`/`private`) as it
+   *  arrives on the wire, before `mapVisibility` collapses it. Drives the
+   *  admin list "可见范围" column so Space-scoped rows stay distinguishable. */
+  scope: string
+  /** Owning Space id (empty for public/system). Drives the admin list "所属空间"
+   *  column, which resolves it to a Space name. */
+  space_id?: string
   creator_name: string
   created_by_type?: string
   skill_count?: number
@@ -65,30 +94,6 @@ export interface ExpertDetail extends ExpertListItem {
   skills: SkillRef[]
   created_at: string
   updated_at: string
-}
-
-/** Flat create manifest (octo-cli parity). Visibility is stamped to `system`
- *  by the admin endpoint and short_name is server-derived from name, so
- *  callers omit both (the strict decoder rejects unknown fields). */
-export interface CreateExpertParams {
-  name: string
-  summary: string
-  category: string
-  tags?: string[]
-  instruction: string
-  mcp_config: string
-  skills: SkillWrite[]
-}
-
-/** Partial update — metadata only, or a full spec replacement. */
-export interface PatchExpertParams {
-  name?: string
-  summary?: string
-  category?: string
-  tags?: string[]
-  instruction?: string
-  mcp_config?: string
-  skills?: SkillWrite[]
 }
 
 // ─── Squad (expert team) ────────────────────────────────────────────────────
@@ -108,16 +113,6 @@ export interface SquadMember {
   skills: SkillRef[]
 }
 
-export interface SquadMemberWrite {
-  member_key: string
-  name: string
-  role: string
-  is_leader: boolean
-  instruction: string
-  mcp_config: string
-  skills: SkillWrite[]
-}
-
 export interface SquadListItem {
   squad_id: string
   short_name: string
@@ -126,6 +121,10 @@ export interface SquadListItem {
   category: string
   tags: string[]
   visibility: ExpertVisibility
+  /** Raw unified-plugin visibility (see ExpertListItem.scope). */
+  scope: string
+  /** Owning Space id (see ExpertListItem.space_id). */
+  space_id?: string
   creator_name: string
   created_by_type?: string
   member_count?: number
@@ -141,30 +140,6 @@ export interface SquadDetail extends SquadListItem {
   updated_at: string
 }
 
-export interface CreateSquadParams {
-  name: string
-  summary: string
-  category: string
-  tags?: string[]
-  leader: string
-  strategies?: string[]
-  dependencies?: SquadDependencies
-  permission?: string
-  members: SquadMemberWrite[]
-}
-
-export interface PatchSquadParams {
-  name?: string
-  summary?: string
-  category?: string
-  tags?: string[]
-  leader?: string
-  strategies?: string[]
-  dependencies?: SquadDependencies
-  permission?: string
-  members?: SquadMemberWrite[]
-}
-
 // ─── Categories / tags ──────────────────────────────────────────────────────
 
 export interface ExpertCategory {
@@ -173,11 +148,11 @@ export interface ExpertCategory {
   icon_key?: string
   sort_order: number
   count?: number
-}
-
-export interface ExpertTag {
-  name: string
-  count: number
+  /** The row's stored plugin_types, carried through read→edit→write so a rename
+   *  from this tab echoes them back instead of narrowing a shared category to
+   *  the expert-only set. Absent on legacy rows → update falls back to the
+   *  expert default. */
+  plugin_types?: string[]
 }
 
 // ─── List params + response projection ──────────────────────────────────────
@@ -199,133 +174,656 @@ interface ListEnvelope<T> {
   pagination?: { total: number; page: number; page_size: number }
 }
 
-function buildListQuery(params: ListExpertParams): Record<string, unknown> {
-  const query: Record<string, unknown> = {}
-  const keyword = params.keyword?.trim()
-  if (keyword) query.keyword = keyword
-  query.category = params.category ?? 'all'
-  // The admin list endpoints page by number (page/page_size), not
-  // limit/offset — same translation as ./skill.ts.
-  const pageSize = params.limit && params.limit > 0 ? params.limit : 20
-  query.page_size = pageSize
-  query.page =
-    params.offset && params.offset > 0 ? Math.floor(params.offset / pageSize) + 1 : 1
-  return query
+// ─── Unified plugin translation layer (internal) ───────────────────────────
+//
+// The Expert (plugin_type=expert) and Squad (plugin_type=expert_team) catalogs
+// live on octo-marketplace's UNIFIED plugin surface (`/admin/plugins*`). The
+// flat ExpertDetail/SquadDetail shapes the pages consume are reshaped here from
+// the plugin wire model (manifest_json display document + plugin_json package of
+// AGENTS.md / mcp.json + expert_skill / expert_team_expert relations), mirroring
+// how install.go reconstructs the same graph server-side. Deriving a skill's
+// name or a member's spec requires fetching the relation target plugin (the
+// relation itself carries only ids + wiring), so detail loads fan out one GET
+// per related skill/member — the same N+1 the server's install path walks.
+
+type PluginTypeWire = 'expert' | 'expert_team'
+
+interface PluginManifestWire {
+  $schema?: string
+  plugin_name?: string
+  plugin_type?: string
+  name?: string
+  description?: string
+  labels?: string[]
+  examples?: { title: string; input: string }[]
+}
+
+interface PluginAttachmentWire {
+  path: string
+  content_type: 'raw' | 'storage'
+  mime_type?: string
+  raw_content?: string
+  storage_uri?: string
+  content_size?: number
+  content_hash?: string
+}
+
+interface PluginPackageWire {
+  $schema?: string
+  attachments?: PluginAttachmentWire[]
+}
+
+interface PluginListItemWire {
+  plugin_id: string
+  plugin_name: string
+  plugin_type: string
+  manifest_json?: PluginManifestWire
+  tags?: unknown
+  category_id?: string
+  icon?: string
+  icon_url?: string
+  publisher?: string
+  creator_name?: string
+  created_by_type?: string
+  visibility?: string
+  space_id?: string
+  member_count?: number
+  created_at?: string
+  updated_at?: string
+}
+
+interface PluginDetailPluginWire extends PluginListItemWire {
+  plugin_json?: PluginPackageWire
+}
+
+interface RelationWire {
+  relation_id?: string
+  source_plugin_id?: string
+  target_plugin_id: string
+  relation_type: string
+  sort_order?: number
+  data?: Record<string, unknown>
+}
+
+interface PluginCategoryWire {
+  category_id: string
+  name: string
+  icon_key?: string
+  plugin_types?: string[]
+  sort_order?: number
+  plugin_count?: number
+}
+
+interface ExpertCategoryMaps {
+  idToName: Map<string, string>
+  nameToId: Map<string, string>
+}
+
+/** GET /admin/plugin_categories?plugin_type=… → id↔name maps (the unified wire
+ *  keys categories by UUID; ExpertListItem.category is the display name). */
+async function fetchExpertCategoryMaps(
+  pluginType: PluginTypeWire
+): Promise<ExpertCategoryMaps> {
+  const resp = await expertApi.get<{ data: PluginCategoryWire[] }>(
+    '/admin/plugin_categories',
+    { params: { plugin_type: pluginType } }
+  )
+  const idToName = new Map<string, string>()
+  const nameToId = new Map<string, string>()
+  for (const c of resp.data.data ?? []) {
+    idToName.set(c.category_id, c.name)
+    nameToId.set(c.name, c.category_id)
+  }
+  return { idToName, nameToId }
+}
+
+/** Safely coerce a tags column that may arrive as string[] or JSON string. */
+function normalizeTagsList(tags: unknown): string[] {
+  if (Array.isArray(tags))
+    return tags.filter((t): t is string => typeof t === 'string')
+  if (typeof tags === 'string') {
+    try {
+      const parsed = JSON.parse(tags)
+      if (Array.isArray(parsed))
+        return parsed.filter((t): t is string => typeof t === 'string')
+    } catch {
+      /* not JSON — treat as a single tag */
+    }
+    return tags.trim() ? [tags.trim()] : []
+  }
+  return []
+}
+
+/** raw_content of one inline package attachment, or undefined. */
+function rawAttachment(
+  pkg: PluginPackageWire | undefined,
+  path: string
+): string | undefined {
+  const hit = (pkg?.attachments ?? []).find(
+    (a) => a.path === path && a.content_type === 'raw'
+  )
+  return hit?.raw_content
+}
+
+/** Parsed JSON body of one inline attachment; undefined on miss/parse error. */
+function jsonAttachment<T>(
+  pkg: PluginPackageWire | undefined,
+  path: string
+): T | undefined {
+  const raw = rawAttachment(pkg, path)
+  if (raw === undefined) return undefined
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    return undefined
+  }
+}
+
+/** Unified plugin visibility → ExpertVisibility. The wire now emits only
+ *  `system` | `space` | `private`; legacy `public` was folded into `system` by
+ *  the backend migration, and any unknown value defaults to the global scope. */
+function mapVisibility(v: string | undefined): ExpertVisibility {
+  if (v === 'space') return 'space'
+  if (v === 'private') return 'private'
+  return 'system'
+}
+
+function mapPluginToExpertListItem(
+  raw: PluginListItemWire,
+  idToName: Map<string, string>
+): ExpertListItem {
+  const manifest = raw.manifest_json ?? {}
+  return {
+    expert_id: raw.plugin_id,
+    // short_name is legacy server-derived; the pages fall back to name.slice(0,2)
+    // when it is empty, so an empty value renders identically.
+    short_name: '',
+    name: raw.plugin_name || manifest.name || '',
+    summary: manifest.description || '',
+    category: (raw.category_id && idToName.get(raw.category_id)) || '',
+    tags: normalizeTagsList(raw.tags),
+    visibility: mapVisibility(raw.visibility),
+    scope: raw.visibility ?? 'system',
+    space_id: raw.space_id,
+    creator_name: raw.creator_name || raw.publisher || '',
+    created_by_type: raw.created_by_type,
+    // The list projection carries no expert_skill relations, so the per-row
+    // skill count is unavailable here (the detail load fills it in).
+  }
+}
+
+function mapPluginToSquadListItem(
+  raw: PluginListItemWire,
+  idToName: Map<string, string>
+): SquadListItem {
+  const manifest = raw.manifest_json ?? {}
+  return {
+    squad_id: raw.plugin_id,
+    short_name: '',
+    name: raw.plugin_name || manifest.name || '',
+    summary: manifest.description || '',
+    category: (raw.category_id && idToName.get(raw.category_id)) || '',
+    tags: normalizeTagsList(raw.tags),
+    visibility: mapVisibility(raw.visibility),
+    scope: raw.visibility ?? 'system',
+    space_id: raw.space_id,
+    creator_name: raw.creator_name || raw.publisher || '',
+    created_by_type: raw.created_by_type,
+    // The list wire projects a typed member_count for expert_team rows.
+    member_count: raw.member_count,
+  }
+}
+
+/** GET /admin/plugins/{id} → { plugin, relations }. */
+async function fetchPluginDetail(
+  id: string,
+  includeRelations = true
+): Promise<{ plugin: PluginDetailPluginWire; relations: RelationWire[] }> {
+  const resp = await expertApi.get<{
+    data: { plugin: PluginDetailPluginWire; relations: RelationWire[] }
+  }>(`/admin/plugins/${encodeURIComponent(id)}`, {
+    params: { include_relations: includeRelations },
+  })
+  return {
+    plugin: resp.data.data.plugin,
+    relations: resp.data.data.relations ?? [],
+  }
+}
+
+/** A skill Plugin → SkillRef. has_content mirrors the tree-shaped skill package
+ *  carrying a non-empty SKILL.md, which gates the SKILL.md viewer link; the same
+ *  raw SKILL.md text is carried on `skill_md` so the viewer renders it
+ *  client-side with no extra fetch. */
+function skillRefFromPlugin(plugin: PluginDetailPluginWire): SkillRef {
+  const md = rawAttachment(plugin.plugin_json, 'SKILL.md')
+  return {
+    name: plugin.plugin_name || plugin.manifest_json?.name || '',
+    skill_plugin_id: plugin.plugin_id,
+    has_content: (md ?? '') !== '',
+    skill_md: md,
+  }
+}
+
+/** Resolve expert_skill relations (sorted by sort_order) into SkillRefs by
+ *  fetching each target skill plugin for its name/content. Each relation is
+ *  resolved INDEPENDENTLY: a single un-resolvable target (a soft-deleted skill
+ *  whose relation still points at it → 404, or a transient 500) is dropped
+ *  rather than rejecting the whole load, so the drawer still opens with the
+ *  skills that do resolve. */
+async function resolveSkillRefs(relations: RelationWire[]): Promise<SkillRef[]> {
+  const rels = relations
+    .filter((r) => r.relation_type === 'expert_skill')
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+  const settled = await Promise.allSettled(
+    rels.map((r) => fetchPluginDetail(r.target_plugin_id, false))
+  )
+  const out: SkillRef[] = []
+  for (const s of settled) {
+    if (s.status === 'fulfilled') out.push(skillRefFromPlugin(s.value.plugin))
+  }
+  return out
+}
+
+interface ParsedTeamDoc {
+  leader: string
+  strategies: string[]
+  dependencies: SquadDependencies
+  permission: string
+}
+
+/** Recover the structured squad fields the unified wire only stores as rendered
+ *  markdown in the team package's AGENTS.md (plugindoc.TeamAgentsMarkdown). The
+ *  renderer is deterministic, so this parses its exact section layout back out;
+ *  it is best-effort (a permission body containing a `### ` heading would be
+ *  truncated) and any unrecovered field simply hides its detail section. */
+function parseTeamAgentsMarkdown(md: string): ParsedTeamDoc {
+  const strategies: string[] = []
+  const blocking: string[] = []
+  const recommended: string[] = []
+  const permissionLines: string[] = []
+  let leader = ''
+  let section: 'none' | 'strategies' | 'deps' | 'permission' = 'none'
+  for (const line of (md || '').split('\n')) {
+    const trimmed = line.trim()
+    if (trimmed.startsWith('### ')) {
+      const heading = trimmed.slice(4).trim()
+      section =
+        heading === '策略'
+          ? 'strategies'
+          : heading === '依赖'
+            ? 'deps'
+            : heading === '权限'
+              ? 'permission'
+              : 'none'
+      continue
+    }
+    if (trimmed.startsWith('## ') || trimmed.startsWith('# ')) {
+      section = 'none'
+      continue
+    }
+    const leaderMatch = /^-\s*Leader:\s*(.+)$/.exec(trimmed)
+    if (leaderMatch) {
+      leader = leaderMatch[1].trim()
+      continue
+    }
+    if (section === 'strategies') {
+      const m = /^\d+\.\s+(.+)$/.exec(trimmed)
+      if (m) strategies.push(m[1].trim())
+    } else if (section === 'deps') {
+      const b = /^-\s*阻塞:\s*(.+)$/.exec(trimmed)
+      const r = /^-\s*推荐:\s*(.+)$/.exec(trimmed)
+      if (b) blocking.push(b[1].trim())
+      else if (r) recommended.push(r[1].trim())
+    } else if (section === 'permission') {
+      if (trimmed) permissionLines.push(trimmed)
+    }
+  }
+  return {
+    leader,
+    strategies,
+    dependencies: { blocking, recommended },
+    permission: permissionLines.join('\n'),
+  }
+}
+
+/** One expert_team_expert relation + its target expert plugin → SquadMember.
+ *  member_key/role/is_leader are authoritative from the relation data, falling
+ *  back to the member package's expert/context.json snapshot (mirrors
+ *  install.go squadMemberFromPlugin). */
+async function resolveSquadMember(rel: RelationWire): Promise<SquadMember> {
+  const { plugin, relations } = await fetchPluginDetail(rel.target_plugin_id, true)
+  const data = rel.data ?? {}
+  let memberKey = typeof data.member_key === 'string' ? data.member_key : ''
+  let role = typeof data.role === 'string' ? data.role : ''
+  let isLeader = data.is_leader === true
+  if (!memberKey && !role) {
+    const ctx = jsonAttachment<{
+      member_key?: string
+      role?: string
+      is_leader?: boolean
+    }>(plugin.plugin_json, 'expert/context.json')
+    if (ctx) {
+      memberKey = ctx.member_key ?? ''
+      role = ctx.role ?? ''
+      isLeader = ctx.is_leader === true
+    }
+  }
+  const skills = await resolveSkillRefs(relations)
+  return {
+    member_key: memberKey,
+    name: plugin.plugin_name || plugin.manifest_json?.name || '',
+    role,
+    is_leader: isLeader,
+    instruction: rawAttachment(plugin.plugin_json, 'AGENTS.md') ?? '',
+    mcp_config: rawAttachment(plugin.plugin_json, 'mcp.json') ?? '{"mcpServers":{}}',
+    skills,
+  }
 }
 
 // ─── Experts ────────────────────────────────────────────────────────────────
 
+/** GET /admin/plugins?plugin_type=expert — list expert plugins (the unified
+ *  home of the legacy system expert catalog). */
 export async function listSystemExperts(
   params: ListExpertParams = {}
 ): Promise<ListResponse<ExpertListItem>> {
-  const resp = await expertApi.get<ListEnvelope<ExpertListItem>>('/admin/experts', {
-    params: buildListQuery(params),
+  const { idToName } = await fetchExpertCategoryMaps('expert')
+  const query: Record<string, unknown> = { plugin_type: 'expert' }
+  const keyword = params.keyword?.trim()
+  if (keyword) query.q = keyword
+  const pageSize = params.limit && params.limit > 0 ? params.limit : 20
+  query.page_size = pageSize
+  query.page =
+    params.offset && params.offset > 0 ? Math.floor(params.offset / pageSize) + 1 : 1
+  const resp = await expertApi.get<ListEnvelope<PluginListItemWire>>('/admin/plugins', {
+    params: query,
   })
   return {
-    items: resp.data.data ?? [],
+    items: (resp.data.data ?? []).map((raw) =>
+      mapPluginToExpertListItem(raw, idToName)
+    ),
     total: resp.data.pagination?.total ?? 0,
   }
 }
 
+/** GET /admin/plugins/{id} — full expert detail, with skills resolved from the
+ *  expert_skill relation targets. */
 export async function getSystemExpert(id: string): Promise<ExpertDetail> {
-  const resp = await expertApi.get<{ data: ExpertDetail }>(
-    `/admin/experts/${encodeURIComponent(id)}`
-  )
-  return resp.data.data
+  const [{ plugin, relations }, { idToName }] = await Promise.all([
+    fetchPluginDetail(id, true),
+    fetchExpertCategoryMaps('expert'),
+  ])
+  const base = mapPluginToExpertListItem(plugin, idToName)
+  const skills = await resolveSkillRefs(relations)
+  return {
+    ...base,
+    skill_count: skills.length,
+    instruction: rawAttachment(plugin.plugin_json, 'AGENTS.md') ?? '',
+    mcp_config: rawAttachment(plugin.plugin_json, 'mcp.json') ?? '{"mcpServers":{}}',
+    skills,
+    created_at: plugin.created_at ?? '',
+    updated_at: plugin.updated_at ?? '',
+  }
 }
 
-export async function createSystemExpert(
-  params: CreateExpertParams
-): Promise<ExpertDetail> {
-  const resp = await expertApi.post<{ data: ExpertDetail }>('/admin/experts', params)
-  return resp.data.data
-}
-
-export async function patchSystemExpert(
-  id: string,
-  params: PatchExpertParams
-): Promise<ExpertDetail> {
-  const resp = await expertApi.patch<{ data: ExpertDetail }>(
-    `/admin/experts/${encodeURIComponent(id)}`,
-    params
-  )
-  return resp.data.data
-}
-
+/** DELETE /admin/plugins/{id} — soft delete of an expert plugin. */
 export async function deleteSystemExpert(id: string): Promise<void> {
-  await expertApi.delete(`/admin/experts/${encodeURIComponent(id)}`)
+  await expertApi.delete(`/admin/plugins/${encodeURIComponent(id)}`)
 }
 
-/** Stored SKILL.md text of the expert's skill at `index`. */
-export async function getSystemExpertSkillMd(id: string, index: number): Promise<string> {
-  const resp = await expertApi.get<{ data: { content: string } }>(
-    `/admin/experts/${encodeURIComponent(id)}/skill_md`,
-    { params: { i: index } }
-  )
-  return resp.data.data.content
+/** Re-upload an EXISTING expert's WHOLE container zip to
+ *  `POST /admin/plugins/container_reupload/{id}` (multipart `file` + optional
+ *  `category_id`). The server rebuilds the plugin in place — preserving
+ *  plugin_id / visibility / Space / owner — while re-parsing the zip and swapping
+ *  its bundled skills. `categoryName` is resolved to a unified plugin category id
+ *  the same way importExpertContainer does; callers refresh via getSystemExpert. */
+export async function reuploadExpertContainer(
+  id: string,
+  file: File | Blob,
+  categoryName?: string,
+  opts: { fileName?: string; signal?: AbortSignal } = {}
+): Promise<void> {
+  await reuploadContainer('expert', id, file, categoryName, opts)
 }
 
 // ─── Squads ───────────────────────────────────────────────────────────────
 
+/** GET /admin/plugins?plugin_type=expert_team — list squad (expert_team)
+ *  plugins. */
 export async function listSystemSquads(
   params: ListExpertParams = {}
 ): Promise<ListResponse<SquadListItem>> {
-  const resp = await expertApi.get<ListEnvelope<SquadListItem>>('/admin/squads', {
-    params: buildListQuery(params),
+  const { idToName } = await fetchExpertCategoryMaps('expert_team')
+  const query: Record<string, unknown> = { plugin_type: 'expert_team' }
+  const keyword = params.keyword?.trim()
+  if (keyword) query.q = keyword
+  const pageSize = params.limit && params.limit > 0 ? params.limit : 20
+  query.page_size = pageSize
+  query.page =
+    params.offset && params.offset > 0 ? Math.floor(params.offset / pageSize) + 1 : 1
+  const resp = await expertApi.get<ListEnvelope<PluginListItemWire>>('/admin/plugins', {
+    params: query,
   })
   return {
-    items: resp.data.data ?? [],
+    items: (resp.data.data ?? []).map((raw) =>
+      mapPluginToSquadListItem(raw, idToName)
+    ),
     total: resp.data.pagination?.total ?? 0,
   }
 }
 
+/** GET /admin/plugins/{id} — full squad detail. Members come from the
+ *  expert_team_expert relation targets; leader/strategies/dependencies/
+ *  permission are recovered from the team package AGENTS.md. */
 export async function getSystemSquad(id: string): Promise<SquadDetail> {
-  const resp = await expertApi.get<{ data: SquadDetail }>(
-    `/admin/squads/${encodeURIComponent(id)}`
+  const [{ plugin, relations }, { idToName }] = await Promise.all([
+    fetchPluginDetail(id, true),
+    fetchExpertCategoryMaps('expert_team'),
+  ])
+  const base = mapPluginToSquadListItem(plugin, idToName)
+  const memberRels = relations
+    .filter((r) => r.relation_type === 'expert_team_expert')
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+  // Resolve each member INDEPENDENTLY: one un-resolvable member relation (a
+  // soft-deleted member whose relation still points at it → 404, or a transient
+  // 500) is dropped rather than failing the whole squad load, so the drawer
+  // still opens (and the squad stays deletable) with the members that resolve.
+  const settled = await Promise.allSettled(memberRels.map(resolveSquadMember))
+  const members = settled
+    .filter(
+      (s): s is PromiseFulfilledResult<SquadMember> => s.status === 'fulfilled'
+    )
+    .map((s) => s.value)
+  const doc = parseTeamAgentsMarkdown(
+    rawAttachment(plugin.plugin_json, 'AGENTS.md') ?? ''
   )
-  return resp.data.data
+  const leaderMember = members.find((m) => m.is_leader)
+  return {
+    ...base,
+    member_count: members.length,
+    leader: doc.leader || leaderMember?.name || '',
+    strategies: doc.strategies,
+    dependencies: doc.dependencies,
+    permission: doc.permission,
+    members,
+    created_at: plugin.created_at ?? '',
+    updated_at: plugin.updated_at ?? '',
+  }
 }
 
-export async function createSystemSquad(
-  params: CreateSquadParams
-): Promise<SquadDetail> {
-  const resp = await expertApi.post<{ data: SquadDetail }>('/admin/squads', params)
-  return resp.data.data
-}
-
-export async function patchSystemSquad(
-  id: string,
-  params: PatchSquadParams
-): Promise<SquadDetail> {
-  const resp = await expertApi.patch<{ data: SquadDetail }>(
-    `/admin/squads/${encodeURIComponent(id)}`,
-    params
-  )
-  return resp.data.data
-}
-
+/** DELETE /admin/plugins/{id} — soft delete of a squad plugin. */
 export async function deleteSystemSquad(id: string): Promise<void> {
-  await expertApi.delete(`/admin/squads/${encodeURIComponent(id)}`)
+  await expertApi.delete(`/admin/plugins/${encodeURIComponent(id)}`)
 }
 
-/** Stored SKILL.md text of a squad member's skill at `index`. */
-export async function getSystemSquadSkillMd(
+/** Re-upload an EXISTING squad's WHOLE container zip to
+ *  `POST /admin/plugins/container_reupload/{id}`. Twin of reuploadExpertContainer
+ *  for plugin_type=expert_team — the server swaps the member experts and their
+ *  skills in place; callers refresh via getSystemSquad. */
+export async function reuploadSquadContainer(
   id: string,
-  memberKey: string,
-  index: number
-): Promise<string> {
-  const resp = await expertApi.get<{ data: { content: string } }>(
-    `/admin/squads/${encodeURIComponent(id)}/skill_md`,
-    { params: { member: memberKey, i: index } }
+  file: File | Blob,
+  categoryName?: string,
+  opts: { fileName?: string; signal?: AbortSignal } = {}
+): Promise<void> {
+  await reuploadContainer('expert_team', id, file, categoryName, opts)
+}
+
+// ─── Container import (server-side create) ─────────────────────────────────
+
+export interface ImportContainerResult {
+  plugin_id: string
+}
+
+/** Upload budget for the whole-container zip POSTs (import + reupload). Well
+ *  above the shared 30 s axios timeout so a realistic large upload (server cap
+ *  is 100 MiB) still completes, but FINITE — an uncapped `timeout: 0` left a
+ *  blackholed connection hanging forever with no AbortSignal from the drawer
+ *  call sites, sticking the button's busy state until a reload. */
+const CONTAINER_UPLOAD_TIMEOUT_MS = 300000
+
+/**
+ * Upload a WHOLE expert/expert_team container zip to the server-side importer
+ * (`POST /admin/plugins/import`, multipart `file` + optional `category_id`). The
+ * backend parses the container and transactionally mints the top-level
+ * expert/team plugin, its bundled skills as separate skill plugins, and the
+ * relations wiring them. Replaces the old client-side unzip + per-skill presign
+ * + flat `/admin/experts` create path.
+ *
+ * `categoryName` is resolved to a unified plugin category id via
+ * /admin/plugin_categories (the importer takes a category UUID, not the
+ * free-text manifest category); a blank name imports with no category, while a
+ * NON-EMPTY name that fails to resolve throws (LOUD) rather than silently
+ * importing uncategorized. The container's tags come from the manifest inside
+ * the zip — the importer accepts no tag override.
+ */
+export async function importExpertContainer(
+  file: File | Blob,
+  opts: {
+    kind?: ExpertKind
+    categoryName?: string
+    fileName?: string
+    signal?: AbortSignal
+  } = {}
+): Promise<ImportContainerResult> {
+  const pluginType: PluginTypeWire = opts.kind === 'squad' ? 'expert_team' : 'expert'
+  const form = await buildContainerForm(pluginType, file, opts.categoryName, opts.fileName)
+  const resp = await expertApi.post<{ data: { plugin: { plugin_id: string } } }>(
+    '/admin/plugins/import',
+    form,
+    // Whole-container zips run up to the server's 100 MiB cap; the shared axios
+    // 30 s timeout would abort a realistic large upload mid-flight. Use a
+    // generous but FINITE budget so a blackholed connection eventually aborts
+    // instead of hanging forever (no AbortSignal is passed by the drawer).
+    { signal: opts.signal, timeout: CONTAINER_UPLOAD_TIMEOUT_MS }
   )
-  return resp.data.data.content
+  return { plugin_id: resp.data.data.plugin.plugin_id }
+}
+
+/** Build the multipart body shared by the container import + reupload routes:
+ *  the raw `file` field plus an optional `category_id` resolved from a free-text
+ *  category name via /admin/plugin_categories. A NON-EMPTY category name that
+ *  fails to resolve is a hard error (LOUD): silently omitting category_id lands
+ *  the import uncategorized with no signal, so the operator must see that the
+ *  chosen/manifest category doesn't exist. A blank name is simply omitted (the
+ *  server treats the container as having no category override). */
+async function buildContainerForm(
+  pluginType: PluginTypeWire,
+  file: File | Blob,
+  categoryName: string | undefined,
+  fileNameOpt: string | undefined
+): Promise<FormData> {
+  const fileName = fileNameOpt ?? (file instanceof File ? file.name : 'container.zip')
+  const uploadFile = file instanceof File ? file : new File([file], fileName)
+  const form = new FormData()
+  form.append('file', uploadFile, fileName)
+  const trimmed = categoryName?.trim()
+  if (trimmed) {
+    const { nameToId } = await fetchExpertCategoryMaps(pluginType)
+    const categoryId = nameToId.get(trimmed)
+    if (!categoryId) {
+      throw new ApiError(
+        `Unknown plugin category: ${trimmed}`,
+        400,
+        'category_not_found'
+      )
+    }
+    form.append('category_id', categoryId)
+  }
+  return form
+}
+
+/** POST the raw container zip to `POST /admin/plugins/container_reupload/{id}`
+ *  (multipart `file` + optional `category_id`), rebuilding the existing plugin
+ *  in place. The response is the rebuilt `{ plugin, relations }` detail, but
+ *  callers re-fetch via getSystemExpert/getSystemSquad rather than hand-map it,
+ *  so this resolves to void. */
+async function reuploadContainer(
+  pluginType: PluginTypeWire,
+  id: string,
+  file: File | Blob,
+  categoryName: string | undefined,
+  opts: { fileName?: string; signal?: AbortSignal } = {}
+): Promise<void> {
+  const form = await buildContainerForm(pluginType, file, categoryName, opts.fileName)
+  await expertApi.post(
+    `/admin/plugins/container_reupload/${encodeURIComponent(id)}`,
+    form,
+    // See importExpertContainer: whole-zip reupload must not be capped by the
+    // shared 30 s timeout, but a FINITE generous budget still lets a stuck
+    // connection abort (the drawer call sites pass no AbortSignal).
+    { signal: opts.signal, timeout: CONTAINER_UPLOAD_TIMEOUT_MS }
+  )
 }
 
 // ─── Categories ─────────────────────────────────────────────────────────────
 
+// ─── Categories / tags (unified plugin surface) ─────────────────────────────
+//
+// The 分类 tab under Expert Market manages the categories shared by expert +
+// expert_team, so it reads/writes the unified /admin/plugin_categories taxonomy.
+// Each row carries plugin_types ["expert","expert_team"]. Tags stay on their
+// legacy /admin/expert_tags route (out of scope for the unified migration).
+
+/** Map a unified category wire row to the ExpertCategory the 分类 tab renders. */
+function toExpertCategory(c: PluginCategoryWire): ExpertCategory {
+  return {
+    expert_category_id: c.category_id,
+    name: c.name,
+    icon_key: c.icon_key,
+    sort_order: c.sort_order ?? 0,
+    count: c.plugin_count,
+    plugin_types: c.plugin_types,
+  }
+}
+
+// plugin_types the expert-market category tab manages: categories are shared by
+// standalone experts and expert teams, matching the observed data where expert
+// categories carry both types.
+const EXPERT_CATEGORY_PLUGIN_TYPES = ['expert', 'expert_team'] as const
+
 export async function listExpertCategories(): Promise<ExpertCategory[]> {
-  const resp = await expertApi.get<{ data: ExpertCategory[] }>('/admin/expert_categories')
-  return resp.data.data ?? []
+  const resp = await expertApi.get<{ data: PluginCategoryWire[] }>(
+    '/admin/plugin_categories',
+    { params: { plugin_type: 'expert' } }
+  )
+  return (resp.data.data ?? []).map(toExpertCategory)
+}
+
+/** GET /admin/plugin_categories?plugin_type=expert_team — the taxonomy the squad
+ *  import / reupload RESOLVE against (buildContainerForm('expert_team')). The
+ *  Squad tab dropdown MUST list this rather than the expert taxonomy so a chosen
+ *  category is always resolvable on write: listing `expert` while the container
+ *  form resolves against `expert_team` let a squad whose category exists only
+ *  under expert_team BLOCK the import with the loud category_not_found (review
+ *  P1-2). Since expert-market categories carry both plugin types, this normally
+ *  returns the same shared rows the Expert tab shows. */
+export async function listSquadCategories(): Promise<ExpertCategory[]> {
+  const resp = await expertApi.get<{ data: PluginCategoryWire[] }>(
+    '/admin/plugin_categories',
+    { params: { plugin_type: 'expert_team' } }
+  )
+  return (resp.data.data ?? []).map(toExpertCategory)
 }
 
 export async function createExpertCategory(params: {
@@ -333,76 +831,50 @@ export async function createExpertCategory(params: {
   icon_key?: string
   sort_order?: number
 }): Promise<ExpertCategory> {
-  const resp = await expertApi.post<{ data: ExpertCategory }>(
-    '/admin/expert_categories',
-    params
+  const resp = await expertApi.post<{ data: PluginCategoryWire }>(
+    '/admin/plugin_categories',
+    {
+      name: params.name,
+      icon_key: params.icon_key ?? '',
+      plugin_types: EXPERT_CATEGORY_PLUGIN_TYPES,
+      sort_order: params.sort_order ?? 0,
+    }
   )
-  return resp.data.data
+  return toExpertCategory(resp.data.data)
 }
 
 export async function updateExpertCategory(
   id: string,
-  params: { name?: string; icon_key?: string; sort_order?: number }
+  params: {
+    name?: string
+    icon_key?: string
+    sort_order?: number
+    plugin_types?: string[]
+  }
 ): Promise<ExpertCategory> {
-  const resp = await expertApi.patch<{ data: ExpertCategory }>(
-    `/admin/expert_categories/${encodeURIComponent(id)}`,
-    params
+  const resp = await expertApi.patch<{ data: PluginCategoryWire }>(
+    `/admin/plugin_categories/${encodeURIComponent(id)}`,
+    {
+      name: params.name ?? '',
+      icon_key: params.icon_key ?? '',
+      // Echo the row's EXISTING plugin_types when supplied so a rename from this
+      // tab never narrows a category shared across plugin types; fall back to
+      // the expert default for callers that omit them.
+      plugin_types: params.plugin_types?.length
+        ? params.plugin_types
+        : EXPERT_CATEGORY_PLUGIN_TYPES,
+      sort_order: params.sort_order ?? 0,
+    }
   )
-  return resp.data.data
+  return toExpertCategory(resp.data.data)
 }
 
 export async function deleteExpertCategory(id: string): Promise<void> {
-  await expertApi.delete(`/admin/expert_categories/${encodeURIComponent(id)}`)
+  await expertApi.delete(`/admin/plugin_categories/${encodeURIComponent(id)}`)
 }
 
 // ─── Tags (read-only suggestions) ────────────────────────────────────────────
-
-export async function listExpertTags(kind: ExpertKind): Promise<ExpertTag[]> {
-  const resp = await expertApi.get<{ data: ExpertTag[] }>('/admin/expert_tags', {
-    params: { kind },
-  })
-  return resp.data.data ?? []
-}
-
-// ─── Skill package upload (presigned, two-step) ──────────────────────────────
-
-/** POST /admin/expert_skill_uploads response. Mirrors octo-cli's
- *  `expert-skill-upload create`. `upload_object_key` is what the caller
- *  references in a create/patch `skills[]` entry after PUTting the bytes. */
-export interface ExpertSkillUploadInit {
-  upload_object_key: string
-  presigned_url: string
-  method: string
-  headers: Record<string, string>
-  expires_in?: number
-}
-
-/** Two-step skill-package upload: presign, then PUT the raw `.zip/.skill`
- *  bytes directly to the returned URL, then hand back a ready `SkillWrite`
- *  entry. The container zip is never uploaded — only its bundled packages.
- *  `opts.signal` aborts both legs (batch cancel). */
-export async function uploadExpertSkill(
-  name: string,
-  file: File | Blob,
-  fileName: string,
-  opts: { signal?: AbortSignal } = {}
-): Promise<SkillWrite> {
-  const size = file.size
-  const initResp = await expertApi.post<{ data: ExpertSkillUploadInit }>(
-    '/admin/expert_skill_uploads',
-    { file_name: fileName, file_size: size },
-    { signal: opts.signal }
-  )
-  const { upload_object_key, presigned_url, method, headers } = initResp.data.data
-  await putPresignedFile(
-    presigned_url,
-    file instanceof File ? file : new File([file], fileName),
-    { method, headers: headers ?? {}, signal: opts.signal }
-  )
-  return {
-    name,
-    upload_object_key,
-    file_name: fileName,
-    file_size: size,
-  }
-}
+//
+// Removed: the legacy admin tag suggestion endpoint (`/admin/expert_tags`) was
+// unused in the admin UI and has been retired on the backend. If tag
+// suggestions are reintroduced, use the unified `/plugin_tags` aggregation.

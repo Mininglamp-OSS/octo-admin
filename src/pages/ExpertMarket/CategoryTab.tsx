@@ -42,14 +42,11 @@ export default function CategoryTab() {
 
   const openCreate = () => {
     setEditing(null)
-    form.resetFields()
-    form.setFieldsValue({ name: '', sort_order: 0 })
     setModalOpen(true)
   }
 
   const openEdit = (record: ExpertCategory) => {
     setEditing(record)
-    form.setFieldsValue({ name: record.name, sort_order: record.sort_order })
     setModalOpen(true)
   }
 
@@ -65,6 +62,9 @@ export default function CategoryTab() {
           name: values.name,
           icon_key: editing.icon_key,
           sort_order: values.sort_order ?? 0,
+          // Echo the row's existing plugin_types so a rename doesn't narrow a
+          // shared category to the expert-only set.
+          plugin_types: editing.plugin_types,
         })
         message.success(t('category.success.updated'))
       } else {
@@ -155,7 +155,16 @@ export default function CategoryTab() {
         confirmLoading={submitting}
         destroyOnClose
       >
-        <Form form={form} layout="vertical" preserve={false}>
+        <Form
+          form={form}
+          layout="vertical"
+          preserve={false}
+          initialValues={
+            editing
+              ? { name: editing.name, sort_order: editing.sort_order }
+              : { name: '', sort_order: 0 }
+          }
+        >
           <Form.Item
             name="name"
             label={t('category.modal.name')}

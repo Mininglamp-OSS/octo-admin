@@ -43,7 +43,7 @@ export interface ProbeFormFields {
   headers: Record<string, string>
 }
 
-/** Build the POST /admin/mcps/probe body from the current form fields. Only
+/** Build the POST /admin/mcps/_probe body from the current form fields. Only
  *  streamable-http / sse transports produce a payload — stdio is not
  *  probable from the server (mcp-v1.md §4.7). Returns null for non-remote
  *  transports so the caller can noop instead of firing a doomed request.

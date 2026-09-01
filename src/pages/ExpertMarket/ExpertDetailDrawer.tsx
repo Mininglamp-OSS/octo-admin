@@ -13,14 +13,12 @@ import { ApiError } from '../../api'
 import {
   deleteSystemExpert,
   getSystemExpert,
-  getSystemExpertSkillMd,
-  patchSystemExpert,
+  reuploadExpertContainer,
   type ExpertDetail,
 } from '../../api/expert'
-import { DetailSection, McpConfigBlock, SkillMdModal, SkillRefList } from './detailParts'
+import { DetailSection, McpConfigBlock, SkillMdModal, SkillRefList, loadSkillMd } from './detailParts'
 import ReuploadButton from './ReuploadButton'
-import { buildExpertPatch, uploadSkillWrites } from './submitContainer'
-import type { ParsedExpert } from './parseContainer'
+import type { ParsedContainer } from './parseContainer'
 
 const { Text, Paragraph } = Typography
 
@@ -46,7 +44,11 @@ export default function ExpertDetailDrawer({
   const [loading, setLoading] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const [viewingSkill, setViewingSkill] = useState<{ index: number; name: string } | null>(null)
+  const [viewingSkill, setViewingSkill] = useState<{
+    name: string
+    skillPluginId?: string
+    fallback: string
+  } | null>(null)
 
   const reload = (id: string) => {
     let cancelled = false
@@ -91,16 +93,25 @@ export default function ExpertDetailDrawer({
     }
   }
 
-  const handleReupload = async (parsed: import('./parseContainer').ParsedContainer) => {
+  const handleReupload = async (file: File, _parsed: ParsedContainer) => {
     if (!detail) return
-    const m = parsed.manifest as ParsedExpert
-    // One upload per skill reference (server upload keys are single-use), and
-    // a PATCH body that omits fields the container doesn't declare — a
-    // present-but-empty category/tags would CLEAR the curated values.
-    const skills = await uploadSkillWrites(m.skills, parsed.skillFiles)
-    const updated = await patchSystemExpert(detail.expert_id, buildExpertPatch(m, skills))
-    setDetail(updated)
+    // Send the ORIGINAL zip to the server-side container reupload, which rebuilds
+    // the expert in place (preserving id/visibility/Space/owner) and re-parses
+    // the package + bundled skills. Reupload intentionally does NOT pass a
+    // category: the manifest category would otherwise silently revert an
+    // operator's curated choice (and hard-block reupload when the manifest names
+    // a category absent from the taxonomy). Omitting it makes the backend keep
+    // the stored category — reupload only swaps content.
+    await reuploadExpertContainer(detail.expert_id, file, undefined)
+    // The rebuild is committed server-side. Refresh the parent list, then refetch
+    // the drawer detail best-effort — a transient refetch failure must not surface
+    // as a reupload error (reopening the drawer recovers the fresh state).
     onChanged()
+    try {
+      setDetail(await getSystemExpert(detail.expert_id))
+    } catch {
+      // Keep the stale detail; the list reload + a drawer reopen recover it.
+    }
   }
 
   const footer = !detail || !canManage ? null : confirmingDelete ? (
@@ -171,7 +182,13 @@ export default function ExpertDetailDrawer({
           <DetailSection title={t('detail.skills')}>
             <SkillRefList
               skills={detail.skills}
-              onView={(index, s) => setViewingSkill({ index, name: s.name })}
+              onView={(_index, s) =>
+                setViewingSkill({
+                  name: s.name,
+                  skillPluginId: s.skill_plugin_id,
+                  fallback: s.skill_md ?? '',
+                })
+              }
             />
           </DetailSection>
         </div>
@@ -180,7 +197,7 @@ export default function ExpertDetailDrawer({
       <SkillMdModal
         open={viewingSkill !== null}
         title={viewingSkill?.name ?? ''}
-        load={() => getSystemExpertSkillMd(detail!.expert_id, viewingSkill!.index)}
+        load={() => loadSkillMd(viewingSkill)}
         onClose={() => setViewingSkill(null)}
       />
     </Drawer>

@@ -148,11 +148,11 @@ function DetailBody({ detail }: { detail: McpDetail }) {
       {/* 概览 — icon + name + slogan + meta line + tags */}
       <div className="mcp-detail__meta">
         <div className="mcp-detail__icon">
-          {detail.icon &&
-          (detail.icon.startsWith('http') || detail.icon.startsWith('data:')) ? (
-            <img src={detail.icon} alt={detail.name} />
+          {detail.icon_url &&
+          (detail.icon_url.startsWith('http') || detail.icon_url.startsWith('data:')) ? (
+            <img src={detail.icon_url} alt={detail.name} />
           ) : (
-            <span>{detail.icon || '🧩'}</span>
+            <span>{detail.icon_url || '🧩'}</span>
           )}
         </div>
         <div className="mcp-detail__meta-body">

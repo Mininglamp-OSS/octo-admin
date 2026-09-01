@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Descriptions, Drawer, Spin, Tag, Space, Button, message } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
-import { getAdminSkill, getSkillMd, getAdminSkillDownloadUrl, type SkillDetail, type CategoryItem } from '../../api/skill'
+import { getAdminSkill, getAdminSkillMd, downloadAdminSkillPackage, type SkillDetail, type CategoryItem } from '../../api/skill'
 
 interface Props {
   open: boolean
@@ -24,13 +24,21 @@ export default function SkillDetailDrawer({ open, skillId, categories, onClose }
       return
     }
     setLoading(true)
+    // SKILL.md preview comes from the ADMIN skill_md endpoint (token auth,
+    // cross-Space, no X-Space-Id), which returns the authoritative raw markdown.
+    // The embedded readme_content is only a stub for un-expanded skills, so it's
+    // just a graceful fallback when the endpoint 404s for older skills.
+    //
+    // Catch the skill_md promise INDEPENDENTLY: a non-404 failure (500 /
+    // network) must not sink the whole load and hide the detail that fetched
+    // fine — degrade to the readme_content fallback instead.
     Promise.all([
       getAdminSkill(skillId),
-      getSkillMd(skillId).catch(() => ''),
+      getAdminSkillMd(skillId).catch(() => null),
     ])
       .then(([d, md]) => {
         setDetail(d)
-        setSkillMd(md)
+        setSkillMd(md ?? d.readme_content ?? '')
       })
       .catch(() => {
         message.error(t('skill.loadFailed'))
@@ -124,8 +132,7 @@ export default function SkillDetailDrawer({ open, skillId, categories, onClose }
             type="primary"
             onClick={async () => {
               try {
-                const url = await getAdminSkillDownloadUrl(detail.skill_id)
-                window.open(url, '_blank')
+                await downloadAdminSkillPackage(detail.skill_id, detail.file_name)
               } catch {
                 message.error(t('skill.loadFailed'))
               }

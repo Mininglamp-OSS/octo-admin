@@ -13,6 +13,43 @@
   },
   "empty": "No MCPs yet. Click \"New\" in the top right.",
   "loadFailed": "Failed to load",
+  "tab": {
+    "mcps": "MCPs",
+    "categories": "Categories"
+  },
+  "category": {
+    "create": "New category",
+    "rename": "Edit",
+    "delete": "Delete",
+    "deleteConfirm": "Delete this category?",
+    "deleteInUse": "This category still has {{count}} MCPs and cannot be deleted",
+    "empty": "No categories yet",
+    "table": {
+      "name": "Name",
+      "count": "Count",
+      "sortOrder": "Order",
+      "actions": "Actions"
+    },
+    "modal": {
+      "createTitle": "New category",
+      "editTitle": "Edit category",
+      "name": "Name",
+      "nameRequired": "Name is required",
+      "sortOrder": "Order",
+      "sortOrderHint": "Lower numbers come first"
+    },
+    "success": {
+      "created": "Created",
+      "updated": "Updated",
+      "deleted": "Deleted"
+    },
+    "error": {
+      "nameExists": "Category name already exists",
+      "createFailed": "Create failed",
+      "updateFailed": "Update failed",
+      "deleteFailed": "Delete failed"
+    }
+  },
   "searchPlaceholder": "Search name or summary",
   "actions": {
     "view": "View",
@@ -88,6 +125,8 @@
     "slugPlaceholder": "e.g. github-mcp",
     "slugHint": "Used as the mcpServers JSON key. Lowercase letters, digits, hyphens only; leave empty to auto-derive from name.",
     "slugInvalid": "Slug must match ^[a-z0-9-]{1,64}$",
+    "slugRequired": "The name can't auto-derive a slug — enter one manually (lowercase letters, digits, hyphens only).",
+    "slugLockedHint": "The slug is this MCP's server identity and can't be changed after creation. To change it, recreate the connector.",
     "advancedToggle": "Show advanced settings",
     "tagsPillHint": "Press Enter to add",
     "tagsPillPlaceholder": "Type and press Enter",

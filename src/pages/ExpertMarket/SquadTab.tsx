@@ -4,7 +4,7 @@ import { PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import type { ColumnsType } from 'antd/es/table'
 import {
-  listExpertCategories,
+  listSquadCategories,
   listSystemSquads,
   type ExpertCategory,
   type SquadListItem,
@@ -14,11 +14,14 @@ import { hasManagerCapability } from '../../auth/capabilities'
 import { useAuthStore } from '../../store/auth'
 import SquadDetailDrawer from './SquadDetailDrawer'
 import UploadModal from './UploadModal'
+import VisibilityTag from '../../components/VisibilityTag'
+import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
 
 const PAGE_SIZE = 20
 
 export default function SquadTab() {
   const { t } = useTranslation(['expertMarket', 'common'])
+  const { nameOf } = useSpaceNameMap()
   const canWrite = useAuthStore((s) => hasManagerCapability(s.managerCapabilities, 'expert.write'))
 
   const [rows, setRows] = useState<SquadListItem[]>([])
@@ -51,7 +54,10 @@ export default function SquadTab() {
 
   useEffect(() => {
     load(1, '')
-    listExpertCategories()
+    // The squad dropdown must list the expert_team taxonomy — the same set the
+    // container import resolves the chosen category against — so a selection is
+    // always resolvable on upload (review P1-2).
+    listSquadCategories()
       .then(setCategories)
       .catch(() => setCategories([]))
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -121,6 +127,20 @@ export default function SquadTab() {
         render: (v?: number) => <span className="mono">{v ?? 0}</span>,
       },
       {
+        title: t('table.visibility', { ns: 'common' }),
+        dataIndex: 'scope',
+        key: 'scope',
+        width: 110,
+        render: (scope: string) => <VisibilityTag scope={scope} />,
+      },
+      {
+        title: t('table.space', { ns: 'common' }),
+        dataIndex: 'space_id',
+        key: 'space_id',
+        width: 160,
+        render: (spaceId?: string) => nameOf(spaceId),
+      },
+      {
         title: t('table.creator'),
         dataIndex: 'creator_name',
         key: 'creator_name',
@@ -129,7 +149,7 @@ export default function SquadTab() {
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [t]
+    [t, nameOf]
   )
 
   return (
@@ -153,8 +173,9 @@ export default function SquadTab() {
             icon={<PlusOutlined />}
             onClick={() => {
               // Refresh the category options — they may have changed on the
-              // Categories tab since this tab mounted.
-              listExpertCategories().then(setCategories).catch(() => {})
+              // Categories tab since this tab mounted. List the expert_team
+              // taxonomy so the dropdown matches what the import resolves against.
+              listSquadCategories().then(setCategories).catch(() => {})
               setUploadOpen(true)
             }}
           >
@@ -168,6 +189,7 @@ export default function SquadTab() {
         loading={loading}
         columns={columns}
         dataSource={rows}
+        scroll={{ x: 'max-content' }}
         locale={{ emptyText: t('emptySquad') }}
         onRow={(r) => ({
           onClick: () => setDrawerId(r.squad_id),

@@ -37,28 +37,23 @@ import { useTranslation } from 'react-i18next'
 import { ApiError } from '../../api'
 import {
   createSystemMcp,
+  listMcpCategories,
   probeSystemMcp,
   updateSystemMcp,
   uploadMcpIcon,
   type CreateMcpParams,
+  type McpCategory,
   type McpDetail,
   type McpFaq,
+  type McpServerEntryWire,
   type McpTool,
   type McpTransport,
+  type PluginAttachmentWire,
 } from '../../api/mcp'
 import {
   buildProbeRequest,
   resolveProbeErrorMessage,
 } from './probeHelpers'
-
-const CATEGORY_KEYS = [
-  'dev',
-  'data',
-  'search',
-  'productivity',
-  'ai',
-  'other',
-] as const
 
 const TRANSPORT_OPTIONS: McpTransport[] = ['streamable-http', 'sse', 'stdio']
 
@@ -69,19 +64,21 @@ const TRANSPORT_OPTIONS: McpTransport[] = ['streamable-http', 'sse', 'stdio']
 // sentinel means the downstream user should substitute their own token".
 // The ephemeral probe field is deliberately separate and never seeded here.
 // Marketplace-shared sentinel (octo-marketplace/docs/api/mcp-v1.md §0 /
-// §5.1). Since the §5.1 relaxation, user-supplied values are stored
-// verbatim for the owner and blanked to non-owners at read time — the
-// admin no longer needs to substitute the sentinel on submit. The
-// constant is kept because `entriesFromWire` still normalizes it back to
-// "" when reading a legacy record that persisted the sentinel literal.
+// §5.1). Since the §5.1 relaxation, user-supplied values are stored and
+// returned VERBATIM on every read — the unified backend has NO secret scanner
+// and does NOT blank values to non-owners. The only protection is client-side:
+// user-supplied keys render as a fill-in placeholder in the market snippet, so
+// owners must not type real secrets under a shared key. The constant is kept
+// because `entriesFromWire` still normalizes a legacy sentinel literal back to
+// "" when reading an old record.
 const SECRET_PLACEHOLDER_SENTINEL = '__OCTO_SECRET_PLACEHOLDER__'
 
 /** One row in the structured Headers / Env editor. Each row carries a
  *  per-key toggle for the wire's `headers_user_supplied` /
  *  `env_user_supplied` arrays (mcp-v1.md §5.1). `userSupplied=true` means
- *  each consumer fills the value locally; the value stored on the wire is
- *  owner-visible for round-trip but blanked to non-owners by
- *  `detailForCaller` on read. */
+ *  each consumer fills the value locally; the value is stored and returned
+ *  verbatim on read (the backend does NOT blank it), so masking is purely
+ *  client-side — owners must not type real secrets under a shared key. */
 export interface KvEntry {
   key: string
   value: string
@@ -208,6 +205,60 @@ function slugifyName(input: string): string {
 }
 
 /**
+ * Resolve the slug that a submit should carry. This is a CLIENT-SIDE guard (the
+ * unified connector write path has no `slug_required` backend check): a name
+ * that can't auto-derive an ASCII slug (e.g. a pure-CJK name → empty) forces the
+ * operator to type one instead of silently collapsing to the `mcp-server`
+ * default server slug on write.
+ *
+ *   - A manually entered slug is validated against `^[a-z0-9-]{1,64}$`, then
+ *     normalized; a value that PASSES the charset check but normalizes to the
+ *     empty string (e.g. `-` or `--`, which `slugifyName` strips to '') is also
+ *     rejected as `reason: 'invalid'` so it can't slip through to the fallback.
+ *   - An empty manual slug auto-derives from the name; when the name yields no
+ *     ASCII slug the result is `reason: 'required'` so the caller blocks submit.
+ *   - Otherwise the concrete, already-normalized slug is returned so the write
+ *     path never has to fall back to a default server slug.
+ */
+export function resolveConnectorSlug(
+  name: string,
+  slug: string,
+):
+  | { ok: true; slug: string }
+  | { ok: false; reason: 'required' | 'invalid' } {
+  const raw = (slug ?? '').trim()
+  if (raw) {
+    if (!/^[a-z0-9-]{1,64}$/.test(raw)) return { ok: false, reason: 'invalid' }
+    // Validate the NORMALIZED slug: `-` / `--` pass the charset test but
+    // slugifyName collapses them to '', which would otherwise fall back to the
+    // `mcp-server` default server slug on write. Reject them here.
+    const norm = slugifyName(raw)
+    if (!norm) return { ok: false, reason: 'invalid' }
+    return { ok: true, slug: norm }
+  }
+  const derived = slugifyName(name ?? '')
+  if (!derived) return { ok: false, reason: 'required' }
+  return { ok: true, slug: derived }
+}
+
+/**
+ * Whether a SEEDED slug (the value hydrated from an existing record) is itself a
+ * valid, self-sufficient identity — non-empty, `^[a-z0-9-]{1,64}$`, and
+ * normalizing to a non-empty slug. Only such a slug is locked on the edit path;
+ * a row seeded with an empty or non-conforming slug stays EDITABLE so the
+ * operator can satisfy the required-slug gate instead of being trapped (the
+ * field can't be edited AND submit hard-blocks). This is exactly the set
+ * `resolveConnectorSlug` accepts for a manual slug — the two must agree so a
+ * field left editable can actually pass submit.
+ */
+export function seededSlugIsValid(slug: string): boolean {
+  const raw = (slug ?? '').trim()
+  if (!raw) return false
+  if (!/^[a-z0-9-]{1,64}$/.test(raw)) return false
+  return slugifyName(raw) !== ''
+}
+
+/**
  * Form state shape. Distinguished from the wire shape (CreateMcpParams) by
  * a few "raw" text buffers we parse on submit — same pattern as web:
  *   - argsRaw: whitespace-separated command args
@@ -217,8 +268,34 @@ function slugifyName(input: string): string {
 interface FormValues {
   name: string
   slug: string
+  /** Stored mcpServers JSON key for an existing connector, preserved verbatim
+   *  on write so a backend-minted key that differs from the display name / slug
+   *  round-trips (review B). Empty for a fresh create → the slug becomes the
+   *  key. */
+  serverName: string
+  /** Extra mcpServers entries the form doesn't model, kept aside on read and
+   *  re-emitted verbatim on write so a multi-server document isn't collapsed
+   *  (review C). */
+  extraServers: Record<string, McpServerEntryWire>
+  /** Raw stored modeled-server object, carried through so a metadata edit
+   *  preserves keys this form doesn't model (cwd/timeout/disabled/url). Seeded
+   *  from the record's quick_start.raw_server; the write seeds the server from
+   *  it and overlays the modeled fields on top. */
+  rawServer: Record<string, unknown>
+  /** Stored connector-package attachments the form doesn't model, carried
+   *  through read→write so a metadata edit re-emits them and the wholesale
+   *  plugin_json replace doesn't drop them. Empty for a fresh create. */
+  extraAttachments: PluginAttachmentWire[]
   category: string
+  /** Canonical icon value written back on submit (object key / emoji / URL).
+   *  Seeded from the record's canonical `icon`, replaced only by a fresh
+   *  upload — NEVER the presigned display URL. */
   icon: string
+  /** Resolved display URL used only for the preview tile. Seeded from the
+   *  record's `icon_url`; never submitted as the canonical icon. */
+  iconUrl: string
+  /** Existing publisher, carried through so a metadata edit doesn't blank it. */
+  publisher: string
   tags: string[]
   slogan: string
   transport: McpTransport
@@ -236,8 +313,14 @@ interface FormValues {
 const EMPTY: FormValues = {
   name: '',
   slug: '',
-  category: 'dev',
+  serverName: '',
+  extraServers: {},
+  rawServer: {},
+  extraAttachments: [],
+  category: '',
   icon: '',
+  iconUrl: '',
+  publisher: '',
   tags: [],
   slogan: '',
   transport: 'streamable-http',
@@ -261,8 +344,16 @@ function detailToValues(d: McpDetail): FormValues {
   return {
     name: d.name,
     slug: q.slug || '',
-    category: d.category || 'dev',
+    // Preserve the stored mcpServers key + any unmodeled extra servers so a
+    // save round-trips them verbatim (review B / C).
+    serverName: q.server_name || '',
+    extraServers: q.extra_servers ?? {},
+    rawServer: q.raw_server ?? {},
+    extraAttachments: q.extra_attachments ?? [],
+    category: d.category || '',
     icon: d.icon || '',
+    iconUrl: d.icon_url || '',
+    publisher: d.publisher || '',
     tags: d.tags || [],
     slogan: d.slogan || '',
     transport: q.transport,
@@ -292,10 +383,38 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
   const [form, setForm] = useState<FormValues>(EMPTY)
   const [step, setStep] = useState(0)
   const [slugTouched, setSlugTouched] = useState(false)
+  // Whether the slug field is locked as immutable identity. Only true on the
+  // edit path AND when the SEEDED slug is itself valid — a row seeded with an
+  // empty / non-conforming slug stays editable so the operator can fix it
+  // (otherwise the field is disabled AND submit hard-blocks on the bad slug).
+  // Captured from the seed at open time, not the live form value, so typing a
+  // valid slug into an unlocked field never re-locks it mid-edit.
+  const [slugLocked, setSlugLocked] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [probing, setProbing] = useState(false)
   const [iconUploading, setIconUploading] = useState(false)
+  // Connector categories are free-text rows on the unified taxonomy, not a
+  // frozen enum — feed the dropdown from the live list so a category created in
+  // the 分类 tab is selectable and a renamed one still matches on write.
+  const [categories, setCategories] = useState<McpCategory[]>([])
+
+  // Load the category taxonomy whenever the modal opens. On failure the dropdown
+  // simply stays empty; the write path still validates the chosen category id.
+  useEffect(() => {
+    if (!open) return
+    let alive = true
+    listMcpCategories()
+      .then((rows) => {
+        if (alive) setCategories(rows)
+      })
+      .catch(() => {
+        /* dropdown falls back to empty; submit still fails loud on a bad id */
+      })
+    return () => {
+      alive = false
+    }
+  }, [open])
 
   // Reset-on-open matches web's behavior (McpCreateModal:364-389). Editing
   // → hydrate from detail; create → start blank; either way step goes back
@@ -307,12 +426,16 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
       setForm(seed)
       // An existing slug counts as user-set so name renames don't clobber it.
       setSlugTouched(!!seed.slug)
+      // Lock the slug only when the seeded value is a valid identity; an
+      // empty/non-conforming seeded slug stays editable so it can be fixed.
+      setSlugLocked(seededSlugIsValid(seed.slug))
       setAdvancedOpen(
         seed.envEntries.length > 0 || seed.headersEntries.length > 0,
       )
     } else {
       setForm(EMPTY)
       setSlugTouched(false)
+      setSlugLocked(false)
       setAdvancedOpen(false)
     }
     setStep(0)
@@ -345,11 +468,23 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
   // string-comparison against the localized copy.
   const firstError = (): { message: string; step: number } | null => {
     if (!form.name.trim()) return { message: t('form.nameRequired'), step: 0 }
-    if (form.slug && !/^[a-z0-9-]{1,64}$/.test(form.slug)) {
+    // Client-side slug guard: a manual slug must normalize to a valid value, and
+    // an empty manual slug must auto-derive a non-empty slug from the name.
+    // Otherwise block submit (a pure-CJK name auto-derives to "") rather than
+    // silently writing the `mcp-server` default server slug.
+    const slugRes = resolveConnectorSlug(form.name, form.slug)
+    if (!slugRes.ok) {
       return {
-        message: t('form.slugInvalid', {
-          defaultValue: '服务标识只能包含小写字母、数字与连字符，且 1-64 位',
-        }),
+        message:
+          slugRes.reason === 'required'
+            ? t('form.slugRequired', {
+                defaultValue:
+                  '名称无法自动生成服务标识，请手动填写（仅限小写字母、数字与连字符）',
+              })
+            : t('form.slugInvalid', {
+                defaultValue:
+                  '服务标识只能包含小写字母、数字与连字符，且 1-64 位',
+              }),
         step: 0,
       }
     }
@@ -397,14 +532,32 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
     // call for identical reasons (McpCreateModal.tsx around L740).
     const envSplit = entriesToWire(form.envEntries)
     const headersSplit = entriesToWire(form.headersEntries)
+    // Submit is gated by firstError, so the slug always resolves here. Send the
+    // concrete resolved slug (never undefined) so the write path never has to
+    // fall back to the `mcp-server` default server slug for a CJK-only name.
+    const slugRes = resolveConnectorSlug(form.name, form.slug)
     return {
       name: form.name.trim(),
-      // Auto-derived slug already fills; on manual override we've kept the
-      // user's value. slugifyName is idempotent, so an already-clean value
-      // survives untouched.
-      slug: form.slug ? slugifyName(form.slug) : undefined,
+      slug: slugRes.ok ? slugRes.slug : undefined,
+      // Thread the preserved stored key + extra servers straight back so an
+      // existing connector's server identity round-trips verbatim (review B / C).
+      server_name: form.serverName || undefined,
+      extra_servers: Object.keys(form.extraServers).length
+        ? form.extraServers
+        : undefined,
+      // Seed the write from the raw stored server so unmodeled keys
+      // (cwd/timeout/disabled/url) survive a metadata edit (review C).
+      raw_server: Object.keys(form.rawServer).length ? form.rawServer : undefined,
+      // Re-emit stored attachments the form doesn't model so the wholesale
+      // plugin_json replace keeps them (Gate 2).
+      extra_attachments: form.extraAttachments.length
+        ? form.extraAttachments
+        : undefined,
       category: form.category,
       icon: form.icon.trim() || undefined,
+      // Carry the existing publisher back on edit so the backend's
+      // unconditional stamp doesn't blank it. Empty on create → omitted.
+      publisher: form.publisher.trim() || undefined,
       tags: form.tags.length ? form.tags : undefined,
       slogan: form.slogan.trim() || undefined,
       transport: form.transport,
@@ -503,12 +656,8 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
   }
 
   const categoryOptions = useMemo(
-    () =>
-      CATEGORY_KEYS.map((k) => ({
-        value: k,
-        label: t(`categoryOptions.${k}`, { defaultValue: k }),
-      })),
-    [t],
+    () => categories.map((c) => ({ value: c.name, label: c.name })),
+    [categories],
   )
   const transportOptions = useMemo(
     () =>
@@ -519,9 +668,13 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
     [t],
   )
 
+  // The preview renders the display URL (icon_url) when present, else the
+  // canonical icon (covers emoji + legacy full-URL records). The submitted
+  // value stays `form.icon` — the display URL is never written back.
+  const iconDisplay = form.iconUrl || form.icon
   const iconIsImage =
-    !!form.icon &&
-    (form.icon.startsWith('http') || form.icon.startsWith('data:'))
+    !!iconDisplay &&
+    (iconDisplay.startsWith('http') || iconDisplay.startsWith('data:'))
 
   const iconInputRef = React.useRef<HTMLInputElement | null>(null)
 
@@ -529,8 +682,9 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
   // Click on the 72×72 preview tile opens the file picker. Selected file is
   // validated (type + size), then POSTed to marketplace via the two-step
   // presigned-URL flow (see api/mcp.ts#uploadMcpIcon). On success we write
-  // the persistent download URL back into form.icon — same field the emoji /
-  // manual URL input feeds, so downstream code doesn't care about the source.
+  // the persistent download URL into BOTH form.icon (the canonical value
+  // submitted) and form.iconUrl (the preview), so the tile updates and the
+  // fresh key is what gets stored.
   const MAX_ICON_BYTES = 2 * 1024 * 1024
   const ALLOWED_ICON_TYPES = new Set([
     'image/png',
@@ -551,7 +705,10 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
     setIconUploading(true)
     try {
       const url = await uploadMcpIcon(file)
-      update('icon', url)
+      // A fresh upload replaces BOTH the canonical value (persistent download
+      // URL) and the preview. This is the only path that overwrites the
+      // canonical icon; an untouched icon keeps its seeded stored value.
+      setForm((prev) => ({ ...prev, icon: url, iconUrl: url }))
     } catch (e) {
       message.error(
         e instanceof ApiError
@@ -659,7 +816,7 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
                       ...
                     </span>
                   ) : iconIsImage ? (
-                    <img src={form.icon} alt="" />
+                    <img src={iconDisplay} alt="" />
                   ) : (
                     <span>{form.icon || '🧩'}</span>
                   )}
@@ -688,22 +845,31 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
 
               <Form.Item
                 label={t('form.slug')}
-                extra={t('form.slugHint')}
+                extra={slugLocked ? t('form.slugLockedHint') : t('form.slugHint')}
               >
                 <Input
                   value={form.slug}
                   onChange={(e) => onSlugChange(e.target.value)}
                   placeholder={t('form.slugPlaceholder')}
                   maxLength={64}
+                  // Slug is the server identity (mcpServers key / connector
+                  // source). Editing it on the edit path would desync the stored
+                  // key from manifest.name, so lock it — but ONLY when the seeded
+                  // slug is valid. A row seeded with an empty/non-conforming slug
+                  // stays editable so the operator can satisfy the required-slug
+                  // gate instead of being trapped (can't edit, can't submit).
+                  disabled={slugLocked}
                 />
               </Form.Item>
 
               <div className="mcp-form-grid mcp-form-grid--2">
                 <Form.Item label={t('form.category')}>
                   <Select
-                    value={form.category}
-                    onChange={(v) => update('category', v)}
+                    value={form.category || undefined}
+                    onChange={(v) => update('category', v ?? '')}
                     options={categoryOptions}
+                    allowClear
+                    placeholder={t('form.category')}
                   />
                 </Form.Item>
                 <Form.Item

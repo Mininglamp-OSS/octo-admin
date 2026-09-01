@@ -14,11 +14,14 @@ import { hasManagerCapability } from '../../auth/capabilities'
 import { useAuthStore } from '../../store/auth'
 import ExpertDetailDrawer from './ExpertDetailDrawer'
 import UploadModal from './UploadModal'
+import VisibilityTag from '../../components/VisibilityTag'
+import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
 
 const PAGE_SIZE = 20
 
 export default function ExpertTab() {
   const { t } = useTranslation(['expertMarket', 'common'])
+  const { nameOf } = useSpaceNameMap()
   const canWrite = useAuthStore((s) => hasManagerCapability(s.managerCapabilities, 'expert.write'))
 
   const [rows, setRows] = useState<ExpertListItem[]>([])
@@ -113,12 +116,18 @@ export default function ExpertTab() {
           ),
       },
       {
-        title: t('table.skills'),
-        dataIndex: 'skill_count',
-        key: 'skill_count',
-        width: 80,
-        align: 'right',
-        render: (v?: number) => <span className="mono">{v ?? 0}</span>,
+        title: t('table.visibility', { ns: 'common' }),
+        dataIndex: 'scope',
+        key: 'scope',
+        width: 110,
+        render: (scope: string) => <VisibilityTag scope={scope} />,
+      },
+      {
+        title: t('table.space', { ns: 'common' }),
+        dataIndex: 'space_id',
+        key: 'space_id',
+        width: 160,
+        render: (spaceId?: string) => nameOf(spaceId),
       },
       {
         title: t('table.creator'),
@@ -129,7 +138,7 @@ export default function ExpertTab() {
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [t]
+    [t, nameOf]
   )
 
   return (
@@ -168,6 +177,7 @@ export default function ExpertTab() {
         loading={loading}
         columns={columns}
         dataSource={rows}
+        scroll={{ x: 'max-content' }}
         locale={{ emptyText: t('emptyExpert') }}
         onRow={(r) => ({
           onClick: () => setDrawerId(r.expert_id),

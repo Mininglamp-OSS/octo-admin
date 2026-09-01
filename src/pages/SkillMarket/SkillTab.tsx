@@ -6,22 +6,27 @@ import type { ColumnsType } from 'antd/es/table'
 import {
   listAdminSkills,
   deleteAdminSkill,
-  getAdminSkillDownloadUrl,
+  downloadAdminSkillPackage,
   listSkillCategories,
+  getAdminSkill,
   type SkillListItem,
+  type SkillDetail,
   type CategoryItem,
 } from '../../api/skill'
 import { ApiError } from '../../api'
 import { hasManagerCapability } from '../../auth/capabilities'
 import { useAuthStore } from '../../store/auth'
 import SkillDetailDrawer from './SkillDetailDrawer'
-import SkillEditModal from './SkillEditModal'
+import SkillFormModal from '../SystemSkill/SkillFormModal'
 import SkillUploadModal from './SkillUploadModal'
+import VisibilityTag from '../../components/VisibilityTag'
+import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
 
 const PAGE_SIZE = 20
 
 export default function SkillTab() {
   const { t } = useTranslation(['skillMarket', 'common'])
+  const { nameOf } = useSpaceNameMap()
   const canWrite = useAuthStore((s) =>
     hasManagerCapability(s.managerCapabilities, 'skill.write')
   )
@@ -39,7 +44,7 @@ export default function SkillTab() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
   const [editOpen, setEditOpen] = useState(false)
-  const [editingSkill, setEditingSkill] = useState<SkillListItem | null>(null)
+  const [editSkill, setEditSkill] = useState<SkillDetail | null>(null)
   const [uploadOpen, setUploadOpen] = useState(false)
 
   const load = useCallback(
@@ -99,8 +104,7 @@ export default function SkillTab() {
 
   const handleDownload = async (record: SkillListItem) => {
     try {
-      const url = await getAdminSkillDownloadUrl(record.skill_id)
-      window.open(url, '_blank')
+      await downloadAdminSkillPackage(record.skill_id, record.file_name)
     } catch (err) {
       message.error(err instanceof ApiError ? err.message : t('skill.loadFailed'))
     }
@@ -111,9 +115,20 @@ export default function SkillTab() {
     setDrawerOpen(true)
   }
 
-  const openEdit = (record: SkillListItem) => {
-    setEditingSkill(record)
-    setEditOpen(true)
+  const openEdit = async (record: SkillListItem) => {
+    // SkillFormModal edits the full SkillDetail (name/version/tags/… + the
+    // upload→parse→reupload flow), so fetch the authoritative detail before
+    // opening. A version-less/backfilled row still edits fine.
+    const hide = message.loading(t('skill.editModal.loading'), 0)
+    try {
+      const detail = await getAdminSkill(record.skill_id)
+      setEditSkill(detail)
+      setEditOpen(true)
+    } catch (err) {
+      message.error(err instanceof ApiError ? err.message : t('skill.loadFailed'))
+    } finally {
+      hide()
+    }
   }
 
   const getCategoryName = (catId: string) => {
@@ -196,9 +211,23 @@ export default function SkillTab() {
       render: (val: string) => (val ? new Date(val).toLocaleDateString() : '-'),
     },
     {
+      title: t('table.visibility', { ns: 'common' }),
+      key: 'visibility',
+      width: 100,
+      render: (_, record) => <VisibilityTag scope={record.scope} />,
+    },
+    {
+      title: t('table.space', { ns: 'common' }),
+      key: 'space',
+      width: 140,
+      ellipsis: true,
+      render: (_, record) => nameOf(record.space_id),
+    },
+    {
       title: t('skill.table.actions'),
       key: 'actions',
       width: 200,
+      fixed: 'right' as const,
       render: (_, record) => (
         <Space size="small" onClick={(event) => event.stopPropagation()}>
           <Button type="link" size="small" onClick={() => openDetail(record)}>
@@ -272,6 +301,7 @@ export default function SkillTab() {
         columns={columns}
         dataSource={rows}
         loading={loading}
+        scroll={{ x: 'max-content' }}
         pagination={{
           current: page,
           pageSize: PAGE_SIZE,
@@ -291,10 +321,10 @@ export default function SkillTab() {
         categories={categories}
         onClose={() => setDrawerOpen(false)}
       />
-      <SkillEditModal
+      <SkillFormModal
         open={editOpen}
-        skill={editingSkill}
-        categories={categories}
+        editSkill={editSkill}
+        canWrite={canWrite}
         onClose={() => setEditOpen(false)}
         onSuccess={() => {
           setEditOpen(false)

@@ -57,6 +57,7 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
   const [categories, setCategories] = useState<CategoryItem[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [iconUrl, setIconUrl] = useState('')
+  const [iconDisplayUrl, setIconDisplayUrl] = useState('')
   const [iconUploading, setIconUploading] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval>>()
   const [form] = Form.useForm()
@@ -78,15 +79,19 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
           description: editSkill.description,
           category_id: editSkill.category_id,
           tags: editSkill.tags,
-          visibility: 'public',
+          // Echo the record's existing visibility — never widen a space/private
+          // skill to system-wide on edit.
+          visibility: editSkill.visibility || 'system',
           version: editSkill.version,
           changelog: t('upload.currentVersionChangelog'),
         })
-        setIconUrl(editSkill.icon_url || '')
+        setIconUrl(editSkill.icon || '')
+        setIconDisplayUrl(editSkill.icon_url || '')
       } else {
         setRenderEditSkill(null)
-        form.setFieldsValue({ visibility: 'public', version: DEFAULT_VERSION, changelog: '' })
+        form.setFieldsValue({ visibility: 'system', version: DEFAULT_VERSION, changelog: '' })
         setIconUrl('')
+        setIconDisplayUrl('')
       }
       setParseTaskId('')
       setSelectedFileName('')
@@ -132,16 +137,32 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
             clearInterval(pollRef.current!)
             setUploadProgress(100)
             setUploading(false)
-            // Pre-fill form from parse results
-            form.setFieldsValue({
-              name: status.result_name,
-              display_name: status.result_name,
-              description: status.result_description,
-              tags: status.result_tags || [],
-              version: activeEditSkill ? bumpPatch(activeEditSkill.version || DEFAULT_VERSION) : (status.result_version || DEFAULT_VERSION),
-              changelog: activeEditSkill ? '' : t('upload.initialChangelog'),
-              visibility: 'public',
-            })
+            // Pre-fill form from parse results.
+            if (activeEditSkill) {
+              // Reupload into an EXISTING record: the package's machine `name`
+              // and a bumped version reflect the new artifact, but the curated
+              // market-facing fields (display_name/description/tags) were seeded
+              // from the record when the modal opened and MUST NOT be clobbered
+              // by the parsed values. The operator edits them explicitly.
+              form.setFieldsValue({
+                name: status.result_name,
+                version: bumpPatch(activeEditSkill.version || DEFAULT_VERSION),
+                changelog: '',
+                // Preserve the existing row's visibility on reupload.
+                visibility: activeEditSkill.visibility || 'system',
+              })
+            } else {
+              // Brand-new create: seed everything from the parse result.
+              form.setFieldsValue({
+                name: status.result_name,
+                display_name: status.result_name,
+                description: status.result_description,
+                tags: status.result_tags || [],
+                version: status.result_version || DEFAULT_VERSION,
+                changelog: t('upload.initialChangelog'),
+                visibility: 'system',
+              })
+            }
             if (activeEditSkill) setReuploadedFileName(file.name)
           } else if (status.status === 'failed') {
             clearInterval(pollRef.current!)
@@ -163,7 +184,11 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
     setIconUploading(true)
     try {
       const { object_key } = await uploadIcon(file)
+      // A fresh upload is the ONLY path that replaces the canonical icon. The
+      // returned object_key is both what we submit and (best-effort) the
+      // preview source.
       setIconUrl(object_key)
+      setIconDisplayUrl(object_key)
     } catch (err) {
       if (err instanceof Error) message.error(err.message)
     } finally {
@@ -173,13 +198,16 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
 
   const handleSubmit = async () => {
     if (!canWrite) return
-    const values = await form.validateFields()
     if (!activeEditSkill && !parseTaskId) {
       message.error(t('upload.noParsedFile'))
       return
     }
     setSubmitting(true)
     try {
+      // validateFields lives INSIDE the try so a validation rejection is handled
+      // (finally clears the busy state, inline field errors surface) rather than
+      // escaping as an unhandled rejection that leaves the modal stuck.
+      const values = await form.validateFields()
       if (activeEditSkill) {
         if (parseTaskId) {
           await commitAdminSkillReupload(activeEditSkill.id, {
@@ -193,24 +221,33 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
           name: values.name,
           display_name: values.display_name,
           description: values.description,
-          category_id: values.category_id,
+          // An explicit clear (allowClear ✕) leaves category_id undefined; send
+          // '' so updateAdminSkill OMITS category_id from the PATCH and the
+          // backend NULLs it. An untouched value still carries the real id.
+          category_id: values.category_id ?? '',
           tags: values.tags,
-          visibility: 'public',
+          // Echo the existing visibility instead of hard-coding system — an
+          // edit must not widen a space/private skill.
+          visibility: (activeEditSkill.visibility ||
+            'system') as 'system' | 'space' | 'private',
           icon_url: iconUrl || undefined,
         })
         message.success(t('editModal.success'))
       } else {
+        // The admin skill_import request accepts name/category/tags/version/
+        // description/changelog only (it decodes with DisallowUnknownFields), so
+        // display_name and the uploaded icon can't ride the create — the form
+        // hides them on create and edits them afterward via the edit path,
+        // rather than collecting-and-discarding them here.
         await createSkill({
           parse_task_id: parseTaskId,
           name: values.name,
-          display_name: values.display_name || values.name,
           description: values.description,
           category_id: values.category_id,
           tags: values.tags || [],
-          visibility: 'public',
+          visibility: 'system',
           version: values.version,
           changelog: values.changelog,
-          icon_url: iconUrl || undefined,
         })
         message.success(t('upload.success'))
       }
@@ -335,7 +372,7 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
             {t('upload.versionSection')}
           </Typography.Title>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <Form.Item name="version" label={t('upload.form.version')} rules={[{ required: true }]}>
+            <Form.Item name="version" label={t('upload.form.version')} rules={[{ required: !activeEditSkill || !!parseTaskId }]}>
               <Input placeholder={DEFAULT_VERSION} disabled={!!activeEditSkill && !parseTaskId} />
             </Form.Item>
             <Form.Item name="changelog" label={t('upload.form.changelog')} rules={[{ required: !activeEditSkill || !!parseTaskId }]}>
@@ -356,21 +393,25 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
                 <Input />
               </Form.Item>
             )}
+            {activeEditSkill && (
+              <>
             <Form.Item name="display_name" label={t('upload.form.displayName')} rules={[{ required: true }]}>
               <Input />
             </Form.Item>
-            <Form.Item name="category_id" label={t('upload.form.category')} rules={[{ required: true }]}>
+              </>
+            )}
+            <Form.Item name="category_id" label={t('upload.form.category')} rules={[{ required: !activeEditSkill }]}>
               <Select
                 options={categories.map((c) => ({ value: c.id, label: c.name }))}
                 allowClear
               />
             </Form.Item>
             {!activeEditSkill && (
-              <Form.Item name="visibility" label={t('upload.form.visibility')} initialValue="public">
+              <Form.Item name="visibility" label={t('upload.form.visibility')} initialValue="system">
                 <Select
                   disabled
                   options={[
-                    { value: 'public', label: t('visibility.public') },
+                    { value: 'system', label: t('visibility.system') },
                   ]}
                 />
               </Form.Item>
@@ -386,6 +427,7 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
               options={[]}
             />
           </Form.Item>
+            {activeEditSkill && (
             <Form.Item label={t('upload.form.icon')}>
               <Upload
                 accept="image/*"
@@ -396,8 +438,8 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
                 }}
               >
                 <Space>
-                  {iconUrl && (
-                    <img src={iconUrl} alt="icon" style={{ width: 32, height: 32, borderRadius: 4 }} />
+                  {iconDisplayUrl && (
+                    <img src={iconDisplayUrl} alt="icon" style={{ width: 32, height: 32, borderRadius: 4 }} />
                   )}
                   <Button icon={<UploadOutlined />} loading={iconUploading}>
                     {t('upload.form.uploadIcon')}
@@ -405,6 +447,7 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
                 </Space>
               </Upload>
             </Form.Item>
+          )}
           </Form>
       </div>
     </Modal>

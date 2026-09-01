@@ -17,6 +17,16 @@
     "id": "ID"
   },
   "table": {
-    "total": "{{count}} total"
+    "total": "{{count}} total",
+    "visibility": "Visibility",
+    "space": "Space"
+  },
+  "visibility": {
+    "system": "System",
+    "space": "Space",
+    "private": "Private"
+  },
+  "space": {
+    "global": "Global"
   }
 }

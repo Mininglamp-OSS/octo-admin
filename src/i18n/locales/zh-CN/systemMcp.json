@@ -13,6 +13,43 @@
   },
   "empty": "还没有 MCP，点击右上角「新建」添加",
   "loadFailed": "加载失败",
+  "tab": {
+    "mcps": "MCP",
+    "categories": "分类"
+  },
+  "category": {
+    "create": "新建分类",
+    "rename": "编辑",
+    "delete": "删除",
+    "deleteConfirm": "确认删除该分类？",
+    "deleteInUse": "该分类下还有 {{count}} 个 MCP，无法删除",
+    "empty": "还没有分类",
+    "table": {
+      "name": "名称",
+      "count": "数量",
+      "sortOrder": "排序",
+      "actions": "操作"
+    },
+    "modal": {
+      "createTitle": "新建分类",
+      "editTitle": "编辑分类",
+      "name": "名称",
+      "nameRequired": "请填写名称",
+      "sortOrder": "排序",
+      "sortOrderHint": "数字越小越靠前"
+    },
+    "success": {
+      "created": "已创建",
+      "updated": "已更新",
+      "deleted": "已删除"
+    },
+    "error": {
+      "nameExists": "分类名称已存在",
+      "createFailed": "创建失败",
+      "updateFailed": "更新失败",
+      "deleteFailed": "删除失败"
+    }
+  },
   "searchPlaceholder": "搜索名称或简介",
   "actions": {
     "view": "详情",
@@ -88,6 +125,8 @@
     "slugPlaceholder": "例如 github-mcp",
     "slugHint": "生成 mcpServers JSON 时用作 key，仅限英文小写、数字、连字符；留空自动根据名称生成",
     "slugInvalid": "服务标识只能包含小写字母、数字与连字符，且 1-64 位",
+    "slugRequired": "名称无法自动生成服务标识，请手动填写（仅限小写字母、数字与连字符）",
+    "slugLockedHint": "服务标识是该 MCP 的服务身份，创建后不可修改；如需更改请重新创建。",
     "advancedToggle": "显示高级设置",
     "tagsPillHint": "输入后回车添加",
     "tagsPillPlaceholder": "输入后按回车添加",

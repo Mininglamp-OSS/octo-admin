@@ -19,6 +19,8 @@ import {
   describeApiError,
   entriesFromWire,
   entriesToWire,
+  resolveConnectorSlug,
+  seededSlugIsValid,
 } from './FormModal'
 
 describe('entriesFromWire', () => {
@@ -105,6 +107,110 @@ describe('entriesToWire', () => {
       'X-Api-Key': '',
     })
     expect(out.userSupplied).toEqual(['Authorization', 'X-Api-Key'])
+  })
+})
+
+describe('resolveConnectorSlug', () => {
+  it('requires an explicit slug when a pure-CJK name auto-derives to empty (never mcp-server)', () => {
+    // The bug this guards: a Chinese-only name strips to "" and the write path
+    // silently substituted DEFAULT_SERVER_SLUG ("mcp-server"), colliding two
+    // connectors. With no manual slug, submit must be BLOCKED instead.
+    const res = resolveConnectorSlug('高德地图', '')
+    expect(res).toEqual({ ok: false, reason: 'required' })
+  })
+
+  it('round-trips a valid manual slug for a CJK name', () => {
+    const res = resolveConnectorSlug('高德地图', 'gaode-map')
+    expect(res).toEqual({ ok: true, slug: 'gaode-map' })
+  })
+
+  it('rejects a manual slug that is not [a-z0-9-] (a CJK slug fails)', () => {
+    expect(resolveConnectorSlug('x', '高德')).toEqual({
+      ok: false,
+      reason: 'invalid',
+    })
+    expect(resolveConnectorSlug('x', 'Bad Slug!')).toEqual({
+      ok: false,
+      reason: 'invalid',
+    })
+  })
+
+  it('rejects a hyphen-only slug that passes the charset test but normalizes to empty (review P2-1)', () => {
+    // `-` / `--` match ^[a-z0-9-]{1,64}$ yet slugifyName strips them to '',
+    // which would otherwise fall back to the `mcp-server` default. The
+    // normalized-slug check must reject them as invalid.
+    expect(resolveConnectorSlug('x', '-')).toEqual({
+      ok: false,
+      reason: 'invalid',
+    })
+    expect(resolveConnectorSlug('x', '--')).toEqual({
+      ok: false,
+      reason: 'invalid',
+    })
+  })
+
+  it('auto-derives a valid slug from an ASCII name when no manual slug is given', () => {
+    expect(resolveConnectorSlug('  My Cool  Server ', '')).toEqual({
+      ok: true,
+      slug: 'my-cool-server',
+    })
+  })
+
+  it('normalizes a manual slug idempotently (already-clean value survives)', () => {
+    expect(resolveConnectorSlug('anything', 'github-mcp')).toEqual({
+      ok: true,
+      slug: 'github-mcp',
+    })
+  })
+})
+
+describe('seededSlugIsValid — the edit-path slug lock (review P1-B)', () => {
+  // The slug field is `disabled` on the edit path ONLY when the seeded slug is
+  // valid. A row seeded with an empty / non-conforming slug must stay EDITABLE
+  // so the operator can satisfy the required-slug gate — otherwise the field is
+  // locked AND submit hard-blocks, trapping the row (can't edit, can't save).
+
+  it('locks the field only for a valid seeded slug', () => {
+    expect(seededSlugIsValid('github-mcp')).toBe(true)
+    expect(seededSlugIsValid('gaode-map')).toBe(true)
+    expect(seededSlugIsValid('a')).toBe(true)
+  })
+
+  it('leaves the field EDITABLE for an empty seeded slug', () => {
+    // A legacy row with no slug: locking it would make it uneditable AND
+    // unsaveable (submit requires a resolvable slug).
+    expect(seededSlugIsValid('')).toBe(false)
+    expect(seededSlugIsValid('   ')).toBe(false)
+  })
+
+  it('leaves the field EDITABLE for a non-conforming seeded slug', () => {
+    expect(seededSlugIsValid('高德')).toBe(false)
+    expect(seededSlugIsValid('Bad Slug!')).toBe(false)
+    expect(seededSlugIsValid('UPPER')).toBe(false)
+    // Hyphen-only passes the charset test but normalizes to '' — still invalid.
+    expect(seededSlugIsValid('-')).toBe(false)
+    expect(seededSlugIsValid('--')).toBe(false)
+  })
+
+  it('locks in EXACTLY the states resolveConnectorSlug accepts for a manual slug', () => {
+    // The field is editable in exactly the states resolveConnectorSlug rejects
+    // for a non-empty manual slug, and locked where it accepts — the two must
+    // agree so an editable field can always pass submit.
+    for (const slug of [
+      'github-mcp',
+      'gaode-map',
+      'a',
+      '',
+      '   ',
+      '高德',
+      'Bad Slug!',
+      'UPPER',
+      '-',
+      '--',
+    ]) {
+      const accepted = slug.trim() !== '' && resolveConnectorSlug('x', slug).ok
+      expect(seededSlugIsValid(slug)).toBe(accepted)
+    }
   })
 })
 
