@@ -6,6 +6,7 @@ import { useAuthStore } from '../../store/auth'
 import { getMySpaces, getUser } from '../../api/space-user'
 import type { MySpace } from '../../store/auth'
 import { useState } from 'react'
+import { resolveTargetSpaceId } from './spaceTarget'
 
 function readFromSession(prefix: string): string {
   if (typeof sessionStorage === 'undefined') return ''
@@ -24,8 +25,42 @@ function readSessionToken(): string {
   return readFromSession('token')
 }
 
+// 从 URL query 读取来源方（如 octo-web「空间管理」入口）指定的目标空间 id。
+// 用户在主站可能同时管理多个空间，带上当前空间 id 后就默认落到该空间，
+// 而不是可管理列表里的第一个。取不到时返回空串，走原有默认逻辑。
+function readRequestedSpaceId(): string {
+  if (typeof window === 'undefined') return ''
+  try {
+    return new URLSearchParams(window.location.search).get('spaceId') || ''
+  } catch {
+    return ''
+  }
+}
+
 function readSessionUid(): string {
   return readFromSession('uid')
+}
+
+// 解析目标空间,并在 navigate 前把 store 对齐到它。
+//
+// 两条入口路径的 currentSpaceId 都可能与解析结果不同 —— 已登录路径用的是持久化
+// 的旧值,新登录路径 loginSpace() 内部固定写 managed[0]。不对齐会有两个后果:
+//   1. SpaceAdminLayout 的 header(含 SpaceSwitcher)在 loading gate 之外渲染,
+//      会先按旧的 currentSpaceId 画出错误选中项,要等它的 effect 之后才纠正;
+//   2. 那个 effect 的依赖数组里有 currentSpaceId,它自己调 setCurrentSpaceId 等于
+//      改自己的依赖 —— effect 会 teardown 再重跑,多打一轮 /space/my + /space/{id}。
+// 提前对齐可以同时避免这两点。
+function resolveAndSyncTargetSpaceId(
+  spaces: Pick<MySpace, 'space_id' | 'status'>[],
+  requestedSpaceId: string,
+  fallbackSpaceId: string,
+): string {
+  const targetSpaceId = resolveTargetSpaceId(spaces, requestedSpaceId, fallbackSpaceId)
+  const store = useAuthStore.getState()
+  if (store.currentSpaceId !== targetSpaceId) {
+    store.setCurrentSpaceId(targetSpaceId)
+  }
+  return targetSpaceId
 }
 
 function decodeJwtUid(token: string): string {
@@ -53,6 +88,7 @@ export default function SpaceEntry() {
   useEffect(() => {
     if (onceRef.current) return
     onceRef.current = true
+    const requestedSpaceId = readRequestedSpaceId()
     const state = useAuthStore.getState()
     if (state.isLoggedIn && state.scope === 'super') {
       navigate('/dashboard', { replace: true })
@@ -76,7 +112,13 @@ export default function SpaceEntry() {
             .catch(() => {})
         }
       }
-      navigate(`/space/${state.currentSpaceId || state.mySpaces[0].space_id}/members`, {
+      const fallbackSpaceId = state.currentSpaceId || state.mySpaces[0].space_id
+      const targetSpaceId = resolveAndSyncTargetSpaceId(
+        state.mySpaces,
+        requestedSpaceId,
+        fallbackSpaceId,
+      )
+      navigate(`/space/${targetSpaceId}/members`, {
         replace: true,
       })
       return
@@ -117,7 +159,12 @@ export default function SpaceEntry() {
           }
         }
         loginSpace(token, resolvedUid, name, managed)
-        navigate(`/space/${managed[0].space_id}/members`, { replace: true })
+        const targetSpaceId = resolveAndSyncTargetSpaceId(
+          managed,
+          requestedSpaceId,
+          managed[0].space_id,
+        )
+        navigate(`/space/${targetSpaceId}/members`, { replace: true })
       })
       .catch((error: Error) => {
         useAuthStore.getState().logout()
