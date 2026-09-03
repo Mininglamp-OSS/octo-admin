@@ -41,6 +41,28 @@ function readSessionUid(): string {
   return readFromSession('uid')
 }
 
+// 解析目标空间,并在 navigate 前把 store 对齐到它。
+//
+// 两条入口路径的 currentSpaceId 都可能与解析结果不同 —— 已登录路径用的是持久化
+// 的旧值,新登录路径 loginSpace() 内部固定写 managed[0]。不对齐会有两个后果:
+//   1. SpaceAdminLayout 的 header(含 SpaceSwitcher)在 loading gate 之外渲染,
+//      会先按旧的 currentSpaceId 画出错误选中项,要等它的 effect 之后才纠正;
+//   2. 那个 effect 的依赖数组里有 currentSpaceId,它自己调 setCurrentSpaceId 等于
+//      改自己的依赖 —— effect 会 teardown 再重跑,多打一轮 /space/my + /space/{id}。
+// 提前对齐可以同时避免这两点。
+function resolveAndSyncTargetSpaceId(
+  spaces: Pick<MySpace, 'space_id' | 'status'>[],
+  requestedSpaceId: string,
+  fallbackSpaceId: string,
+): string {
+  const targetSpaceId = resolveTargetSpaceId(spaces, requestedSpaceId, fallbackSpaceId)
+  const store = useAuthStore.getState()
+  if (store.currentSpaceId !== targetSpaceId) {
+    store.setCurrentSpaceId(targetSpaceId)
+  }
+  return targetSpaceId
+}
+
 function decodeJwtUid(token: string): string {
   const parts = token.split('.')
   if (parts.length !== 3) return ''
@@ -91,7 +113,7 @@ export default function SpaceEntry() {
         }
       }
       const fallbackSpaceId = state.currentSpaceId || state.mySpaces[0].space_id
-      const targetSpaceId = resolveTargetSpaceId(
+      const targetSpaceId = resolveAndSyncTargetSpaceId(
         state.mySpaces,
         requestedSpaceId,
         fallbackSpaceId,
@@ -137,17 +159,11 @@ export default function SpaceEntry() {
           }
         }
         loginSpace(token, resolvedUid, name, managed)
-        const targetSpaceId = resolveTargetSpaceId(
+        const targetSpaceId = resolveAndSyncTargetSpaceId(
           managed,
           requestedSpaceId,
           managed[0].space_id,
         )
-        // loginSpace 内部把 currentSpaceId 设为 managed[0]，若解析结果不同会导致
-        // SpaceSwitcher 短暂选中错误项（等 SpaceAdminLayout effect 再纠正）。
-        // 这里在 navigate 前先把 store 对齐到实际要打开的空间。
-        if (targetSpaceId !== managed[0].space_id) {
-          useAuthStore.getState().setCurrentSpaceId(targetSpaceId)
-        }
         navigate(`/space/${targetSpaceId}/members`, { replace: true })
       })
       .catch((error: Error) => {
