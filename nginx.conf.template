@@ -16,8 +16,10 @@ server {
     }
 
     # /space 短链重定向到 /admin/space(便于空间管理员直链分享)
+    # 用 $is_args$args 透传 query(如 ?spaceId=xxx):return 不会自动带上原始
+    # query,不透传的话主站「空间管理」入口指定的目标空间会在这一跳丢掉。
     location = /space {
-        return 301 /admin/space;
+        return 301 /admin/space$is_args$args;
     }
     location /space/ {
         rewrite ^/space/(.*)$ /admin/space/$1 permanent;

@@ -6,6 +6,7 @@ import { useAuthStore } from '../../store/auth'
 import { getMySpaces, getUser } from '../../api/space-user'
 import type { MySpace } from '../../store/auth'
 import { useState } from 'react'
+import { resolveTargetSpaceId } from './spaceTarget'
 
 function readFromSession(prefix: string): string {
   if (typeof sessionStorage === 'undefined') return ''
@@ -22,6 +23,18 @@ function readFromSession(prefix: string): string {
 
 function readSessionToken(): string {
   return readFromSession('token')
+}
+
+// 从 URL query 读取来源方（如 octo-web「空间管理」入口）指定的目标空间 id。
+// 用户在主站可能同时管理多个空间，带上当前空间 id 后就默认落到该空间，
+// 而不是可管理列表里的第一个。取不到时返回空串，走原有默认逻辑。
+function readRequestedSpaceId(): string {
+  if (typeof window === 'undefined') return ''
+  try {
+    return new URLSearchParams(window.location.search).get('spaceId') || ''
+  } catch {
+    return ''
+  }
 }
 
 function readSessionUid(): string {
@@ -53,6 +66,7 @@ export default function SpaceEntry() {
   useEffect(() => {
     if (onceRef.current) return
     onceRef.current = true
+    const requestedSpaceId = readRequestedSpaceId()
     const state = useAuthStore.getState()
     if (state.isLoggedIn && state.scope === 'super') {
       navigate('/dashboard', { replace: true })
@@ -76,7 +90,13 @@ export default function SpaceEntry() {
             .catch(() => {})
         }
       }
-      navigate(`/space/${state.currentSpaceId || state.mySpaces[0].space_id}/members`, {
+      const fallbackSpaceId = state.currentSpaceId || state.mySpaces[0].space_id
+      const targetSpaceId = resolveTargetSpaceId(
+        state.mySpaces,
+        requestedSpaceId,
+        fallbackSpaceId,
+      )
+      navigate(`/space/${targetSpaceId}/members`, {
         replace: true,
       })
       return
@@ -117,7 +137,12 @@ export default function SpaceEntry() {
           }
         }
         loginSpace(token, resolvedUid, name, managed)
-        navigate(`/space/${managed[0].space_id}/members`, { replace: true })
+        const targetSpaceId = resolveTargetSpaceId(
+          managed,
+          requestedSpaceId,
+          managed[0].space_id,
+        )
+        navigate(`/space/${targetSpaceId}/members`, { replace: true })
       })
       .catch((error: Error) => {
         useAuthStore.getState().logout()
