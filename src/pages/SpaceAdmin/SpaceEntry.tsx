@@ -142,6 +142,12 @@ export default function SpaceEntry() {
           requestedSpaceId,
           managed[0].space_id,
         )
+        // loginSpace 内部把 currentSpaceId 设为 managed[0]，若解析结果不同会导致
+        // SpaceSwitcher 短暂选中错误项（等 SpaceAdminLayout effect 再纠正）。
+        // 这里在 navigate 前先把 store 对齐到实际要打开的空间。
+        if (targetSpaceId !== managed[0].space_id) {
+          useAuthStore.getState().setCurrentSpaceId(targetSpaceId)
+        }
         navigate(`/space/${targetSpaceId}/members`, { replace: true })
       })
       .catch((error: Error) => {
