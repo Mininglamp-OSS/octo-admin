@@ -21,7 +21,7 @@ import CategoryTab from './CategoryTab'
 import VisibilityTag from '../../components/VisibilityTag'
 import PluginRating from '../../components/PluginRating'
 import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
-import { mergeRatingOverrides, recordRatingOverride } from '../../utils/ratingOverrides'
+import { createRatingOverrideLedger, mergeRatingOverrides, ratingOverrideSequence, recordRatingOverride } from '../../utils/ratingOverrides'
 import './systemMcp.css'
 
 const PAGE_SIZE = 20
@@ -54,10 +54,11 @@ export default function SystemMcp() {
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<McpDetail | null>(null)
   const loadSequence = useRef(0)
-  const ratingOverrides = useRef(new Map<string, number | null>())
+  const ratingOverrides = useRef(createRatingOverrideLedger())
 
   const load = async (nextPage = page, kw = keyword) => {
     const request = ++loadSequence.current
+    const seenRatingSequence = ratingOverrideSequence(ratingOverrides.current)
     setLoading(true)
     try {
       const resp = await listSystemMcps({
@@ -66,7 +67,7 @@ export default function SystemMcp() {
         offset: (nextPage - 1) * PAGE_SIZE,
       })
       if (request !== loadSequence.current) return
-      setRows(mergeRatingOverrides(resp.items, ratingOverrides.current, (item) => item.mcp_id))
+      setRows(mergeRatingOverrides(resp.items, ratingOverrides.current, seenRatingSequence, (item) => item.mcp_id))
       setTotal(resp.total)
       setPage(nextPage)
     } catch (err) {

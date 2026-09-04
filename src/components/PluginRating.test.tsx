@@ -47,7 +47,7 @@ describe('PluginRating', () => {
     expect(host.querySelector('[aria-label="pluginRating.edit"]')).toBeNull()
   })
 
-  it('stops modal wrapper clicks from reaching a table row', async () => {
+  it('closes on a mask click without letting it reach the table row', async () => {
     const rowClick = vi.fn()
     await act(async () => root.render(
       <div onClick={rowClick}><PluginRating pluginId="p1" rating={2} canEdit /></div>
@@ -56,6 +56,15 @@ describe('PluginRating', () => {
     rowClick.mockClear()
     await act(async () => (host.querySelector('[role="dialog"]') as HTMLDivElement).click())
     expect(rowClick).not.toHaveBeenCalled()
+    expect(host.querySelector('[role="dialog"]')).toBeNull()
+  })
+
+  it('does not overwrite an in-progress draft when the rating prop changes', async () => {
+    await act(async () => root.render(<PluginRating pluginId="p1" rating={2} canEdit />))
+    await act(async () => (host.querySelector('[aria-label="pluginRating.edit"]') as HTMLButtonElement).click())
+    await act(async () => (host.querySelector('[data-testid="edit-rate"]') as HTMLButtonElement).click())
+    await act(async () => root.render(<PluginRating pluginId="p1" rating={3} canEdit />))
+    expect(host.querySelector('[data-testid="edit-rate"]')?.getAttribute('data-value')).toBe('4')
   })
 
   it('edits with the dedicated API and reports the new value', async () => {

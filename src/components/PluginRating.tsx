@@ -28,7 +28,9 @@ export default function PluginRating({
   const [saving, setSaving] = useState(false)
   const savingRef = useRef(false)
 
-  useEffect(() => setDraft(rating), [rating])
+  useEffect(() => {
+    if (!open) setDraft(rating)
+  }, [rating, open])
 
   const showEditor = (event: React.MouseEvent) => {
     event.stopPropagation()
@@ -77,7 +79,12 @@ export default function PluginRating({
         okText={t('action.confirm')}
         cancelText={t('action.cancel')}
         destroyOnClose
-        wrapProps={{ onClick: (event: React.MouseEvent<HTMLDivElement>) => event.stopPropagation() }}
+        wrapProps={{
+          onClick: (event: React.MouseEvent<HTMLDivElement>) => {
+            event.stopPropagation()
+            if (event.target === event.currentTarget) setOpen(false)
+          },
+        }}
       >
         <Space direction="vertical" size={12}>
           <Text type="secondary">{t('pluginRating.hint')}</Text>

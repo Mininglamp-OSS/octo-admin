@@ -12,7 +12,7 @@ import {
 import VisibilityTag from '../../components/VisibilityTag'
 import PluginRating from '../../components/PluginRating'
 import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
-import { mergeRatingOverrides, recordRatingOverride } from '../../utils/ratingOverrides'
+import { mergeRatingOverrides, ratingOverrideSequence, recordRatingOverride, type RatingOverrideLedger } from '../../utils/ratingOverrides'
 
 const LIMIT = 20
 const DEBOUNCE_MS = 300
@@ -21,10 +21,11 @@ interface Props {
   onView: (id: string) => void
   onUpload: () => void
   canWrite: boolean
-  ratingUpdate?: { id: string; rating: number | null; sequence: number } | null
+  refreshToken: number
+  ratingLedger: RatingOverrideLedger
 }
 
-export default function SkillTable({ onView, onUpload, canWrite, ratingUpdate }: Props) {
+export default function SkillTable({ onView, onUpload, canWrite, refreshToken, ratingLedger }: Props) {
   const { t } = useTranslation('systemSkill')
   const { nameOf } = useSpaceNameMap()
   const [data, setData] = useState<SkillListItem[]>([])
@@ -38,7 +39,6 @@ export default function SkillTable({ onView, onUpload, canWrite, ratingUpdate }:
   const [loading, setLoading] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>()
   const requestSequence = useRef(0)
-  const ratingOverrides = useRef(new Map<string, number | null>())
 
   useEffect(() => {
     listCategories().then(setCategories).catch(() => {})
@@ -55,6 +55,7 @@ export default function SkillTable({ onView, onUpload, canWrite, ratingUpdate }:
 
   const fetchList = useCallback(async () => {
     const request = ++requestSequence.current
+    const seenRatingSequence = ratingOverrideSequence(ratingLedger)
     setLoading(true)
     try {
       const resp = await listSkills({
@@ -64,7 +65,7 @@ export default function SkillTable({ onView, onUpload, canWrite, ratingUpdate }:
         limit: LIMIT,
       })
       if (request !== requestSequence.current) return
-      setData(mergeRatingOverrides(resp.items || [], ratingOverrides.current, (item) => item.id))
+      setData(mergeRatingOverrides(resp.items || [], ratingLedger, seenRatingSequence, (item) => item.id))
       setHasMore(!!resp.next_cursor)
       if (resp.next_cursor && !cursors[page + 1]) {
         setCursors((prev) => [...prev, resp.next_cursor!])
@@ -74,17 +75,9 @@ export default function SkillTable({ onView, onUpload, canWrite, ratingUpdate }:
     } finally {
       if (request === requestSequence.current) setLoading(false)
     }
-  }, [page, cursors, debouncedKeyword, categoryFilter])
+  }, [page, cursors, debouncedKeyword, categoryFilter, ratingLedger])
 
-  useEffect(() => { fetchList() }, [fetchList])
-
-  useEffect(() => {
-    if (!ratingUpdate) return
-    recordRatingOverride(ratingOverrides.current, ratingUpdate.id, ratingUpdate.rating)
-    setData((prev) => prev.map((row) =>
-      row.id === ratingUpdate.id ? { ...row, rating: ratingUpdate.rating } : row
-    ))
-  }, [ratingUpdate])
+  useEffect(() => { fetchList() }, [fetchList, refreshToken])
 
   const categoryOptions = [
     { value: '', label: t('list.categoryFilter') },
@@ -143,7 +136,7 @@ export default function SkillTable({ onView, onUpload, canWrite, ratingUpdate }:
           rating={rating}
           canEdit={canWrite}
           onChanged={(next) => {
-            recordRatingOverride(ratingOverrides.current, record.id, next)
+            recordRatingOverride(ratingLedger, record.id, next)
             setData((prev) => prev.map((row) =>
               row.id === record.id ? { ...row, rating: next } : row
             ))
@@ -219,6 +212,7 @@ export default function SkillTable({ onView, onUpload, canWrite, ratingUpdate }:
         pagination={false}
         onRow={(record) => ({ onClick: () => onView(record.id), style: { cursor: 'pointer' } })}
         size="middle"
+        scroll={{ x: 'max-content' }}
       />
 
       {(page > 0 || hasMore) && (

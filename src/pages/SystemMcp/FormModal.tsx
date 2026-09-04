@@ -643,10 +643,11 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
       const saved = isEdit && editing
         ? await updateSystemMcp(editing.mcp_id, payload)
         : await createSystemMcp(payload)
+      let completed = saved
       if (form.rating !== saved.rating) {
         try {
           await updatePluginRating(saved.mcp_id, form.rating)
-          saved.rating = form.rating
+          completed = { ...saved, rating: form.rating }
         } catch (ratingError) {
           onSaved(saved)
           message.warning(t('common:pluginRating.partialSuccess'))
@@ -655,7 +656,7 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
         }
       }
       message.success(t(isEdit ? 'modal.updateSuccess' : 'modal.createSuccess'))
-      onSaved(saved)
+      onSaved(completed)
       onClose()
     } catch (e) {
       const fallback = isEdit

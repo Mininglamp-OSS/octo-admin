@@ -1,40 +1,60 @@
 import { describe, expect, it } from 'vitest'
-import { mergeRatingOverrides, recordRatingOverride } from './ratingOverrides'
+import {
+  createRatingOverrideLedger,
+  mergeRatingOverrides,
+  ratingOverrideSequence,
+  recordRatingOverride,
+} from './ratingOverrides'
 
 type Row = { id: string; name: string; rating: number | null }
 
 describe('rating overrides', () => {
-  it('keeps a committed rating when an in-flight stale snapshot lands later', () => {
-    const overrides = new Map<string, number | null>()
-    recordRatingOverride(overrides, 'a', 5)
+  it('keeps a committed rating when it was written after the request started', () => {
+    const ledger = createRatingOverrideLedger()
+    const seenSequence = ratingOverrideSequence(ledger)
+    recordRatingOverride(ledger, 'a', 5)
 
     expect(mergeRatingOverrides<Row>([
       { id: 'a', name: 'stale', rating: 2 },
-    ], overrides, (row) => row.id)).toEqual([
+    ], ledger, seenSequence, (row) => row.id)).toEqual([
       { id: 'a', name: 'stale', rating: 5 },
     ])
-    expect(overrides.get('a')).toBe(5)
+    expect(ledger.overrides.get('a')?.rating).toBe(5)
   })
 
-  it('preserves search and pagination results instead of merging old rows', () => {
-    const overrides = new Map<string, number | null>([['a', 4]])
-    const page = [
-      { id: 'b', name: 'search result', rating: 3 },
-      { id: 'c', name: 'next page', rating: null },
-    ]
+  it('trusts the server and clears an override written before the request', () => {
+    const ledger = createRatingOverrideLedger()
+    recordRatingOverride(ledger, 'a', 5)
+    const seenSequence = ratingOverrideSequence(ledger)
+    const row = { id: 'a', name: 'authoritative', rating: 2 }
 
-    const merged = mergeRatingOverrides(page, overrides, (row) => row.id)
-
-    expect(merged).toEqual(page)
-    expect(merged).toHaveLength(2)
-    expect(overrides.get('a')).toBe(4)
+    expect(mergeRatingOverrides([row], ledger, seenSequence, (item) => item.id)[0]).toBe(row)
+    expect(ledger.overrides.has('a')).toBe(false)
   })
 
-  it('drops an override after the server response confirms it', () => {
-    const overrides = new Map<string, number | null>([['a', null]])
-    const row = { id: 'a', name: 'confirmed', rating: null }
+  it('uses the newest write when multiple mutations race one response', () => {
+    const ledger = createRatingOverrideLedger()
+    recordRatingOverride(ledger, 'a', 3)
+    const seenSequence = ratingOverrideSequence(ledger)
+    recordRatingOverride(ledger, 'a', 4)
+    recordRatingOverride(ledger, 'a', 5)
 
-    expect(mergeRatingOverrides([row], overrides, (item) => item.id)[0]).toBe(row)
-    expect(overrides.has('a')).toBe(false)
+    const merged = mergeRatingOverrides(
+      [{ id: 'a', name: 'stale', rating: 3 }],
+      ledger,
+      seenSequence,
+      (row) => row.id,
+    )
+    expect(merged[0].rating).toBe(5)
+  })
+
+  it('preserves search results and unrelated overrides', () => {
+    const ledger = createRatingOverrideLedger()
+    recordRatingOverride(ledger, 'a', 4)
+    const seenSequence = ratingOverrideSequence(ledger)
+    const page = [{ id: 'b', name: 'search result', rating: 3 }]
+
+    expect(mergeRatingOverrides(page, ledger, seenSequence, (row) => row.id)).toEqual(page)
+    expect(ledger.overrides.get('a')?.rating).toBe(4)
   })
 })

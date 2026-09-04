@@ -1,40 +1,52 @@
-export type RatingOverrideMap = Map<string, number | null>
+export interface RatingOverride {
+  rating: number | null
+  sequence: number
+}
 
-/**
- * Record a locally committed rating before updating the visible rows. Keeping
- * this separate from the current page means a later list response cannot
- * restore a stale server snapshot.
- */
+export interface RatingOverrideLedger {
+  sequence: number
+  overrides: Map<string, RatingOverride>
+}
+
+export function createRatingOverrideLedger(): RatingOverrideLedger {
+  return { sequence: 0, overrides: new Map() }
+}
+
+/** Record a locally committed rating with a process-local recency token. */
 export function recordRatingOverride(
-  overrides: RatingOverrideMap,
+  ledger: RatingOverrideLedger,
   id: string,
   rating: number | null,
 ): void {
-  overrides.set(id, rating)
+  ledger.sequence += 1
+  ledger.overrides.set(id, { rating, sequence: ledger.sequence })
+}
+
+/** Capture this immediately before starting a list request. */
+export function ratingOverrideSequence(ledger: RatingOverrideLedger): number {
+  return ledger.sequence
 }
 
 /**
- * Merge server-owned list results with locally committed rating mutations.
- *
- * An override is retained while the server still returns an older value and is
- * removed once a response confirms the mutation. Only matching rows' ratings
- * are changed: search and pagination results (including their order and all
- * other fields) remain exactly as returned by the server.
+ * Reconcile a server response against mutations made while that request was in
+ * flight. Overrides newer than the request win; older overrides are retired and
+ * the response is authoritative, even when its value differs.
  */
 export function mergeRatingOverrides<T extends { rating: number | null }>(
   items: T[],
-  overrides: RatingOverrideMap,
+  ledger: RatingOverrideLedger,
+  seenSequence: number,
   getId: (item: T) => string,
 ): T[] {
   return items.map((item) => {
     const id = getId(item)
-    if (!overrides.has(id)) return item
+    const override = ledger.overrides.get(id)
+    if (!override) return item
 
-    const rating = overrides.get(id)!
-    if (item.rating === rating) {
-      overrides.delete(id)
+    if (override.sequence <= seenSequence) {
+      ledger.overrides.delete(id)
       return item
     }
-    return { ...item, rating }
+    return item.rating === override.rating ? item : { ...item, rating: override.rating }
   })
 }

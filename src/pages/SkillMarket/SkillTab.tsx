@@ -22,7 +22,7 @@ import SkillUploadModal from './SkillUploadModal'
 import VisibilityTag from '../../components/VisibilityTag'
 import PluginRating from '../../components/PluginRating'
 import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
-import { mergeRatingOverrides, recordRatingOverride } from '../../utils/ratingOverrides'
+import { createRatingOverrideLedger, mergeRatingOverrides, ratingOverrideSequence, recordRatingOverride } from '../../utils/ratingOverrides'
 
 const PAGE_SIZE = 20
 
@@ -49,11 +49,12 @@ export default function SkillTab() {
   const [editSkill, setEditSkill] = useState<SkillDetail | null>(null)
   const [uploadOpen, setUploadOpen] = useState(false)
   const loadSequence = useRef(0)
-  const ratingOverrides = useRef(new Map<string, number | null>())
+  const ratingOverrides = useRef(createRatingOverrideLedger())
 
   const load = useCallback(
     async (nextPage = page, kw = keyword, cat = categoryFilter, s = sort) => {
       const request = ++loadSequence.current
+      const seenRatingSequence = ratingOverrideSequence(ratingOverrides.current)
       setLoading(true)
       try {
         const resp = await listAdminSkills({
@@ -64,7 +65,7 @@ export default function SkillTab() {
           page_size: PAGE_SIZE,
         })
         if (request !== loadSequence.current) return
-        setRows(mergeRatingOverrides(resp.items ?? [], ratingOverrides.current, (item) => item.skill_id))
+        setRows(mergeRatingOverrides(resp.items ?? [], ratingOverrides.current, seenRatingSequence, (item) => item.skill_id))
         setTotal(resp.total)
         setPage(nextPage)
       } catch (err) {

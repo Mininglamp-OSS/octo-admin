@@ -286,7 +286,7 @@ export default function UploadModal({
             style={{ width: '100%' }}
             placeholder={t('list.categoryPlaceholder')}
             value={e.category}
-            disabled={submitting || e.status === 'done'}
+            disabled={submitting || e.status === 'done' || (e.status === 'rating_failed' && !!e.pluginId)}
             onChange={(v) => updateEntry(e.key, { category: v })}
             options={categories.map((c) => ({ value: c.name, label: c.name }))}
           />

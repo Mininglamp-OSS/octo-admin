@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useRef, useState, useCallback } from 'react'
 import { Typography, Tabs } from 'antd'
 import { useTranslation } from 'react-i18next'
 import SkillTable from './SkillTable'
@@ -6,6 +6,7 @@ import CategoryTab from './CategoryTab'
 import DetailDrawer from './DetailDrawer'
 import SkillFormModal from './SkillFormModal'
 import type { SkillDetail } from '../../api/skill'
+import { createRatingOverrideLedger, recordRatingOverride } from '../../utils/ratingOverrides'
 import { hasManagerCapability } from '../../auth/capabilities'
 import { useAuthStore } from '../../store/auth'
 
@@ -18,7 +19,7 @@ export default function SystemSkill() {
   const [uploadOpen, setUploadOpen] = useState(false)
   const [editSkill, setEditSkill] = useState<SkillDetail | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
-  const [ratingUpdate, setRatingUpdate] = useState<{ id: string; rating: number | null; sequence: number } | null>(null)
+  const ratingLedger = useRef(createRatingOverrideLedger()).current
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), [])
 
@@ -36,13 +37,13 @@ export default function SystemSkill() {
             label: t('tabs.skills'),
             children: (
               <SkillTable
-                key={refreshKey}
+                refreshToken={refreshKey}
                 onView={(id) => setDetailId(id)}
                 onUpload={() => {
                   if (canWrite) setUploadOpen(true)
                 }}
                 canWrite={canWrite}
-                ratingUpdate={ratingUpdate}
+                ratingLedger={ratingLedger}
               />
             ),
           },
@@ -59,11 +60,7 @@ export default function SystemSkill() {
         open={!!detailId}
         onClose={() => setDetailId(null)}
         onDeleted={refresh}
-        onRatingChanged={(id, rating) => setRatingUpdate((current) => ({
-          id,
-          rating,
-          sequence: (current?.sequence ?? 0) + 1,
-        }))}
+        onRatingChanged={(id, rating) => recordRatingOverride(ratingLedger, id, rating)}
         onEdit={(skill) => {
           if (!canWrite) return
           setDetailId(null)
