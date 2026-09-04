@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, Input, message, Popconfirm, Select, Space, Table, Tag } from 'antd'
 import { PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
@@ -20,6 +20,7 @@ import SkillDetailDrawer from './SkillDetailDrawer'
 import SkillFormModal from '../SystemSkill/SkillFormModal'
 import SkillUploadModal from './SkillUploadModal'
 import VisibilityTag from '../../components/VisibilityTag'
+import PluginRating from '../../components/PluginRating'
 import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
 
 const PAGE_SIZE = 20
@@ -46,9 +47,11 @@ export default function SkillTab() {
   const [editOpen, setEditOpen] = useState(false)
   const [editSkill, setEditSkill] = useState<SkillDetail | null>(null)
   const [uploadOpen, setUploadOpen] = useState(false)
+  const loadSequence = useRef(0)
 
   const load = useCallback(
     async (nextPage = page, kw = keyword, cat = categoryFilter, s = sort) => {
+      const request = ++loadSequence.current
       setLoading(true)
       try {
         const resp = await listAdminSkills({
@@ -58,13 +61,16 @@ export default function SkillTab() {
           page: nextPage,
           page_size: PAGE_SIZE,
         })
+        if (request !== loadSequence.current) return
         setRows(resp.items ?? [])
         setTotal(resp.total)
         setPage(nextPage)
       } catch (err) {
-        message.error(err instanceof ApiError ? err.message : t('skill.loadFailed'))
+        if (request === loadSequence.current) {
+          message.error(err instanceof ApiError ? err.message : t('skill.loadFailed'))
+        }
       } finally {
-        setLoading(false)
+        if (request === loadSequence.current) setLoading(false)
       }
     },
     [page, keyword, categoryFilter, sort, t]
@@ -157,12 +163,6 @@ export default function SkillTab() {
       ellipsis: true,
     },
     {
-      title: t('skill.table.description'),
-      dataIndex: 'description',
-      key: 'description',
-      ellipsis: true,
-    },
-    {
       title: t('skill.table.category'),
       dataIndex: 'category_id',
       key: 'category',
@@ -181,6 +181,25 @@ export default function SkillTab() {
           ))}
           {(tags ?? []).length > 3 && <Tag>+{tags.length - 3}</Tag>}
         </Space>
+      ),
+    },
+    {
+      title: t('common:pluginMetrics.rating'),
+      dataIndex: 'rating',
+      key: 'rating',
+      width: 150,
+      render: (rating: number | null, record) => (
+        <PluginRating
+          compact
+          pluginId={record.skill_id}
+          rating={rating}
+          canEdit={canWrite}
+          onChanged={(next) => {
+            setRows((prev) => prev.map((row) =>
+              row.skill_id === record.skill_id ? { ...row, rating: next } : row
+            ))
+          }}
+        />
       ),
     },
     {
@@ -319,6 +338,12 @@ export default function SkillTab() {
         open={drawerOpen}
         skillId={detailId}
         categories={categories}
+        canEditRating={canWrite}
+        onRatingChanged={(rating) => {
+          setRows((prev) => prev.map((row) =>
+            row.skill_id === detailId ? { ...row, rating } : row
+          ))
+        }}
         onClose={() => setDrawerOpen(false)}
       />
       <SkillFormModal

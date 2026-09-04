@@ -39,6 +39,7 @@ import {
   listExpertCategories,
   listSquadCategories,
   listSystemExperts,
+  listSystemSquads,
   reuploadExpertContainer,
   reuploadSquadContainer,
   updateExpertCategory,
@@ -328,6 +329,46 @@ describe('getSystemSquad — resolves members independently (review P1)', () => 
 })
 
 describe('listSystemExperts — maps the unified list projection', () => {
+  it('maps marketplace metrics without conflating missing values with a rating', async () => {
+    installGet({
+      '/admin/plugin_categories': expertCategories,
+      '/admin/plugins': {
+        data: [
+          {
+            plugin_id: 'exp-rated',
+            plugin_name: 'Rated',
+            plugin_type: 'expert',
+            rating: 4.5,
+            view_count: 12,
+            install_count: 7,
+            download_count: 3,
+          },
+          {
+            plugin_id: 'exp-unrated',
+            plugin_name: 'Unrated',
+            plugin_type: 'expert',
+          },
+        ],
+        pagination: { total: 2, page: 1, page_size: 20 },
+      },
+    })
+
+    const { items } = await listSystemExperts()
+
+    expect(items[0]).toMatchObject({
+      rating: 4.5,
+      view_count: 12,
+      install_count: 7,
+      download_count: 3,
+    })
+    expect(items[1]).toMatchObject({
+      rating: null,
+      view_count: 0,
+      install_count: 0,
+      download_count: 0,
+    })
+  })
+
   it('resolves category names and flattens pagination', async () => {
     installGet({
       '/admin/plugin_categories': expertCategories,
@@ -362,6 +403,48 @@ describe('listSystemExperts — maps the unified list projection', () => {
     // The unified list endpoint pages by number, not limit/offset.
     expect(mockGet).toHaveBeenCalledWith('/admin/plugins', {
       params: { plugin_type: 'expert', q: '架构', page_size: 20, page: 1 },
+    })
+  })
+})
+
+describe('listSystemSquads — maps marketplace metrics', () => {
+  it('preserves supplied metrics and defaults omitted fields', async () => {
+    installGet({
+      '/admin/plugin_categories': teamCategories,
+      '/admin/plugins': {
+        data: [
+          {
+            plugin_id: 'sq-rated',
+            plugin_name: 'Rated squad',
+            plugin_type: 'expert_team',
+            rating: 3,
+            view_count: 21,
+            install_count: 8,
+            download_count: 5,
+          },
+          {
+            plugin_id: 'sq-unrated',
+            plugin_name: 'Unrated squad',
+            plugin_type: 'expert_team',
+          },
+        ],
+        pagination: { total: 2, page: 1, page_size: 20 },
+      },
+    })
+
+    const { items } = await listSystemSquads()
+
+    expect(items[0]).toMatchObject({
+      rating: 3,
+      view_count: 21,
+      install_count: 8,
+      download_count: 5,
+    })
+    expect(items[1]).toMatchObject({
+      rating: null,
+      view_count: 0,
+      install_count: 0,
+      download_count: 0,
     })
   })
 })

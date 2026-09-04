@@ -102,6 +102,10 @@ export interface McpListItem {
   publisher?: string
   tags: string[]
   tool_count: number
+  rating: number | null
+  view_count: number
+  install_count: number
+  download_count: number
   visibility: McpVisibility
   /** Raw unified-plugin visibility (`system`/`space`/`private`) as it
    *  arrives on the wire, before `mapVisibility` collapses it. Drives the
@@ -300,6 +304,10 @@ interface PluginListItemWire {
   icon?: string
   icon_url?: string
   tool_count?: number
+  rating?: number | null
+  view_count?: number
+  install_count?: number
+  download_count?: number
   publisher?: string
   owner_id?: string
   space_id?: string
@@ -571,6 +579,10 @@ function mapMcpListItem(
     // the page's `tags.slice(0,3).map(...)` never hits a bare String (crash).
     tags: normalizeTagsList(raw.tags),
     tool_count: raw.tool_count ?? 0,
+    rating: raw.rating ?? null,
+    view_count: raw.view_count ?? 0,
+    install_count: raw.install_count ?? 0,
+    download_count: raw.download_count ?? 0,
     visibility: mapVisibility(raw.visibility),
     scope: raw.visibility ?? 'system',
     space_id: raw.space_id,

@@ -18,6 +18,7 @@ export default function SystemSkill() {
   const [uploadOpen, setUploadOpen] = useState(false)
   const [editSkill, setEditSkill] = useState<SkillDetail | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [ratingUpdate, setRatingUpdate] = useState<{ id: string; rating: number | null; sequence: number } | null>(null)
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), [])
 
@@ -41,6 +42,7 @@ export default function SystemSkill() {
                   if (canWrite) setUploadOpen(true)
                 }}
                 canWrite={canWrite}
+                ratingUpdate={ratingUpdate}
               />
             ),
           },
@@ -57,6 +59,11 @@ export default function SystemSkill() {
         open={!!detailId}
         onClose={() => setDetailId(null)}
         onDeleted={refresh}
+        onRatingChanged={(id, rating) => setRatingUpdate((current) => ({
+          id,
+          rating,
+          sequence: (current?.sequence ?? 0) + 1,
+        }))}
         onEdit={(skill) => {
           if (!canWrite) return
           setDetailId(null)

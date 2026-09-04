@@ -25,6 +25,7 @@ import {
   Select,
   Steps,
   Switch,
+  Rate,
   message,
 } from 'antd'
 import {
@@ -50,6 +51,7 @@ import {
   type McpTransport,
   type PluginAttachmentWire,
 } from '../../api/mcp'
+import { updatePluginRating } from '../../api/plugin'
 import {
   buildProbeRequest,
   resolveProbeErrorMessage,
@@ -308,6 +310,7 @@ interface FormValues {
   usage_examples: string[]
   faqs: McpFaq[]
   notes: string[]
+  rating: number | null
 }
 
 const EMPTY: FormValues = {
@@ -333,6 +336,7 @@ const EMPTY: FormValues = {
   usage_examples: [],
   faqs: [],
   notes: [],
+  rating: null,
 }
 
 function isRemote(transport: McpTransport): boolean {
@@ -366,6 +370,7 @@ function detailToValues(d: McpDetail): FormValues {
     usage_examples: d.usage_examples || [],
     faqs: d.faqs || [],
     notes: d.notes || [],
+    rating: d.rating,
   }
 }
 
@@ -635,15 +640,22 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
     const payload = buildPayload()
     setSubmitting(true)
     try {
-      if (isEdit && editing) {
-        const updated = await updateSystemMcp(editing.mcp_id, payload)
-        message.success(t('modal.updateSuccess'))
-        onSaved(updated)
-      } else {
-        const created = await createSystemMcp(payload)
-        message.success(t('modal.createSuccess'))
-        onSaved(created)
+      const saved = isEdit && editing
+        ? await updateSystemMcp(editing.mcp_id, payload)
+        : await createSystemMcp(payload)
+      if (form.rating !== saved.rating) {
+        try {
+          await updatePluginRating(saved.mcp_id, form.rating)
+          saved.rating = form.rating
+        } catch (ratingError) {
+          onSaved(saved)
+          message.warning(t('common:pluginRating.partialSuccess'))
+          onClose()
+          return
+        }
       }
+      message.success(t(isEdit ? 'modal.updateSuccess' : 'modal.createSuccess'))
+      onSaved(saved)
       onClose()
     } catch (e) {
       const fallback = isEdit
@@ -1120,6 +1132,18 @@ export default function McpFormModal({ open, editing, onClose, onSaved }: Props)
       {/* Step 3 — Docs (system MCPs skip visibility) */}
       {step === 2 && (
         <div className="mcp-form-step">
+          <div className="mcp-form-section">
+            <div className="mcp-form-section__body">
+              <Form.Item label={t('common:pluginMetrics.rating')} extra={t('common:pluginRating.hint')}>
+                <Rate value={form.rating ?? 0} onChange={(value) => update('rating', value || null)} />
+                {form.rating !== null && (
+                  <Button type="link" danger onClick={() => update('rating', null)}>
+                    {t('common:pluginRating.clear')}
+                  </Button>
+                )}
+              </Form.Item>
+            </div>
+          </div>
           <div className="mcp-form-section">
             <SimpleTextList
               title={t('detail.section.examples')}

@@ -10,6 +10,7 @@ import {
   type CategoryItem,
 } from '../../api/skill'
 import VisibilityTag from '../../components/VisibilityTag'
+import PluginRating from '../../components/PluginRating'
 import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
 
 const LIMIT = 20
@@ -19,9 +20,10 @@ interface Props {
   onView: (id: string) => void
   onUpload: () => void
   canWrite: boolean
+  ratingUpdate?: { id: string; rating: number | null; sequence: number } | null
 }
 
-export default function SkillTable({ onView, onUpload, canWrite }: Props) {
+export default function SkillTable({ onView, onUpload, canWrite, ratingUpdate }: Props) {
   const { t } = useTranslation('systemSkill')
   const { nameOf } = useSpaceNameMap()
   const [data, setData] = useState<SkillListItem[]>([])
@@ -34,6 +36,7 @@ export default function SkillTable({ onView, onUpload, canWrite }: Props) {
   const [categories, setCategories] = useState<CategoryItem[]>([])
   const [loading, setLoading] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>()
+  const requestSequence = useRef(0)
 
   useEffect(() => {
     listCategories().then(setCategories).catch(() => {})
@@ -49,6 +52,7 @@ export default function SkillTable({ onView, onUpload, canWrite }: Props) {
   }, [keyword])
 
   const fetchList = useCallback(async () => {
+    const request = ++requestSequence.current
     setLoading(true)
     try {
       const resp = await listSkills({
@@ -57,19 +61,27 @@ export default function SkillTable({ onView, onUpload, canWrite }: Props) {
         cursor: cursors[page],
         limit: LIMIT,
       })
+      if (request !== requestSequence.current) return
       setData(resp.items || [])
       setHasMore(!!resp.next_cursor)
       if (resp.next_cursor && !cursors[page + 1]) {
         setCursors((prev) => [...prev, resp.next_cursor!])
       }
     } catch (err) {
-      if (err instanceof Error) message.error(err.message)
+      if (request === requestSequence.current && err instanceof Error) message.error(err.message)
     } finally {
-      setLoading(false)
+      if (request === requestSequence.current) setLoading(false)
     }
   }, [page, cursors, debouncedKeyword, categoryFilter])
 
   useEffect(() => { fetchList() }, [fetchList])
+
+  useEffect(() => {
+    if (!ratingUpdate) return
+    setData((prev) => prev.map((row) =>
+      row.id === ratingUpdate.id ? { ...row, rating: ratingUpdate.rating } : row
+    ))
+  }, [ratingUpdate])
 
   const categoryOptions = [
     { value: '', label: t('list.categoryFilter') },
@@ -116,6 +128,36 @@ export default function SkillTable({ onView, onUpload, canWrite }: Props) {
       title: t('column.owner'),
       dataIndex: 'owner_name',
       width: 120,
+    },
+    {
+      title: t('pluginMetrics.rating', { ns: 'common' }),
+      dataIndex: 'rating',
+      width: 150,
+      render: (rating: number | null, record) => (
+        <PluginRating
+          compact
+          pluginId={record.id}
+          rating={rating}
+          canEdit={canWrite}
+          onChanged={(next) => {
+            setData((prev) => prev.map((row) =>
+              row.id === record.id ? { ...row, rating: next } : row
+            ))
+          }}
+        />
+      ),
+    },
+    {
+      title: t('pluginMetrics.views', { ns: 'common' }),
+      dataIndex: 'view_count',
+      width: 90,
+      align: 'right',
+    },
+    {
+      title: t('pluginMetrics.installs', { ns: 'common' }),
+      dataIndex: 'install_count',
+      width: 90,
+      align: 'right',
     },
     {
       title: t('table.visibility', { ns: 'common' }),

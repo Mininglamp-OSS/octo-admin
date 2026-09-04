@@ -86,6 +86,10 @@ export interface ExpertListItem {
   creator_name: string
   created_by_type?: string
   skill_count?: number
+  rating: number | null
+  view_count: number
+  install_count: number
+  download_count: number
 }
 
 export interface ExpertDetail extends ExpertListItem {
@@ -128,6 +132,10 @@ export interface SquadListItem {
   creator_name: string
   created_by_type?: string
   member_count?: number
+  rating: number | null
+  view_count: number
+  install_count: number
+  download_count: number
 }
 
 export interface SquadDetail extends SquadListItem {
@@ -228,6 +236,10 @@ interface PluginListItemWire {
   visibility?: string
   space_id?: string
   member_count?: number
+  rating?: number | null
+  view_count?: number
+  install_count?: number
+  download_count?: number
   created_at?: string
   updated_at?: string
 }
@@ -347,6 +359,10 @@ function mapPluginToExpertListItem(
     space_id: raw.space_id,
     creator_name: raw.creator_name || raw.publisher || '',
     created_by_type: raw.created_by_type,
+    rating: raw.rating ?? null,
+    view_count: raw.view_count ?? 0,
+    install_count: raw.install_count ?? 0,
+    download_count: raw.download_count ?? 0,
     // The list projection carries no expert_skill relations, so the per-row
     // skill count is unavailable here (the detail load fills it in).
   }
@@ -369,6 +385,10 @@ function mapPluginToSquadListItem(
     space_id: raw.space_id,
     creator_name: raw.creator_name || raw.publisher || '',
     created_by_type: raw.created_by_type,
+    rating: raw.rating ?? null,
+    view_count: raw.view_count ?? 0,
+    install_count: raw.install_count ?? 0,
+    download_count: raw.download_count ?? 0,
     // The list wire projects a typed member_count for expert_team rows.
     member_count: raw.member_count,
   }

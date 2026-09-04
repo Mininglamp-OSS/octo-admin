@@ -28,5 +28,22 @@
   },
   "space": {
     "global": "Global"
+  },
+  "pluginMetrics": {
+    "title": "Metrics",
+    "rating": "Rating",
+    "views": "Views",
+    "installs": "Installs",
+    "downloads": "Downloads"
+  },
+  "pluginRating": {
+    "title": "Set rating",
+    "edit": "Edit rating",
+    "hint": "Choose 1-5 stars, or clear the rating to leave it unrated.",
+    "unrated": "Unrated",
+    "clear": "Clear rating",
+    "saved": "Rating updated",
+    "saveFailed": "Failed to update rating",
+    "partialSuccess": "The content was saved, but its rating was not. Retry from the list or details."
   }
 }

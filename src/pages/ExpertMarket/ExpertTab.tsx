@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Input, Space as AntSpace, Table, Tag, message } from 'antd'
 import { PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
@@ -15,6 +15,7 @@ import { useAuthStore } from '../../store/auth'
 import ExpertDetailDrawer from './ExpertDetailDrawer'
 import UploadModal from './UploadModal'
 import VisibilityTag from '../../components/VisibilityTag'
+import PluginRating from '../../components/PluginRating'
 import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
 
 const PAGE_SIZE = 20
@@ -33,8 +34,10 @@ export default function ExpertTab() {
   const [categories, setCategories] = useState<ExpertCategory[]>([])
   const [drawerId, setDrawerId] = useState<string | null>(null)
   const [uploadOpen, setUploadOpen] = useState(false)
+  const loadSequence = useRef(0)
 
   const load = async (nextPage = page, kw = keyword) => {
+    const request = ++loadSequence.current
     setLoading(true)
     try {
       const resp = await listSystemExperts({
@@ -42,13 +45,16 @@ export default function ExpertTab() {
         limit: PAGE_SIZE,
         offset: (nextPage - 1) * PAGE_SIZE,
       })
+      if (request !== loadSequence.current) return
       setRows(resp.items)
       setTotal(resp.total)
       setPage(nextPage)
     } catch (err) {
-      message.error(err instanceof ApiError ? err.message : t('loadFailed'))
+      if (request === loadSequence.current) {
+        message.error(err instanceof ApiError ? err.message : t('loadFailed'))
+      }
     } finally {
-      setLoading(false)
+      if (request === loadSequence.current) setLoading(false)
     }
   }
 
@@ -116,6 +122,35 @@ export default function ExpertTab() {
           ),
       },
       {
+        title: t('pluginMetrics.rating', { ns: 'common' }),
+        dataIndex: 'rating',
+        key: 'rating',
+        width: 150,
+        render: (rating: number | null, record) => (
+          <PluginRating compact pluginId={record.expert_id} rating={rating} canEdit={canWrite}
+            onChanged={(next) => {
+              setRows((prev) => prev.map((row) =>
+                row.expert_id === record.expert_id ? { ...row, rating: next } : row
+              ))
+            }}
+          />
+        ),
+      },
+      {
+        title: t('pluginMetrics.views', { ns: 'common' }),
+        dataIndex: 'view_count',
+        key: 'views',
+        width: 90,
+        align: 'right',
+      },
+      {
+        title: t('pluginMetrics.installs', { ns: 'common' }),
+        dataIndex: 'install_count',
+        key: 'installs',
+        width: 90,
+        align: 'right',
+      },
+      {
         title: t('table.visibility', { ns: 'common' }),
         dataIndex: 'scope',
         key: 'scope',
@@ -138,7 +173,7 @@ export default function ExpertTab() {
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [t, nameOf]
+    [t, nameOf, canWrite]
   )
 
   return (

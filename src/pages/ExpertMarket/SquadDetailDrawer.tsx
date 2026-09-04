@@ -18,6 +18,7 @@ import {
 } from '../../api/expert'
 import { DetailSection, McpConfigBlock, SkillMdModal, SkillRefList, loadSkillMd } from './detailParts'
 import ReuploadButton from './ReuploadButton'
+import PluginMetrics from '../../components/PluginMetrics'
 import type { ParsedContainer } from './parseContainer'
 
 const { Text, Paragraph } = Typography
@@ -164,6 +165,21 @@ export default function SquadDetailDrawer({
               )}
             </div>
           </div>
+
+          <DetailSection title={t('pluginMetrics.title', { ns: 'common' })}>
+            <PluginMetrics
+              pluginId={detail.squad_id}
+              rating={detail.rating}
+              viewCount={detail.view_count}
+              installCount={detail.install_count}
+              downloadCount={detail.download_count}
+              canEditRating={canManage}
+              onRatingChanged={(rating) => {
+                setDetail((current) => current ? { ...current, rating } : current)
+                onChanged()
+              }}
+            />
+          </DetailSection>
 
           <DetailSection title={t('detail.leader')}>
             <Text>{detail.leader || '—'}</Text>

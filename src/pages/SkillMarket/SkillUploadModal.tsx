@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Form, Input, message, Modal, Select, Upload } from 'antd'
+import { Form, Input, message, Modal, Rate, Select, Upload } from 'antd'
 import { InboxOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import type { UploadFile } from 'antd'
@@ -9,6 +9,7 @@ import {
   type CategoryItem,
 } from '../../api/skill'
 import { ApiError } from '../../api'
+import { updatePluginRating } from '../../api/plugin'
 
 const { Dragger } = Upload
 
@@ -20,7 +21,7 @@ interface Props {
 }
 
 export default function SkillUploadModal({ open, categories, onClose, onSuccess }: Props) {
-  const { t } = useTranslation(['skillMarket'])
+  const { t } = useTranslation(['skillMarket', 'common'])
   const [form] = Form.useForm()
   const [submitting, setSubmitting] = useState(false)
   const [fileList, setFileList] = useState<UploadFile[]>([])
@@ -40,7 +41,7 @@ export default function SkillUploadModal({ open, categories, onClose, onSuccess 
       const { parseTaskId } = await uploadAndParseSkillZip(file)
 
       // Create skill with parse_task_id and user-provided metadata
-      await createAdminSkill({
+      const created = await createAdminSkill({
         parse_task_id: parseTaskId,
         name: values.name || undefined,
         description: values.description || undefined,
@@ -48,6 +49,17 @@ export default function SkillUploadModal({ open, categories, onClose, onSuccess 
         tags: values.tags?.length ? values.tags : undefined,
         version: values.version || undefined,
       })
+      if (values.rating != null) {
+        try {
+          await updatePluginRating(created.skill_id, values.rating)
+        } catch {
+          message.warning(t('common:pluginRating.partialSuccess'))
+          setFileList([])
+          form.resetFields()
+          onSuccess()
+          return
+        }
+      }
 
       message.success(t('skill.uploadModal.success'))
       setFileList([])
@@ -103,6 +115,9 @@ export default function SkillUploadModal({ open, categories, onClose, onSuccess 
         </Form.Item>
         <Form.Item name="version" label={t('skill.uploadModal.version')}>
           <Input placeholder={t('skill.uploadModal.versionDefault')} />
+        </Form.Item>
+        <Form.Item name="rating" label={t('common:pluginMetrics.rating')} extra={t('common:pluginRating.hint')}>
+          <Rate />
         </Form.Item>
         <Form.Item label={t('skill.uploadModal.zipFile')} required>
           <Dragger

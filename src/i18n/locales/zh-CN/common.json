@@ -28,5 +28,22 @@
   },
   "space": {
     "global": "全局"
+  },
+  "pluginMetrics": {
+    "title": "数据指标",
+    "rating": "评级",
+    "views": "阅读量",
+    "installs": "安装量",
+    "downloads": "下载量"
+  },
+  "pluginRating": {
+    "title": "设置评级",
+    "edit": "修改评级",
+    "hint": "选择 1-5 星；清除后恢复为未评级。",
+    "unrated": "未评级",
+    "clear": "清除评级",
+    "saved": "评级已更新",
+    "saveFailed": "评级更新失败",
+    "partialSuccess": "内容已保存，但评级设置失败；可在列表或详情中重试"
   }
 }

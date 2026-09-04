@@ -46,7 +46,9 @@
     "categoryPlaceholder": "Select a category (overrides the package value)",
     "tagsHint": "Type and press Enter to add",
     "categoryRequired": "Select a category for this row first",
-    "cancelled": "Import cancelled — remaining rows kept for later"
+    "cancelled": "Import cancelled. The in-flight row may have committed; the list was refreshed so you can verify before retrying.",
+    "abortUncertain": "The request was aborted, but the server may have completed the import. Check the refreshed list before retrying to avoid a duplicate.",
+    "ratingFailed": "The plugin was imported, but rating failed. Submitting again retries only the rating."
   },
   "list": {
     "name": "Name",
@@ -61,7 +63,9 @@
     "statusInvalid": "Parse failed",
     "statusSaving": "Importing",
     "statusDone": "Imported",
-    "statusFailed": "Import failed"
+    "statusFailed": "Import failed",
+    "statusRatingFailed": "Rating retry needed",
+    "statusUncertain": "Verify import status"
   },
   "reupload": {
     "button": "Re-upload",
