@@ -338,7 +338,7 @@ describe('listSystemExperts — maps the unified list projection', () => {
             plugin_id: 'exp-rated',
             plugin_name: 'Rated',
             plugin_type: 'expert',
-            rating: 4.5,
+            rating: 4,
             view_count: 12,
             install_count: 7,
             download_count: 3,
@@ -356,7 +356,7 @@ describe('listSystemExperts — maps the unified list projection', () => {
     const { items } = await listSystemExperts()
 
     expect(items[0]).toMatchObject({
-      rating: 4.5,
+      rating: 4,
       view_count: 12,
       install_count: 7,
       download_count: 3,

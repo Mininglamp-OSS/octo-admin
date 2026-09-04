@@ -17,6 +17,7 @@ import UploadModal from './UploadModal'
 import VisibilityTag from '../../components/VisibilityTag'
 import PluginRating from '../../components/PluginRating'
 import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
+import { mergeRatingOverrides, recordRatingOverride } from '../../utils/ratingOverrides'
 
 const PAGE_SIZE = 20
 
@@ -35,6 +36,7 @@ export default function SquadTab() {
   const [drawerId, setDrawerId] = useState<string | null>(null)
   const [uploadOpen, setUploadOpen] = useState(false)
   const loadSequence = useRef(0)
+  const ratingOverrides = useRef(new Map<string, number | null>())
 
   const load = async (nextPage = page, kw = keyword) => {
     const request = ++loadSequence.current
@@ -46,7 +48,7 @@ export default function SquadTab() {
         offset: (nextPage - 1) * PAGE_SIZE,
       })
       if (request !== loadSequence.current) return
-      setRows(resp.items)
+      setRows(mergeRatingOverrides(resp.items, ratingOverrides.current, (item) => item.squad_id))
       setTotal(resp.total)
       setPage(nextPage)
     } catch (err) {
@@ -140,6 +142,7 @@ export default function SquadTab() {
         render: (rating: number | null, record) => (
           <PluginRating compact pluginId={record.squad_id} rating={rating} canEdit={canWrite}
             onChanged={(next) => {
+              recordRatingOverride(ratingOverrides.current, record.squad_id, next)
               setRows((prev) => prev.map((row) =>
                 row.squad_id === record.squad_id ? { ...row, rating: next } : row
               ))
@@ -244,7 +247,15 @@ export default function SquadTab() {
         open={drawerId !== null}
         canManage={canWrite}
         onClose={() => setDrawerId(null)}
-        onChanged={() => load(page, keyword)}
+        onChanged={(ratingChange) => {
+          if (ratingChange) {
+            recordRatingOverride(ratingOverrides.current, ratingChange.id, ratingChange.rating)
+            setRows((prev) => prev.map((row) =>
+              row.squad_id === ratingChange.id ? { ...row, rating: ratingChange.rating } : row
+            ))
+          }
+          load(page, keyword)
+        }}
         onDeleted={handleDeleted}
       />
 

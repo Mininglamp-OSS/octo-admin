@@ -12,6 +12,7 @@ import {
 import VisibilityTag from '../../components/VisibilityTag'
 import PluginRating from '../../components/PluginRating'
 import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
+import { mergeRatingOverrides, recordRatingOverride } from '../../utils/ratingOverrides'
 
 const LIMIT = 20
 const DEBOUNCE_MS = 300
@@ -37,6 +38,7 @@ export default function SkillTable({ onView, onUpload, canWrite, ratingUpdate }:
   const [loading, setLoading] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>()
   const requestSequence = useRef(0)
+  const ratingOverrides = useRef(new Map<string, number | null>())
 
   useEffect(() => {
     listCategories().then(setCategories).catch(() => {})
@@ -62,7 +64,7 @@ export default function SkillTable({ onView, onUpload, canWrite, ratingUpdate }:
         limit: LIMIT,
       })
       if (request !== requestSequence.current) return
-      setData(resp.items || [])
+      setData(mergeRatingOverrides(resp.items || [], ratingOverrides.current, (item) => item.id))
       setHasMore(!!resp.next_cursor)
       if (resp.next_cursor && !cursors[page + 1]) {
         setCursors((prev) => [...prev, resp.next_cursor!])
@@ -78,6 +80,7 @@ export default function SkillTable({ onView, onUpload, canWrite, ratingUpdate }:
 
   useEffect(() => {
     if (!ratingUpdate) return
+    recordRatingOverride(ratingOverrides.current, ratingUpdate.id, ratingUpdate.rating)
     setData((prev) => prev.map((row) =>
       row.id === ratingUpdate.id ? { ...row, rating: ratingUpdate.rating } : row
     ))
@@ -140,6 +143,7 @@ export default function SkillTable({ onView, onUpload, canWrite, ratingUpdate }:
           rating={rating}
           canEdit={canWrite}
           onChanged={(next) => {
+            recordRatingOverride(ratingOverrides.current, record.id, next)
             setData((prev) => prev.map((row) =>
               row.id === record.id ? { ...row, rating: next } : row
             ))

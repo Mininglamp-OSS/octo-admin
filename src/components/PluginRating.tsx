@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button, Modal, Rate, Space, Typography, message } from 'antd'
 import { EditOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
@@ -26,6 +26,7 @@ export default function PluginRating({
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState<number | null>(rating)
   const [saving, setSaving] = useState(false)
+  const savingRef = useRef(false)
 
   useEffect(() => setDraft(rating), [rating])
 
@@ -36,6 +37,8 @@ export default function PluginRating({
   }
 
   const save = async () => {
+    if (savingRef.current) return
+    savingRef.current = true
     setSaving(true)
     try {
       await updatePluginRating(pluginId, draft)
@@ -45,6 +48,7 @@ export default function PluginRating({
     } catch (err) {
       message.error(err instanceof ApiError ? err.message : t('pluginRating.saveFailed'))
     } finally {
+      savingRef.current = false
       setSaving(false)
     }
   }
@@ -73,9 +77,7 @@ export default function PluginRating({
         okText={t('action.confirm')}
         cancelText={t('action.cancel')}
         destroyOnClose
-        modalRender={(node) => (
-          <div onClick={(event) => event.stopPropagation()}>{node}</div>
-        )}
+        wrapProps={{ onClick: (event: React.MouseEvent<HTMLDivElement>) => event.stopPropagation() }}
       >
         <Space direction="vertical" size={12}>
           <Text type="secondary">{t('pluginRating.hint')}</Text>

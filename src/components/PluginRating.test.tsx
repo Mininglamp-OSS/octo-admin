@@ -16,7 +16,7 @@ vi.mock('antd', async () => {
     Typography: { Text: ({ children }: { children?: React.ReactNode }) => React.createElement('span', null, children) },
     Rate: ({ value, disabled, onChange }: { value: number; disabled?: boolean; onChange?: (value: number) => void }) => React.createElement('button', { disabled, 'data-testid': disabled ? 'display-rate' : 'edit-rate', 'data-value': value, onClick: () => onChange?.(4) }, String(value)),
     Button: ({ children, onClick, 'aria-label': ariaLabel }: { children?: React.ReactNode; onClick?: React.MouseEventHandler; 'aria-label'?: string }) => React.createElement('button', { onClick, 'aria-label': ariaLabel }, children),
-    Modal: ({ open, children, onOk }: { open: boolean; children?: React.ReactNode; onOk?: () => void }) => open ? React.createElement('div', { role: 'dialog' }, children, React.createElement('button', { 'data-testid': 'ok', onClick: onOk }, 'ok')) : null,
+    Modal: ({ open, children, onOk, wrapProps }: { open: boolean; children?: React.ReactNode; onOk?: () => void; wrapProps?: React.HTMLAttributes<HTMLDivElement> }) => open ? React.createElement('div', { role: 'dialog', ...wrapProps }, children, React.createElement('button', { 'data-testid': 'ok', onClick: onOk }, 'ok')) : null,
     message: { success, error: vi.fn() },
   }
 })
@@ -47,6 +47,17 @@ describe('PluginRating', () => {
     expect(host.querySelector('[aria-label="pluginRating.edit"]')).toBeNull()
   })
 
+  it('stops modal wrapper clicks from reaching a table row', async () => {
+    const rowClick = vi.fn()
+    await act(async () => root.render(
+      <div onClick={rowClick}><PluginRating pluginId="p1" rating={2} canEdit /></div>
+    ))
+    await act(async () => (host.querySelector('[aria-label="pluginRating.edit"]') as HTMLButtonElement).click())
+    rowClick.mockClear()
+    await act(async () => (host.querySelector('[role="dialog"]') as HTMLDivElement).click())
+    expect(rowClick).not.toHaveBeenCalled()
+  })
+
   it('edits with the dedicated API and reports the new value', async () => {
     const changed = vi.fn()
     updatePluginRating.mockResolvedValue(undefined)
@@ -59,5 +70,19 @@ describe('PluginRating', () => {
     expect(updatePluginRating).toHaveBeenCalledWith('p1', 4)
     expect(changed).toHaveBeenCalledWith(4)
     expect(success).toHaveBeenCalledWith('pluginRating.saved')
+  })
+
+  it('ignores repeated save clicks while the first request is pending', async () => {
+    let resolve!: () => void
+    updatePluginRating.mockReturnValue(new Promise<void>((done) => { resolve = done }))
+    await act(async () => root.render(<PluginRating pluginId="p1" rating={2} canEdit />))
+    await act(async () => (host.querySelector('[aria-label="pluginRating.edit"]') as HTMLButtonElement).click())
+    const ok = host.querySelector('[data-testid="ok"]') as HTMLButtonElement
+    await act(async () => {
+      ok.click()
+      ok.click()
+    })
+    expect(updatePluginRating).toHaveBeenCalledTimes(1)
+    await act(async () => resolve())
   })
 })

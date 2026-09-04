@@ -262,9 +262,10 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
           version: values.version,
           changelog: values.changelog,
         })
-        if (values.rating != null) {
+        const desiredRating = values.rating || null
+        if (desiredRating !== null) {
           try {
-            await updatePluginRating(created.skill_id, values.rating)
+            await updatePluginRating(created.skill_id, desiredRating)
           } catch {
             message.warning(t('common:pluginRating.partialSuccess'))
             onSuccess()
@@ -451,7 +452,7 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
             />
           </Form.Item>
           <Form.Item name="rating" label={t('common:pluginMetrics.rating')} extra={t('common:pluginRating.hint')}>
-            <Rate />
+            <Rate onChange={(value) => form.setFieldValue('rating', value || null)} />
           </Form.Item>
             {activeEditSkill && (
             <Form.Item label={t('upload.form.icon')}>

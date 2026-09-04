@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const patch = vi.hoisted(() => vi.fn())
 vi.mock('./marketplace', () => ({ marketplaceApi: { patch } }))
 
-import { tryUpdatePluginRating, updatePluginRating } from './plugin'
+import { updatePluginRating } from './plugin'
 
 describe('updatePluginRating', () => {
   beforeEach(() => patch.mockReset())
@@ -20,11 +20,11 @@ describe('updatePluginRating', () => {
     expect(patch).toHaveBeenCalledWith('/admin/plugins/plugin-1/rating', { rating: null })
   })
 
-  it('reports partial success without leaving a rejected default for later calls', async () => {
-    patch.mockRejectedValueOnce(new Error('rating failed'))
-    patch.mockResolvedValueOnce({})
-
-    expect(await tryUpdatePluginRating('plugin-1', 4)).toBe(false)
-    expect(await tryUpdatePluginRating('plugin-1', 5)).toBe(true)
-  })
+  it.each([0, 6, 4.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    'rejects invalid rating %s before sending a request',
+    async (rating) => {
+      await expect(updatePluginRating('plugin-1', rating)).rejects.toThrow(RangeError)
+      expect(patch).not.toHaveBeenCalled()
+    },
+  )
 })

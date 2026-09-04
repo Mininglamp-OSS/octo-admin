@@ -49,9 +49,10 @@ export default function SkillUploadModal({ open, categories, onClose, onSuccess 
         tags: values.tags?.length ? values.tags : undefined,
         version: values.version || undefined,
       })
-      if (values.rating != null) {
+      const rating = values.rating || null
+      if (rating !== null) {
         try {
-          await updatePluginRating(created.skill_id, values.rating)
+          await updatePluginRating(created.skill_id, rating)
         } catch {
           message.warning(t('common:pluginRating.partialSuccess'))
           setFileList([])
@@ -117,7 +118,7 @@ export default function SkillUploadModal({ open, categories, onClose, onSuccess 
           <Input placeholder={t('skill.uploadModal.versionDefault')} />
         </Form.Item>
         <Form.Item name="rating" label={t('common:pluginMetrics.rating')} extra={t('common:pluginRating.hint')}>
-          <Rate />
+          <Rate onChange={(value) => form.setFieldValue('rating', value || null)} />
         </Form.Item>
         <Form.Item label={t('skill.uploadModal.zipFile')} required>
           <Dragger

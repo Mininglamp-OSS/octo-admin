@@ -675,7 +675,7 @@ describe('connector list — tags and metrics normalization', () => {
                   plugin_id: 'mcp-rated',
                   plugin_name: 'Rated',
                   plugin_type: 'connector',
-                  rating: 4.5,
+                  rating: 4,
                   view_count: 44,
                   install_count: 17,
                   download_count: 6,
@@ -694,7 +694,7 @@ describe('connector list — tags and metrics normalization', () => {
     const { items } = await listSystemMcps()
 
     expect(items[0]).toMatchObject({
-      rating: 4.5,
+      rating: 4,
       view_count: 44,
       install_count: 17,
       download_count: 6,

@@ -21,6 +21,7 @@ import CategoryTab from './CategoryTab'
 import VisibilityTag from '../../components/VisibilityTag'
 import PluginRating from '../../components/PluginRating'
 import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
+import { mergeRatingOverrides, recordRatingOverride } from '../../utils/ratingOverrides'
 import './systemMcp.css'
 
 const PAGE_SIZE = 20
@@ -53,6 +54,7 @@ export default function SystemMcp() {
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<McpDetail | null>(null)
   const loadSequence = useRef(0)
+  const ratingOverrides = useRef(new Map<string, number | null>())
 
   const load = async (nextPage = page, kw = keyword) => {
     const request = ++loadSequence.current
@@ -64,7 +66,7 @@ export default function SystemMcp() {
         offset: (nextPage - 1) * PAGE_SIZE,
       })
       if (request !== loadSequence.current) return
-      setRows(resp.items)
+      setRows(mergeRatingOverrides(resp.items, ratingOverrides.current, (item) => item.mcp_id))
       setTotal(resp.total)
       setPage(nextPage)
     } catch (err) {
@@ -117,6 +119,7 @@ export default function SystemMcp() {
     // payload (tools / quick_start / faqs / usage_examples / notes / …).
     const existingIdx = rows.findIndex((r) => r.mcp_id === updated.mcp_id)
     if (existingIdx !== -1) {
+      recordRatingOverride(ratingOverrides.current, updated.mcp_id, updated.rating)
       setRows((prev) =>
         prev.map((r) =>
           r.mcp_id === updated.mcp_id
@@ -226,6 +229,7 @@ export default function SystemMcp() {
             rating={rating}
             canEdit={canWrite}
             onChanged={(next) => {
+              recordRatingOverride(ratingOverrides.current, record.mcp_id, next)
               setRows((prev) => prev.map((row) =>
                 row.mcp_id === record.mcp_id ? { ...row, rating: next } : row
               ))
@@ -347,6 +351,7 @@ export default function SystemMcp() {
         canManage={canWrite}
         onEdit={openEdit}
         onRatingChanged={(id, rating) => {
+          recordRatingOverride(ratingOverrides.current, id, rating)
           setRows((prev) => prev.map((row) =>
             row.mcp_id === id ? { ...row, rating } : row
           ))

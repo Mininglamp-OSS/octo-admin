@@ -33,7 +33,7 @@ import {
   type ParsedSquad,
 } from './parseContainer'
 import { buildAiPrompt } from './aiPrompt'
-import { importThenRate } from './importRating'
+import { importResultNeedsReconcile, importThenRate } from './importRating'
 
 const { Dragger } = Upload
 const { Text, Paragraph } = Typography
@@ -175,6 +175,7 @@ export default function UploadModal({
     let created = 0
     let done = 0
     let fail = 0
+    let reconciledExisting = false
     let uncertain = false
     for (let i = 0; i < pending.length; i++) {
       const entry = pending[i]
@@ -201,6 +202,7 @@ export default function UploadModal({
           updatePluginRating,
         )
         if (result.imported) created += 1
+        else if (importResultNeedsReconcile(result)) reconciledExisting = true
         updateEntry(entry.key, { pluginId: result.pluginId })
         if (result.ratingFailed) {
           updateEntry(entry.key, {
@@ -229,7 +231,7 @@ export default function UploadModal({
     abortRef.current = null
     setSubmitting(false)
     setProgress(null)
-    if (created > 0 || uncertain) onImported()
+    if (created > 0 || reconciledExisting || uncertain) onImported()
     if (ctl.signal.aborted) {
       message.info(t('upload.cancelled'))
       return

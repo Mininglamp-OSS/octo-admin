@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { importThenRate } from './importRating'
+import { importResultNeedsReconcile, importThenRate } from './importRating'
 
 describe('importThenRate', () => {
   it('imports then assigns the selected rating', async () => {
@@ -27,5 +27,18 @@ describe('importThenRate', () => {
     })
     expect(importPlugin).not.toHaveBeenCalled()
     expect(setRating).toHaveBeenCalledWith('expert-2', 4)
+  })
+
+  it('reconciles the list after a successful rating-only retry without counting a new import', async () => {
+    const result = await importThenRate('expert-2', 4, vi.fn(), vi.fn().mockResolvedValue(undefined))
+
+    expect(result.imported).toBe(false)
+    expect(importResultNeedsReconcile(result)).toBe(true)
+  })
+
+  it('does not reconcile a rating-only retry that still failed', async () => {
+    const result = await importThenRate('expert-2', 4, vi.fn(), vi.fn().mockRejectedValue(new Error('failed')))
+
+    expect(importResultNeedsReconcile(result)).toBe(false)
   })
 })

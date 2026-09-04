@@ -22,6 +22,7 @@ import SkillUploadModal from './SkillUploadModal'
 import VisibilityTag from '../../components/VisibilityTag'
 import PluginRating from '../../components/PluginRating'
 import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
+import { mergeRatingOverrides, recordRatingOverride } from '../../utils/ratingOverrides'
 
 const PAGE_SIZE = 20
 
@@ -48,6 +49,7 @@ export default function SkillTab() {
   const [editSkill, setEditSkill] = useState<SkillDetail | null>(null)
   const [uploadOpen, setUploadOpen] = useState(false)
   const loadSequence = useRef(0)
+  const ratingOverrides = useRef(new Map<string, number | null>())
 
   const load = useCallback(
     async (nextPage = page, kw = keyword, cat = categoryFilter, s = sort) => {
@@ -62,7 +64,7 @@ export default function SkillTab() {
           page_size: PAGE_SIZE,
         })
         if (request !== loadSequence.current) return
-        setRows(resp.items ?? [])
+        setRows(mergeRatingOverrides(resp.items ?? [], ratingOverrides.current, (item) => item.skill_id))
         setTotal(resp.total)
         setPage(nextPage)
       } catch (err) {
@@ -195,6 +197,7 @@ export default function SkillTab() {
           rating={rating}
           canEdit={canWrite}
           onChanged={(next) => {
+            recordRatingOverride(ratingOverrides.current, record.skill_id, next)
             setRows((prev) => prev.map((row) =>
               row.skill_id === record.skill_id ? { ...row, rating: next } : row
             ))
@@ -340,6 +343,7 @@ export default function SkillTab() {
         categories={categories}
         canEditRating={canWrite}
         onRatingChanged={(rating) => {
+          if (detailId) recordRatingOverride(ratingOverrides.current, detailId, rating)
           setRows((prev) => prev.map((row) =>
             row.skill_id === detailId ? { ...row, rating } : row
           ))

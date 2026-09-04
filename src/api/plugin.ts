@@ -13,23 +13,11 @@ export async function updatePluginRating(
   pluginId: string,
   rating: number | null
 ): Promise<void> {
+  if (rating !== null && (!Number.isInteger(rating) || rating < 1 || rating > 5)) {
+    throw new RangeError('rating must be an integer from 1 to 5, or null')
+  }
   await marketplaceApi.patch(
     `/admin/plugins/${encodeURIComponent(pluginId)}/rating`,
     { rating }
   )
-}
-
-/** Best-effort helper for create/edit flows where the plugin write has already
- * committed. False means partial success and must not be reported as a failed
- * or retryable plugin creation. */
-export async function tryUpdatePluginRating(
-  pluginId: string,
-  rating: number | null
-): Promise<boolean> {
-  try {
-    await updatePluginRating(pluginId, rating)
-    return true
-  } catch {
-    return false
-  }
 }

@@ -28,7 +28,7 @@ interface Props {
   open: boolean
   canManage: boolean
   onClose: () => void
-  onChanged: () => void
+  onChanged: (ratingChange?: { id: string; rating: number | null }) => void
   onDeleted: (id: string) => void
 }
 
@@ -180,7 +180,7 @@ export default function ExpertDetailDrawer({
               canEditRating={canManage}
               onRatingChanged={(rating) => {
                 setDetail((current) => current ? { ...current, rating } : current)
-                onChanged()
+                onChanged({ id: detail.expert_id, rating })
               }}
             />
           </DetailSection>
