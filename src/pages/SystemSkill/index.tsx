@@ -60,7 +60,10 @@ export default function SystemSkill() {
         open={!!detailId}
         onClose={() => setDetailId(null)}
         onDeleted={refresh}
-        onRatingChanged={(id, rating) => recordRatingOverride(ratingLedger, id, rating)}
+        onRatingChanged={(id, rating) => {
+          recordRatingOverride(ratingLedger, id, rating)
+          refresh()
+        }}
         onEdit={(skill) => {
           if (!canWrite) return
           setDetailId(null)
