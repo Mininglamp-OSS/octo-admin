@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Input, Space as AntSpace, Table, Tag, message } from 'antd'
 import { PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
@@ -15,7 +15,9 @@ import { useAuthStore } from '../../store/auth'
 import SquadDetailDrawer from './SquadDetailDrawer'
 import UploadModal from './UploadModal'
 import VisibilityTag from '../../components/VisibilityTag'
+import PluginRating from '../../components/PluginRating'
 import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
+import { createRatingOverrideLedger, mergeRatingOverrides, ratingOverrideSequence, recordRatingOverride } from '../../utils/ratingOverrides'
 
 const PAGE_SIZE = 20
 
@@ -33,8 +35,12 @@ export default function SquadTab() {
   const [categories, setCategories] = useState<ExpertCategory[]>([])
   const [drawerId, setDrawerId] = useState<string | null>(null)
   const [uploadOpen, setUploadOpen] = useState(false)
+  const loadSequence = useRef(0)
+  const ratingOverrides = useRef(createRatingOverrideLedger())
 
   const load = async (nextPage = page, kw = keyword) => {
+    const request = ++loadSequence.current
+    const seenRatingSequence = ratingOverrideSequence(ratingOverrides.current)
     setLoading(true)
     try {
       const resp = await listSystemSquads({
@@ -42,13 +48,16 @@ export default function SquadTab() {
         limit: PAGE_SIZE,
         offset: (nextPage - 1) * PAGE_SIZE,
       })
-      setRows(resp.items)
+      if (request !== loadSequence.current) return
+      setRows(mergeRatingOverrides(resp.items, ratingOverrides.current, seenRatingSequence, (item) => item.squad_id))
       setTotal(resp.total)
       setPage(nextPage)
     } catch (err) {
-      message.error(err instanceof ApiError ? err.message : t('loadFailed'))
+      if (request === loadSequence.current) {
+        message.error(err instanceof ApiError ? err.message : t('loadFailed'))
+      }
     } finally {
-      setLoading(false)
+      if (request === loadSequence.current) setLoading(false)
     }
   }
 
@@ -127,6 +136,36 @@ export default function SquadTab() {
         render: (v?: number) => <span className="mono">{v ?? 0}</span>,
       },
       {
+        title: t('pluginMetrics.rating', { ns: 'common' }),
+        dataIndex: 'rating',
+        key: 'rating',
+        width: 150,
+        render: (rating: number | null, record) => (
+          <PluginRating compact pluginId={record.squad_id} rating={rating} canEdit={canWrite}
+            onChanged={(next) => {
+              recordRatingOverride(ratingOverrides.current, record.squad_id, next)
+              setRows((prev) => prev.map((row) =>
+                row.squad_id === record.squad_id ? { ...row, rating: next } : row
+              ))
+            }}
+          />
+        ),
+      },
+      {
+        title: t('pluginMetrics.views', { ns: 'common' }),
+        dataIndex: 'view_count',
+        key: 'views',
+        width: 90,
+        align: 'right',
+      },
+      {
+        title: t('pluginMetrics.installs', { ns: 'common' }),
+        dataIndex: 'install_count',
+        key: 'installs',
+        width: 90,
+        align: 'right',
+      },
+      {
         title: t('table.visibility', { ns: 'common' }),
         dataIndex: 'scope',
         key: 'scope',
@@ -149,7 +188,7 @@ export default function SquadTab() {
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [t, nameOf]
+    [t, nameOf, canWrite]
   )
 
   return (
@@ -209,7 +248,15 @@ export default function SquadTab() {
         open={drawerId !== null}
         canManage={canWrite}
         onClose={() => setDrawerId(null)}
-        onChanged={() => load(page, keyword)}
+        onChanged={(ratingChange) => {
+          if (ratingChange) {
+            recordRatingOverride(ratingOverrides.current, ratingChange.id, ratingChange.rating)
+            setRows((prev) => prev.map((row) =>
+              row.squad_id === ratingChange.id ? { ...row, rating: ratingChange.rating } : row
+            ))
+          }
+          load(page, keyword)
+        }}
         onDeleted={handleDeleted}
       />
 

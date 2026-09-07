@@ -1,28 +1,36 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Descriptions, Drawer, Spin, Tag, Space, Button, message } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { getAdminSkill, getAdminSkillMd, downloadAdminSkillPackage, type SkillDetail, type CategoryItem } from '../../api/skill'
+import PluginMetrics from '../../components/PluginMetrics'
 
 interface Props {
   open: boolean
   skillId: string | null
   categories: CategoryItem[]
+  canEditRating: boolean
+  onRatingChanged?: (rating: number | null) => void
   onClose: () => void
 }
 
-export default function SkillDetailDrawer({ open, skillId, categories, onClose }: Props) {
+export default function SkillDetailDrawer({ open, skillId, categories, canEditRating, onRatingChanged, onClose }: Props) {
   const { t } = useTranslation(['skillMarket'])
   const [detail, setDetail] = useState<SkillDetail | null>(null)
   const [skillMd, setSkillMd] = useState<string>('')
   const [loading, setLoading] = useState(false)
+  const requestSequence = useRef(0)
 
   useEffect(() => {
+    const request = ++requestSequence.current
     if (!open || !skillId) {
       setDetail(null)
       setSkillMd('')
+      setLoading(false)
       return
     }
+    setDetail(null)
+    setSkillMd('')
     setLoading(true)
     // SKILL.md preview comes from the ADMIN skill_md endpoint (token auth,
     // cross-Space, no X-Space-Id), which returns the authoritative raw markdown.
@@ -37,13 +45,16 @@ export default function SkillDetailDrawer({ open, skillId, categories, onClose }
       getAdminSkillMd(skillId).catch(() => null),
     ])
       .then(([d, md]) => {
+        if (request !== requestSequence.current) return
         setDetail(d)
         setSkillMd(md ?? d.readme_content ?? '')
       })
       .catch(() => {
-        message.error(t('skill.loadFailed'))
+        if (request === requestSequence.current) message.error(t('skill.loadFailed'))
       })
-      .finally(() => setLoading(false))
+      .finally(() => {
+        if (request === requestSequence.current) setLoading(false)
+      })
   }, [open, skillId, t])
 
   const getCategoryName = (catId: string) => {
@@ -77,6 +88,19 @@ export default function SkillDetailDrawer({ open, skillId, categories, onClose }
               <h3 style={{ margin: 0 }}>{detail.display_name || detail.name}</h3>
               <p style={{ margin: 0, color: '#666' }}>{detail.description}</p>
             </div>
+          </div>
+          <div style={{ marginBottom: 20 }}>
+            <PluginMetrics
+              pluginId={detail.skill_id}
+              rating={detail.rating}
+              viewCount={detail.view_count}
+              downloadCount={detail.download_count}
+              canEditRating={canEditRating}
+              onRatingChanged={(rating) => {
+                setDetail((current) => current ? { ...current, rating } : current)
+                onRatingChanged?.(rating)
+              }}
+            />
           </div>
           <Descriptions column={2} size="small" bordered style={{ marginBottom: 20 }}>
             <Descriptions.Item label={t('skill.detailDrawer.version')}>
