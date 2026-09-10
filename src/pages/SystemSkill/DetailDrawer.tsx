@@ -3,6 +3,7 @@ import { Drawer, Descriptions, Tag, Button, Typography, Popconfirm, Avatar, mess
 import { useTranslation } from 'react-i18next'
 import { getSkill, deleteSkill, type SkillDetail } from '../../api/skill'
 import VisibilityTag from '../../components/VisibilityTag'
+import PluginMetrics from '../../components/PluginMetrics'
 
 interface Props {
   skillId: string | null
@@ -10,6 +11,7 @@ interface Props {
   onClose: () => void
   onDeleted: () => void
   onEdit: (skill: SkillDetail) => void
+  onRatingChanged?: (id: string, rating: number | null) => void
   canManage: boolean
 }
 
@@ -19,7 +21,7 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-export default function DetailDrawer({ skillId, open, onClose, onDeleted, onEdit, canManage }: Props) {
+export default function DetailDrawer({ skillId, open, onClose, onDeleted, onEdit, onRatingChanged, canManage }: Props) {
   const { t } = useTranslation('systemSkill')
   const [skill, setSkill] = useState<SkillDetail | null>(null)
   const [loading, setLoading] = useState(false)
@@ -72,7 +74,20 @@ export default function DetailDrawer({ skillId, open, onClose, onDeleted, onEdit
             </div>
           </div>
 
-          <Descriptions column={1} size="small" bordered>
+          <PluginMetrics
+            pluginId={skill.id}
+            rating={skill.rating}
+            viewCount={skill.view_count}
+            installCount={skill.install_count}
+            downloadCount={skill.download_count}
+            canEditRating={canManage}
+            onRatingChanged={(rating) => {
+              setSkill((current) => current ? { ...current, rating } : current)
+              onRatingChanged?.(skill.id, rating)
+            }}
+          />
+
+          <Descriptions column={1} size="small" bordered style={{ marginTop: 20 }}>
             <Descriptions.Item label={t('detail.field.name')}>{skill.name}</Descriptions.Item>
             <Descriptions.Item label={t('detail.field.displayName')}>{skill.display_name}</Descriptions.Item>
             <Descriptions.Item label={t('detail.field.category')}>{skill.category_name || '—'}</Descriptions.Item>

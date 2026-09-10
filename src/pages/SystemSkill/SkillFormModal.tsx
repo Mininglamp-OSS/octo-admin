@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Modal, Upload, Button, Form, Input, Select, Space, message, Progress, Alert, Typography } from 'antd'
+import { Modal, Upload, Button, Form, Input, Select, Space, message, Progress, Alert, Typography, Rate } from 'antd'
 import { UploadOutlined, InboxOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import {
@@ -17,6 +17,7 @@ import {
   type ParseTaskStatus,
   type CategoryItem,
 } from '../../api/skill'
+import { updatePluginRating } from '../../api/plugin'
 
 interface Props {
   open: boolean
@@ -46,7 +47,7 @@ function validateSkillPackage(file: File, t: (key: string) => string): string | 
 }
 
 export default function SkillFormModal({ open, editSkill, onClose, onSuccess, canWrite }: Props) {
-  const { t } = useTranslation('systemSkill')
+  const { t } = useTranslation(['systemSkill', 'common'])
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [parseStatus, setParseStatus] = useState<ParseTaskStatus | null>(null)
@@ -84,12 +85,13 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
           visibility: editSkill.visibility || 'system',
           version: editSkill.version,
           changelog: t('upload.currentVersionChangelog'),
+          rating: editSkill.rating,
         })
         setIconUrl(editSkill.icon || '')
         setIconDisplayUrl(editSkill.icon_url || '')
       } else {
         setRenderEditSkill(null)
-        form.setFieldsValue({ visibility: 'system', version: DEFAULT_VERSION, changelog: '' })
+        form.setFieldsValue({ visibility: 'system', version: DEFAULT_VERSION, changelog: '', rating: null })
         setIconUrl('')
         setIconDisplayUrl('')
       }
@@ -232,6 +234,17 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
             'system') as 'system' | 'space' | 'private',
           icon_url: iconUrl || undefined,
         })
+        const desiredRating = values.rating || null
+        if (desiredRating !== activeEditSkill.rating) {
+          try {
+            await updatePluginRating(activeEditSkill.id, desiredRating)
+          } catch {
+            message.warning(t('common:pluginRating.partialSuccess'))
+            onSuccess()
+            onClose()
+            return
+          }
+        }
         message.success(t('editModal.success'))
       } else {
         // The admin skill_import request accepts name/category/tags/version/
@@ -239,7 +252,7 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
         // display_name and the uploaded icon can't ride the create — the form
         // hides them on create and edits them afterward via the edit path,
         // rather than collecting-and-discarding them here.
-        await createSkill({
+        const created = await createSkill({
           parse_task_id: parseTaskId,
           name: values.name,
           description: values.description,
@@ -249,6 +262,17 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
           version: values.version,
           changelog: values.changelog,
         })
+        const desiredRating = values.rating || null
+        if (desiredRating !== null) {
+          try {
+            await updatePluginRating(created.skill_id, desiredRating)
+          } catch {
+            message.warning(t('common:pluginRating.partialSuccess'))
+            onSuccess()
+            onClose()
+            return
+          }
+        }
         message.success(t('upload.success'))
       }
       onSuccess()
@@ -426,6 +450,9 @@ export default function SkillFormModal({ open, editSkill, onClose, onSuccess, ca
               placeholder={t('upload.form.tagsPlaceholder')}
               options={[]}
             />
+          </Form.Item>
+          <Form.Item name="rating" label={t('common:pluginMetrics.rating')} extra={t('common:pluginRating.hint')}>
+            <Rate onChange={(value) => form.setFieldValue('rating', value || null)} />
           </Form.Item>
             {activeEditSkill && (
             <Form.Item label={t('upload.form.icon')}>

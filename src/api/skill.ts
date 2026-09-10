@@ -61,7 +61,9 @@ export interface SkillListItem {
   file_url?: string
   owner_id?: string
   space_id?: string
+  rating: number | null
   view_count: number
+  install_count: number
   download_count: number
   created_at: string
   updated_at: string
@@ -182,7 +184,9 @@ function normalizeSkill<T extends Partial<SkillListItem>>(item: T): SkillListIte
     version: item.version || '',
     file_name: item.file_name || '',
     file_size: item.file_size ?? 0,
+    rating: item.rating ?? null,
     view_count: item.view_count ?? 0,
+    install_count: item.install_count ?? 0,
     download_count: item.download_count ?? 0,
     created_at: item.created_at || '',
     updated_at: item.updated_at || '',
@@ -244,7 +248,9 @@ interface PluginListItemWire {
   visibility?: string
   creator_name?: string
   current_version?: string
+  rating?: number | null
   view_count?: number
+  install_count?: number
   download_count?: number
   created_at?: string
   updated_at?: string
@@ -368,7 +374,9 @@ function mapPluginToSkillListItem(
     file_size: 0,
     owner_id: raw.owner_id,
     space_id: raw.space_id,
+    rating: raw.rating ?? null,
     view_count: raw.view_count ?? 0,
+    install_count: raw.install_count ?? 0,
     download_count: raw.download_count ?? 0,
     created_at: raw.created_at || '',
     updated_at: raw.updated_at || '',

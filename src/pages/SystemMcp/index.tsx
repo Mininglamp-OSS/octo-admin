@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Input, Space as AntSpace, Table, Tabs, Tag, message } from 'antd'
 import {
   PlusOutlined,
@@ -19,7 +19,9 @@ import McpDetailDrawer from './DetailDrawer'
 import McpFormModal from './FormModal'
 import CategoryTab from './CategoryTab'
 import VisibilityTag from '../../components/VisibilityTag'
+import PluginRating from '../../components/PluginRating'
 import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
+import { createRatingOverrideLedger, mergeRatingOverrides, ratingOverrideSequence, recordRatingOverride } from '../../utils/ratingOverrides'
 import './systemMcp.css'
 
 const PAGE_SIZE = 20
@@ -51,8 +53,12 @@ export default function SystemMcp() {
   })
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<McpDetail | null>(null)
+  const loadSequence = useRef(0)
+  const ratingOverrides = useRef(createRatingOverrideLedger())
 
   const load = async (nextPage = page, kw = keyword) => {
+    const request = ++loadSequence.current
+    const seenRatingSequence = ratingOverrideSequence(ratingOverrides.current)
     setLoading(true)
     try {
       const resp = await listSystemMcps({
@@ -60,13 +66,16 @@ export default function SystemMcp() {
         limit: PAGE_SIZE,
         offset: (nextPage - 1) * PAGE_SIZE,
       })
-      setRows(resp.items)
+      if (request !== loadSequence.current) return
+      setRows(mergeRatingOverrides(resp.items, ratingOverrides.current, seenRatingSequence, (item) => item.mcp_id))
       setTotal(resp.total)
       setPage(nextPage)
     } catch (err) {
-      message.error(err instanceof ApiError ? err.message : t('loadFailed'))
+      if (request === loadSequence.current) {
+        message.error(err instanceof ApiError ? err.message : t('loadFailed'))
+      }
     } finally {
-      setLoading(false)
+      if (request === loadSequence.current) setLoading(false)
     }
   }
 
@@ -111,6 +120,7 @@ export default function SystemMcp() {
     // payload (tools / quick_start / faqs / usage_examples / notes / …).
     const existingIdx = rows.findIndex((r) => r.mcp_id === updated.mcp_id)
     if (existingIdx !== -1) {
+      recordRatingOverride(ratingOverrides.current, updated.mcp_id, updated.rating)
       setRows((prev) =>
         prev.map((r) =>
           r.mcp_id === updated.mcp_id
@@ -126,6 +136,10 @@ export default function SystemMcp() {
                 space_id: updated.space_id,
                 tags: updated.tags,
                 tool_count: updated.tool_count,
+                rating: updated.rating,
+                view_count: updated.view_count,
+                install_count: updated.install_count,
+                download_count: updated.download_count,
                 creator_name: updated.creator_name,
                 created_by_type: updated.created_by_type,
               }
@@ -205,6 +219,40 @@ export default function SystemMcp() {
         render: (v: number) => <span className="mono">{v}</span>,
       },
       {
+        title: t('pluginMetrics.rating', { ns: 'common' }),
+        dataIndex: 'rating',
+        key: 'rating',
+        width: 150,
+        render: (rating: number | null, record) => (
+          <PluginRating
+            compact
+            pluginId={record.mcp_id}
+            rating={rating}
+            canEdit={canWrite}
+            onChanged={(next) => {
+              recordRatingOverride(ratingOverrides.current, record.mcp_id, next)
+              setRows((prev) => prev.map((row) =>
+                row.mcp_id === record.mcp_id ? { ...row, rating: next } : row
+              ))
+            }}
+          />
+        ),
+      },
+      {
+        title: t('pluginMetrics.views', { ns: 'common' }),
+        dataIndex: 'view_count',
+        key: 'views',
+        width: 90,
+        align: 'right',
+      },
+      {
+        title: t('pluginMetrics.installs', { ns: 'common' }),
+        dataIndex: 'install_count',
+        key: 'installs',
+        width: 90,
+        align: 'right',
+      },
+      {
         title: t('table.visibility', { ns: 'common' }),
         dataIndex: 'scope',
         key: 'scope',
@@ -227,7 +275,7 @@ export default function SystemMcp() {
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [t, nameOf]
+    [t, nameOf, canWrite]
   )
 
   return (
@@ -303,6 +351,12 @@ export default function SystemMcp() {
         onClose={closeDetail}
         canManage={canWrite}
         onEdit={openEdit}
+        onRatingChanged={(id, rating) => {
+          recordRatingOverride(ratingOverrides.current, id, rating)
+          setRows((prev) => prev.map((row) =>
+            row.mcp_id === id ? { ...row, rating } : row
+          ))
+        }}
         onDeleted={handleDeleted}
       />
 

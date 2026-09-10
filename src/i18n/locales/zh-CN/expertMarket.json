@@ -46,7 +46,9 @@
     "categoryPlaceholder": "选择分类（可覆盖包内值）",
     "tagsHint": "输入后回车添加",
     "categoryRequired": "请先在该行选择分类",
-    "cancelled": "已取消导入，剩余条目保留待导入"
+    "cancelled": "已取消导入；正在处理的条目提交状态未知，列表已刷新，请核对后再决定是否重试",
+    "abortUncertain": "请求已中止，但服务端可能已完成导入；请先在刷新后的列表中核对，避免重复导入",
+    "ratingFailed": "插件已导入，但评级设置失败；再次提交只会重试评级"
   },
   "list": {
     "name": "名称",
@@ -61,7 +63,9 @@
     "statusInvalid": "解析失败",
     "statusSaving": "导入中",
     "statusDone": "已导入",
-    "statusFailed": "导入失败"
+    "statusFailed": "导入失败",
+    "statusRatingFailed": "评级待重试",
+    "statusUncertain": "提交状态待核对"
   },
   "reupload": {
     "button": "重新上传",

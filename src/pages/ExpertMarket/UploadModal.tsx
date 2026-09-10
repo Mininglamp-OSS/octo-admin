@@ -13,12 +13,13 @@
  */
 
 import { useRef, useState } from 'react'
-import { Alert, Button, message, Modal, Select, Table, Tag, Typography, Upload } from 'antd'
+import { Alert, Button, message, Modal, Rate, Select, Table, Tag, Typography, Upload } from 'antd'
 import { CopyOutlined, DeleteOutlined, InboxOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import type { ColumnsType } from 'antd/es/table'
 import type { RcFile } from 'antd/es/upload'
 import { ApiError } from '../../api'
+import { updatePluginRating } from '../../api/plugin'
 import {
   importExpertContainer,
   type ExpertCategory,
@@ -32,11 +33,12 @@ import {
   type ParsedSquad,
 } from './parseContainer'
 import { buildAiPrompt } from './aiPrompt'
+import { importResultNeedsReconcile, importThenRate } from './importRating'
 
 const { Dragger } = Upload
 const { Text, Paragraph } = Typography
 
-type EntryStatus = 'parsing' | 'ready' | 'invalid' | 'saving' | 'done' | 'failed'
+type EntryStatus = 'parsing' | 'ready' | 'invalid' | 'saving' | 'done' | 'failed' | 'rating_failed' | 'uncertain'
 
 interface ImportEntry {
   key: string
@@ -49,6 +51,9 @@ interface ImportEntry {
   error: string | null
   /** Per-row category override, initialized from the manifest. */
   category?: string
+  rating: number | null
+  /** Persisted once import succeeds so a rating retry never imports twice. */
+  pluginId?: string
 }
 
 interface Props {
@@ -81,6 +86,8 @@ const STATUS_TAG: Record<EntryStatus, { color: string; key: string }> = {
   saving: { color: 'processing', key: 'list.statusSaving' },
   done: { color: 'green', key: 'list.statusDone' },
   failed: { color: 'red', key: 'list.statusFailed' },
+  rating_failed: { color: 'orange', key: 'list.statusRatingFailed' },
+  uncertain: { color: 'orange', key: 'list.statusUncertain' },
 }
 
 export default function UploadModal({
@@ -130,7 +137,7 @@ export default function UploadModal({
     const key = file.uid
     setEntries((prev) => [
       ...prev,
-      { key, fileName: file.name, file, parsed: null, status: 'parsing', error: null },
+      { key, fileName: file.name, file, parsed: null, status: 'parsing', error: null, rating: null },
     ])
     try {
       const parsed = await parseExpertContainer(file)
@@ -156,7 +163,7 @@ export default function UploadModal({
   const handleSubmit = async () => {
     const pending = entries.filter(
       (e): e is ImportEntry & { parsed: ParsedContainer } =>
-        (e.status === 'ready' || e.status === 'failed') && e.parsed !== null
+        (e.status === 'ready' || e.status === 'failed' || e.status === 'rating_failed') && e.parsed !== null
     )
     if (pending.length === 0) {
       message.error(t('upload.zipRequired'))
@@ -165,8 +172,11 @@ export default function UploadModal({
     setSubmitting(true)
     const ctl = new AbortController()
     abortRef.current = ctl
-    let ok = 0
+    let created = 0
+    let done = 0
     let fail = 0
+    let reconciledExisting = false
+    let uncertain = false
     for (let i = 0; i < pending.length; i++) {
       const entry = pending[i]
       if (ctl.signal.aborted) break
@@ -179,23 +189,39 @@ export default function UploadModal({
         })
       )
       try {
-        // The whole container zip is uploaded to the server importer, which
-        // unzips it and mints the expert/team plugin + its bundled skills. The
-        // selected category (a name) is resolved to a unified category id in
-        // the client. Tags are NOT overridable here: the importer accepts only
-        // file + category_id and takes tags from the manifest inside the zip,
-        // so a per-row tags editor would be silently dropped.
-        await importExpertContainer(entry.file, {
-          kind: expectKind,
-          categoryName: entry.category,
-          signal: ctl.signal,
-        })
-        updateEntry(entry.key, { status: 'done' })
-        ok += 1
+        // A row whose import already succeeded retries only its rating. Keeping
+        // pluginId prevents a transient rating failure from creating a duplicate.
+        const result = await importThenRate(
+          entry.pluginId,
+          entry.rating,
+          () => importExpertContainer(entry.file, {
+            kind: expectKind,
+            categoryName: entry.category,
+            signal: ctl.signal,
+          }),
+          updatePluginRating,
+        )
+        if (result.imported) created += 1
+        else if (importResultNeedsReconcile(result)) reconciledExisting = true
+        updateEntry(entry.key, { pluginId: result.pluginId })
+        if (result.ratingFailed) {
+          updateEntry(entry.key, {
+            status: 'rating_failed',
+            pluginId: result.pluginId,
+            error: t('upload.ratingFailed'),
+          })
+          fail += 1
+          continue
+        }
+        updateEntry(entry.key, { status: 'done', pluginId: result.pluginId, error: null })
+        done += 1
       } catch (err) {
         if (ctl.signal.aborted) {
-          // Nothing was committed for this entry — put it back in line.
-          updateEntry(entry.key, { status: 'ready', error: null })
+          // The request may have reached the server before the client observed
+          // the abort. Keep this row non-retryable until the user verifies the
+          // refreshed list, avoiding an accidental duplicate import.
+          updateEntry(entry.key, { status: 'uncertain', error: t('upload.abortUncertain') })
+          uncertain = true
           break
         }
         updateEntry(entry.key, { status: 'failed', error: errText(err) })
@@ -205,22 +231,22 @@ export default function UploadModal({
     abortRef.current = null
     setSubmitting(false)
     setProgress(null)
-    if (ok > 0) onImported()
+    if (created > 0 || reconciledExisting || uncertain) onImported()
     if (ctl.signal.aborted) {
       message.info(t('upload.cancelled'))
       return
     }
     if (fail === 0) {
-      message.success(t('upload.successCount', { count: ok }))
+      message.success(t('upload.successCount', { count: done }))
       reset()
       onClose()
     } else {
-      message.warning(t('upload.partial', { ok, fail }))
+      message.warning(t('upload.partial', { ok: done, fail }))
     }
   }
 
   const importableCount = entries.filter(
-    (e) => e.status === 'ready' || e.status === 'failed'
+    (e) => e.status === 'ready' || e.status === 'failed' || e.status === 'rating_failed'
   ).length
   // Submitting while a file is still unzipping would silently drop it on the
   // all-success close path — hold the button until every parse settles.
@@ -260,11 +286,24 @@ export default function UploadModal({
             style={{ width: '100%' }}
             placeholder={t('list.categoryPlaceholder')}
             value={e.category}
-            disabled={submitting || e.status === 'done'}
+            disabled={submitting || e.status === 'done' || (e.status === 'rating_failed' && !!e.pluginId)}
             onChange={(v) => updateEntry(e.key, { category: v })}
             options={categories.map((c) => ({ value: c.name, label: c.name }))}
           />
         ),
+    },
+    {
+      title: t('common:pluginMetrics.rating'),
+      key: 'rating',
+      width: 150,
+      render: (_, e) => e.parsed && (
+        <Rate
+          value={e.rating ?? 0}
+          disabled={submitting || e.status === 'done'}
+          onChange={(value) => updateEntry(e.key, { rating: value || null })}
+          style={{ fontSize: 16 }}
+        />
+      ),
     },
     {
       title: t('list.status'),

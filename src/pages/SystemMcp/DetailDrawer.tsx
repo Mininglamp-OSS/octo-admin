@@ -12,6 +12,7 @@ import { Button, Drawer, Skeleton, Tag, Typography, message } from 'antd'
 import { DeleteOutlined, EditOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { ApiError } from '../../api'
+import PluginMetrics from '../../components/PluginMetrics'
 import {
   deleteSystemMcp,
   getSystemMcp,
@@ -26,6 +27,7 @@ interface Props {
   onClose: () => void
   canManage: boolean
   onEdit: (detail: McpDetail) => void
+  onRatingChanged: (id: string, rating: number | null) => void
   onDeleted: (id: string) => void
 }
 
@@ -35,6 +37,7 @@ export default function McpDetailDrawer({
   onClose,
   canManage,
   onEdit,
+  onRatingChanged,
   onDeleted,
 }: Props) {
   const { t } = useTranslation(['systemMcp', 'common'])
@@ -131,13 +134,28 @@ export default function McpDetailDrawer({
       {loading || !detail ? (
         <Skeleton active paragraph={{ rows: 6 }} />
       ) : (
-        <DetailBody detail={detail} />
+        <DetailBody
+          detail={detail}
+          canManage={canManage}
+          onRatingChanged={(rating) => {
+            setDetail((current) => current ? { ...current, rating } : current)
+            onRatingChanged(detail.mcp_id, rating)
+          }}
+        />
       )}
     </Drawer>
   )
 }
 
-function DetailBody({ detail }: { detail: McpDetail }) {
+function DetailBody({
+  detail,
+  canManage,
+  onRatingChanged,
+}: {
+  detail: McpDetail
+  canManage: boolean
+  onRatingChanged: (rating: number | null) => void
+}) {
   const { t } = useTranslation(['systemMcp'])
   const q = detail.quick_start
   const isRemote =
@@ -190,6 +208,18 @@ function DetailBody({ detail }: { detail: McpDetail }) {
           )}
         </div>
       </div>
+
+      <DetailSection title={t('pluginMetrics.title', { ns: 'common' })}>
+        <PluginMetrics
+          pluginId={detail.mcp_id}
+          rating={detail.rating}
+          viewCount={detail.view_count}
+          installCount={detail.install_count}
+          downloadCount={detail.download_count}
+          canEditRating={canManage}
+          onRatingChanged={onRatingChanged}
+        />
+      </DetailSection>
 
       <DetailSection title={t('detail.section.connection')}>
         <dl className="mcp-kv">

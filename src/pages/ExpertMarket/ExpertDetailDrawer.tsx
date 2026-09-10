@@ -18,6 +18,7 @@ import {
 } from '../../api/expert'
 import { DetailSection, McpConfigBlock, SkillMdModal, SkillRefList, loadSkillMd } from './detailParts'
 import ReuploadButton from './ReuploadButton'
+import PluginMetrics from '../../components/PluginMetrics'
 import type { ParsedContainer } from './parseContainer'
 
 const { Text, Paragraph } = Typography
@@ -27,7 +28,7 @@ interface Props {
   open: boolean
   canManage: boolean
   onClose: () => void
-  onChanged: () => void
+  onChanged: (ratingChange?: { id: string; rating: number | null }) => void
   onDeleted: (id: string) => void
 }
 
@@ -168,6 +169,21 @@ export default function ExpertDetailDrawer({
               )}
             </div>
           </div>
+
+          <DetailSection title={t('pluginMetrics.title', { ns: 'common' })}>
+            <PluginMetrics
+              pluginId={detail.expert_id}
+              rating={detail.rating}
+              viewCount={detail.view_count}
+              installCount={detail.install_count}
+              downloadCount={detail.download_count}
+              canEditRating={canManage}
+              onRatingChanged={(rating) => {
+                setDetail((current) => current ? { ...current, rating } : current)
+                onChanged({ id: detail.expert_id, rating })
+              }}
+            />
+          </DetailSection>
 
           <DetailSection title={t('detail.instruction')}>
             <Paragraph style={{ whiteSpace: 'pre-wrap', margin: 0 }}>

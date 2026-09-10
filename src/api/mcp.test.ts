@@ -663,7 +663,50 @@ describe('connector identity anchoring — source/name/key agree, no flip (revie
   })
 })
 
-describe('connector list — tags normalization (crash guard)', () => {
+describe('connector list — tags and metrics normalization', () => {
+  it('maps marketplace metrics and defaults omitted fields', async () => {
+    mockGet.mockImplementation((url: string) =>
+      url.includes('plugin_categories')
+        ? Promise.resolve(CONNECTOR_CATEGORIES)
+        : Promise.resolve({
+            data: {
+              data: [
+                {
+                  plugin_id: 'mcp-rated',
+                  plugin_name: 'Rated',
+                  plugin_type: 'connector',
+                  rating: 4,
+                  view_count: 44,
+                  install_count: 17,
+                  download_count: 6,
+                },
+                {
+                  plugin_id: 'mcp-unrated',
+                  plugin_name: 'Unrated',
+                  plugin_type: 'connector',
+                },
+              ],
+              pagination: { total: 2, page: 1, page_size: 20 },
+            },
+          })
+    )
+
+    const { items } = await listSystemMcps()
+
+    expect(items[0]).toMatchObject({
+      rating: 4,
+      view_count: 44,
+      install_count: 17,
+      download_count: 6,
+    })
+    expect(items[1]).toMatchObject({
+      rating: null,
+      view_count: 0,
+      install_count: 0,
+      download_count: 0,
+    })
+  })
+
   it('coerces string-encoded tags to an array so the page never maps a bare String', async () => {
     mockGet.mockImplementation((url: string) =>
       url.includes('plugin_categories')

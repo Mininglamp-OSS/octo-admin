@@ -42,6 +42,7 @@ import {
   updateAdminSkill,
   updateSkillCategory,
   listSkillCategories,
+  listAdminSkills,
 } from './skill'
 import { ApiError } from './index'
 
@@ -203,6 +204,49 @@ describe('skill icon/publisher round-trip through the translation layer', () => 
     // Tags trimmed, empties dropped, deduped — matches manifest.labels.
     expect(body.plugin.tags).toEqual(['tag-1'])
     expect(body.plugin.manifest_json.labels).toEqual(['tag-1'])
+  })
+})
+
+describe('listAdminSkills — maps marketplace metrics', () => {
+  beforeEach(() => mockGet.mockReset())
+
+  it('preserves supplied metrics and defaults omitted fields', async () => {
+    mockGet.mockResolvedValue({
+      data: {
+        data: [
+          {
+            plugin_id: 'skill-rated',
+            plugin_name: 'Rated skill',
+            plugin_type: 'skill',
+            rating: 4,
+            view_count: 31,
+            install_count: 13,
+            download_count: 9,
+          },
+          {
+            plugin_id: 'skill-unrated',
+            plugin_name: 'Unrated skill',
+            plugin_type: 'skill',
+          },
+        ],
+        pagination: { total: 2, page: 1, page_size: 20 },
+      },
+    })
+
+    const { items } = await listAdminSkills()
+
+    expect(items[0]).toMatchObject({
+      rating: 4,
+      view_count: 31,
+      install_count: 13,
+      download_count: 9,
+    })
+    expect(items[1]).toMatchObject({
+      rating: null,
+      view_count: 0,
+      install_count: 0,
+      download_count: 0,
+    })
   })
 })
 
