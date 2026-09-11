@@ -1,6 +1,6 @@
 {
   "title": "System Settings",
-  "subtitle": "System policies for login, registration, space, sidebar, and the email service",
+  "subtitle": "System policies for login, registration, organizations, sidebar, and the email service",
   "action.testEmail": "Test Email",
   "action.save": "Save Settings",
   "action.saveWithCount": "Save Settings ({{count}})",
@@ -28,7 +28,7 @@
   "search.empty": "No matching settings",
   "category.login": "Login Settings",
   "category.register": "Registration Settings",
-  "category.space": "Space Settings",
+  "category.space": "Organization Settings",
   "category.sidebar": "Sidebar Settings",
   "category.support": "Email Service",
   "category.generic": "{{category}} Settings",

@@ -1,6 +1,6 @@
 {
   "title": "系统配置",
-  "subtitle": "登录、注册、空间、侧边栏与邮件服务等系统策略配置",
+  "subtitle": "登录、注册、组织、侧边栏与邮件服务等系统策略配置",
   "action.testEmail": "测试邮件",
   "action.save": "保存配置",
   "action.saveWithCount": "保存配置（{{count}}）",
@@ -28,7 +28,7 @@
   "search.empty": "没有匹配的配置项",
   "category.login": "登录配置",
   "category.register": "注册配置",
-  "category.space": "空间配置",
+  "category.space": "组织配置",
   "category.sidebar": "侧边栏配置",
   "category.support": "邮件服务",
   "category.generic": "{{category}} 配置",

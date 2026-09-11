@@ -22,7 +22,7 @@
   },
   "visibility": {
     "system": "System",
-    "space": "Space",
+    "space": "Organization",
     "private": "Private"
   },
   "action": {
