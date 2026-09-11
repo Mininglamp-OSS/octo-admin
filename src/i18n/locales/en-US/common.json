@@ -19,11 +19,11 @@
   "table": {
     "total": "{{count}} total",
     "visibility": "Visibility",
-    "space": "Space"
+    "space": "Organization"
   },
   "visibility": {
     "system": "System",
-    "space": "Space",
+    "space": "Organization",
     "private": "Private"
   },
   "space": {
