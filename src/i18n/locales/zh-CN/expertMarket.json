@@ -91,7 +91,7 @@
     "skillLoadFailed": "读取技能内容失败"
   },
   "delete": {
-    "confirmDesc": "删除后将从所有空间下架，操作不可撤销。",
+    "confirmDesc": "删除后将从所有组织下架，操作不可撤销。",
     "ok": "确认删除",
     "cancel": "取消",
     "success": "已删除",

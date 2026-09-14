@@ -1,6 +1,6 @@
 {
   "pageTitle": "MCP Market",
-  "pageDesc": "Manage platform-provided MCP servers visible in every space.",
+  "pageDesc": "Manage platform-provided MCP servers visible in every organization.",
   "create": "New MCP",
   "table": {
     "name": "Name",
@@ -71,7 +71,7 @@
   },
   "delete": {
     "confirmTitle": "Delete this MCP?",
-    "confirmDesc": "This will remove the MCP from every space. Not reversible.",
+    "confirmDesc": "This will remove the MCP from every organization. Not reversible.",
     "ok": "Delete",
     "cancel": "Cancel",
     "success": "Deleted",

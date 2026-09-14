@@ -91,7 +91,7 @@
     "skillLoadFailed": "Failed to load skill content"
   },
   "delete": {
-    "confirmDesc": "Deleting removes it from all spaces. This cannot be undone.",
+    "confirmDesc": "Deleting removes it from all organizations. This cannot be undone.",
     "ok": "Delete",
     "cancel": "Cancel",
     "success": "Deleted",

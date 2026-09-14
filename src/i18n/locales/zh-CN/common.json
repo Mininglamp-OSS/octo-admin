@@ -19,11 +19,11 @@
   "table": {
     "total": "共 {{count}} 条",
     "visibility": "可见范围",
-    "space": "所属空间"
+    "space": "所属组织"
   },
   "visibility": {
     "system": "系统",
-    "space": "空间",
+    "space": "组织",
     "private": "私有"
   },
   "space": {
