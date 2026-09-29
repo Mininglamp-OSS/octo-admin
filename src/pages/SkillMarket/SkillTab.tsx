@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Button, Input, message, Popconfirm, Select, Space, Table, Tag } from 'antd'
+import { Button, Input, message, Popconfirm, Select, Space, Table, Tag, Tooltip } from 'antd'
 import { PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import type { ColumnsType } from 'antd/es/table'
@@ -244,7 +244,14 @@ export default function SkillTab() {
       key: 'space',
       width: 140,
       ellipsis: true,
-      render: (_, record) => nameOf(record.space_id),
+      render: (_, record) => {
+        const organizationName = nameOf(record.space_id)
+        return (
+          <Tooltip title={organizationName === '--' ? undefined : organizationName}>
+            <span>{organizationName}</span>
+          </Tooltip>
+        )
+      },
     },
     {
       title: t('skill.table.actions'),

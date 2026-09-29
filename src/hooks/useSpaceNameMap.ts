@@ -11,9 +11,9 @@ import { getSpace } from '../api/space'
  * name by fetching it ON DEMAND per distinct id (GET /v1/manager/spaces/{id} on
  * octo-server, separate from the marketplace), cached and de-duplicated. Per-id
  * resolution is used instead of a bulk list so it reliably resolves any real
- * Space regardless of pagination or enabled/disabled status; a genuine
- * non-existent id (e.g. a local test seed) 404s and falls back to the raw id so
- * the column never blocks the table.
+ * Space regardless of pagination or enabled/disabled status. While a name is
+ * loading, or when lookup fails, the UI deliberately renders "--" instead of
+ * exposing the internal Space id as user-facing content.
  *
  * `nameOf` is called from table `render` callbacks (the render phase). It must
  * NOT fire a fetch there: under StrictMode/concurrent rendering an abandoned
@@ -42,7 +42,7 @@ export interface SpaceNameMap {
 export function useSpaceNameMap(): SpaceNameMap {
   const { t } = useTranslation('common')
   // Resolved names: id → name (""), where "" marks a resolved-but-unknown id
-  // (404/error) so we stop re-requesting it and fall back to showing the id.
+  // (404/error) so we stop re-requesting it and render the neutral placeholder.
   const [names, setNames] = useState<Map<string, string>>(() => new Map())
   // Ids seen during render (recorded, not fetched, in the render phase) and ids
   // a fetch has already been issued for (de-dupe). Both are refs so touching
@@ -92,19 +92,20 @@ export function useSpaceNameMap(): SpaceNameMap {
 
   return useMemo(() => {
     const globalLabel = t('space.global')
+    const unknownLabel = '--'
     return {
       loading: false,
       nameOf: (spaceId?: string) => {
         if (!spaceId) return globalLabel
         if (names.has(spaceId)) {
-          // Resolved: a real name, or "" (unknown) → show the raw id.
-          return names.get(spaceId) || spaceId
+          // Resolved: a real name, or "" (unknown) → neutral placeholder.
+          return names.get(spaceId)?.trim() || unknownLabel
         }
         // Not yet resolved: record the id for the post-commit effect to fetch
-        // (no fetch, no setState here — safe in the render phase). Show the id
-        // until the name lands (the resolve triggers a re-render).
+        // (no fetch, no setState here — safe in the render phase). Keep the
+        // internal id hidden while the name is loading.
         observed.current.add(spaceId)
-        return spaceId
+        return unknownLabel
       },
     }
   }, [names, t])
