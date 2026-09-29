@@ -17,7 +17,9 @@ vi.mock('../../store/auth', () => ({
     select({ managerCapabilities: ['skill.write'] }),
 }))
 vi.mock('../../auth/capabilities', () => ({ hasManagerCapability: () => true }))
-vi.mock('../../hooks/useSpaceNameMap', () => ({ useSpaceNameMap: () => ({ nameOf: () => '' }) }))
+vi.mock('../../hooks/useSpaceNameMap', () => ({
+  useSpaceNameMap: () => ({ nameOf: () => ({ label: '--', resolved: false }) }),
+}))
 vi.mock('../../api/skill', async () => {
   const actual = await vi.importActual<typeof import('../../api/skill')>('../../api/skill')
   return {

@@ -247,7 +247,7 @@ export default function SkillTab() {
       ellipsis: true,
       render: (_, record) => {
         const organizationName = nameOf(record.space_id)
-        return <OrganizationNameCell name={organizationName} />
+        return <OrganizationNameCell value={organizationName} />
       },
     },
     {

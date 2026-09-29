@@ -20,6 +20,7 @@ import McpFormModal from './FormModal'
 import CategoryTab from './CategoryTab'
 import VisibilityTag from '../../components/VisibilityTag'
 import PluginRating from '../../components/PluginRating'
+import OrganizationNameCell from '../../components/OrganizationNameCell'
 import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
 import { createRatingOverrideLedger, mergeRatingOverrides, ratingOverrideSequence, recordRatingOverride } from '../../utils/ratingOverrides'
 import './systemMcp.css'
@@ -264,7 +265,8 @@ export default function SystemMcp() {
         dataIndex: 'space_id',
         key: 'space_id',
         width: 160,
-        render: (spaceId?: string) => nameOf(spaceId),
+        ellipsis: true,
+        render: (spaceId?: string) => <OrganizationNameCell value={nameOf(spaceId)} />,
       },
       {
         title: t('table.creator'),

@@ -11,6 +11,7 @@ import {
 } from '../../api/skill'
 import VisibilityTag from '../../components/VisibilityTag'
 import PluginRating from '../../components/PluginRating'
+import OrganizationNameCell from '../../components/OrganizationNameCell'
 import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
 import { mergeRatingOverrides, ratingOverrideSequence, recordRatingOverride, type RatingOverrideLedger } from '../../utils/ratingOverrides'
 
@@ -166,7 +167,8 @@ export default function SkillTable({ onView, onUpload, canWrite, refreshToken, r
       title: t('table.space', { ns: 'common' }),
       dataIndex: 'space_id',
       width: 160,
-      render: (spaceId?: string) => nameOf(spaceId),
+      ellipsis: true,
+      render: (spaceId?: string) => <OrganizationNameCell value={nameOf(spaceId)} />,
     },
     {
       title: t('column.createdAt'),

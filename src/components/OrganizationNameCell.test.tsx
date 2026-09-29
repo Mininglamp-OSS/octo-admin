@@ -31,7 +31,9 @@ describe('OrganizationNameCell', () => {
   it('keeps the full organization name available as hover content', async () => {
     const name = 'A very long organization name that is wider than the table column'
 
-    await act(async () => root.render(<OrganizationNameCell name={name} />))
+    await act(async () => root.render(
+      <OrganizationNameCell value={{ label: name, resolved: true }} />,
+    ))
 
     expect(host.textContent).toBe(name)
     expect(host.querySelector('[data-tooltip]')?.getAttribute('data-tooltip')).toBe(name)
@@ -42,9 +44,20 @@ describe('OrganizationNameCell', () => {
   })
 
   it('does not show a tooltip for the unavailable-name placeholder', async () => {
-    await act(async () => root.render(<OrganizationNameCell name="--" />))
+    await act(async () => root.render(
+      <OrganizationNameCell value={{ label: '--', resolved: false }} />,
+    ))
 
     expect(host.textContent).toBe('--')
     expect(host.querySelector('[data-tooltip]')).toBeNull()
+  })
+
+  it('preserves a legitimate organization name that matches the placeholder text', async () => {
+    await act(async () => root.render(
+      <OrganizationNameCell value={{ label: '--', resolved: true }} />,
+    ))
+
+    expect(host.textContent).toBe('--')
+    expect(host.querySelector('[data-tooltip]')?.getAttribute('data-tooltip')).toBe('--')
   })
 })
