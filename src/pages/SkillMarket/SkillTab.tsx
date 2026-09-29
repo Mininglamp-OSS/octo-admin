@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Button, Input, message, Popconfirm, Select, Space, Table, Tag, Tooltip } from 'antd'
+import { Button, Input, message, Popconfirm, Select, Space, Table, Tag } from 'antd'
 import { PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import type { ColumnsType } from 'antd/es/table'
@@ -21,6 +21,7 @@ import SkillFormModal from '../SystemSkill/SkillFormModal'
 import SkillUploadModal from './SkillUploadModal'
 import VisibilityTag from '../../components/VisibilityTag'
 import PluginRating from '../../components/PluginRating'
+import OrganizationNameCell from '../../components/OrganizationNameCell'
 import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
 import { createRatingOverrideLedger, mergeRatingOverrides, ratingOverrideSequence, recordRatingOverride } from '../../utils/ratingOverrides'
 
@@ -246,11 +247,7 @@ export default function SkillTab() {
       ellipsis: true,
       render: (_, record) => {
         const organizationName = nameOf(record.space_id)
-        return (
-          <Tooltip title={organizationName === '--' ? undefined : organizationName}>
-            <span>{organizationName}</span>
-          </Tooltip>
-        )
+        return <OrganizationNameCell name={organizationName} />
       },
     },
     {
