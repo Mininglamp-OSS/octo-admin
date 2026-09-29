@@ -41,6 +41,7 @@ describe('OrganizationNameCell', () => {
     expect(label.style.overflow).toBe('hidden')
     expect(label.style.textOverflow).toBe('ellipsis')
     expect(label.style.whiteSpace).toBe('nowrap')
+    expect(label.style.maxWidth).toBe('160px')
   })
 
   it('does not show a tooltip for the unavailable-name placeholder', async () => {

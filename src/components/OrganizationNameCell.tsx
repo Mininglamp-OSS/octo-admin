@@ -16,6 +16,7 @@ export default function OrganizationNameCell({ value }: Props) {
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
+          maxWidth: 160,
         }}
       >
         {value.label}

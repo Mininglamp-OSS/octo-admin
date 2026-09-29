@@ -29,7 +29,7 @@ const PAGE_SIZE = 20
 
 export default function SkillTab() {
   const { t } = useTranslation(['skillMarket', 'common'])
-  const { nameOf } = useSpaceNameMap()
+  const { nameOf, retryTransientFailures } = useSpaceNameMap()
   const canWrite = useAuthStore((s) =>
     hasManagerCapability(s.managerCapabilities, 'skill.write')
   )
@@ -54,6 +54,7 @@ export default function SkillTab() {
 
   const load = useCallback(
     async (nextPage = page, kw = keyword, cat = categoryFilter, s = sort) => {
+      retryTransientFailures()
       const request = ++loadSequence.current
       const seenRatingSequence = ratingOverrideSequence(ratingOverrides.current)
       setLoading(true)
@@ -77,7 +78,7 @@ export default function SkillTab() {
         if (request === loadSequence.current) setLoading(false)
       }
     },
-    [page, keyword, categoryFilter, sort, t]
+    [page, keyword, categoryFilter, sort, retryTransientFailures, t]
   )
 
   useEffect(() => {

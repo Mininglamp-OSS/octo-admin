@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ApiError } from '../api'
 import { getSpace } from '../api/space'
 
 /**
  * Resolve a plugin's owning Space id to a human-readable label for the admin
- * list "所属空间" column.
+ * list "所属组织" column.
  *
  * Public/system plugins carry an empty `space_id` and render as "全局 / Global".
  * Space/private plugins carry a Space UUID that this hook resolves to the Space
@@ -15,7 +15,9 @@ import { getSpace } from '../api/space'
  * Space regardless of pagination or enabled/disabled status. While a name is
  * loading, after a permanent miss, or after bounded transient retries are
  * exhausted, the UI deliberately renders "--" instead of exposing the
- * internal Space id as user-facing content.
+ * internal Space id as user-facing content. Consumers call
+ * `retryTransientFailures` when they reload their list so a recovered service
+ * can resolve failures without requiring a full page remount.
  *
  * `nameOf` is called from table `render` callbacks (the render phase). It must
  * NOT fire a fetch there: under StrictMode/concurrent rendering an abandoned
@@ -44,15 +46,17 @@ export interface SpaceNameValue {
 
 export interface SpaceNameMap {
   nameOf: (spaceId?: string) => SpaceNameValue
+  retryTransientFailures: () => void
   loading: boolean
 }
 
 const MAX_LOOKUP_ATTEMPTS = 2
+const TRANSIENT_RETRY_DELAY_MS = 1000
 
 export function useSpaceNameMap(): SpaceNameMap {
   const { t } = useTranslation('common')
-  // Resolved names: id → name, where null marks a permanent miss or an
-  // exhausted transient lookup. Keeping that state separate from the rendered
+  // Resolved names: id → name, where null marks a permanent miss. Keeping that
+  // state separate from the rendered
   // label means a legitimate organization named "--" remains real data.
   const [names, setNames] = useState<Map<string, string | null>>(() => new Map())
   // Ids seen during render (recorded, not fetched, in the render phase) and ids
@@ -61,6 +65,9 @@ export function useSpaceNameMap(): SpaceNameMap {
   const observed = useRef<Set<string>>(new Set())
   const requested = useRef<Set<string>>(new Set())
   const attempts = useRef<Map<string, number>>(new Map())
+  const transientFailures = useRef<Set<string>>(new Set())
+  const retryAfter = useRef<Map<string, number>>(new Map())
+  const retryTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const [, triggerRetry] = useState(0)
 
   // Mount-lifetime flag: true while this component is mounted. Guards the
@@ -74,7 +81,20 @@ export function useSpaceNameMap(): SpaceNameMap {
     mountedRef.current = true
     return () => {
       mountedRef.current = false
+      retryTimers.current.forEach((timer) => clearTimeout(timer))
+      retryTimers.current.clear()
     }
+  }, [])
+
+  const retryTransientFailures = useCallback(() => {
+    if (transientFailures.current.size === 0) return
+    transientFailures.current.forEach((id) => {
+      requested.current.delete(id)
+      attempts.current.delete(id)
+      retryAfter.current.delete(id)
+    })
+    transientFailures.current.clear()
+    triggerRetry((value) => value + 1)
   }, [])
 
   // Resolve any observed-but-unrequested ids AFTER commit. Runs after every
@@ -85,8 +105,9 @@ export function useSpaceNameMap(): SpaceNameMap {
   // fetch that is still in flight.
   useEffect(() => {
     const pending: string[] = []
+    const now = Date.now()
     observed.current.forEach((id) => {
-      if (!requested.current.has(id)) {
+      if (!requested.current.has(id) && (retryAfter.current.get(id) ?? 0) <= now) {
         requested.current.add(id)
         attempts.current.set(id, (attempts.current.get(id) ?? 0) + 1)
         pending.push(id)
@@ -97,21 +118,38 @@ export function useSpaceNameMap(): SpaceNameMap {
       getSpace(id)
         .then((s) => {
           if (!mountedRef.current) return
+          retryAfter.current.delete(id)
+          transientFailures.current.delete(id)
           const name = s?.name?.trim()
           setNames((m) => new Map(m).set(id, name || null))
         })
         .catch((error: unknown) => {
           if (!mountedRef.current) return
-          if (error instanceof ApiError && error.status === 404) {
+          if (
+            error instanceof ApiError &&
+            (error.status === 404 || error.transportStatus === 404)
+          ) {
+            retryAfter.current.delete(id)
+            transientFailures.current.delete(id)
             setNames((m) => new Map(m).set(id, null))
             return
           }
           if ((attempts.current.get(id) ?? 0) < MAX_LOOKUP_ATTEMPTS) {
             requested.current.delete(id)
-            triggerRetry((value) => value + 1)
+            const retryAt = Date.now() + TRANSIENT_RETRY_DELAY_MS
+            retryAfter.current.set(id, retryAt)
+            const timer = setTimeout(() => {
+              retryTimers.current.delete(id)
+              if (mountedRef.current) triggerRetry((value) => value + 1)
+            }, TRANSIENT_RETRY_DELAY_MS)
+            retryTimers.current.set(id, timer)
             return
           }
-          setNames((m) => new Map(m).set(id, null))
+          // Exhausted transient failures are deliberately not written into the
+          // permanent name cache. Keep the request accounted for until a
+          // consumer reload explicitly opens a new bounded retry window.
+          retryAfter.current.delete(id)
+          transientFailures.current.add(id)
         })
     }
   })
@@ -121,6 +159,7 @@ export function useSpaceNameMap(): SpaceNameMap {
     const unknownLabel = '--'
     return {
       loading: false,
+      retryTransientFailures,
       nameOf: (spaceId?: string) => {
         if (!spaceId) return { label: globalLabel, resolved: true }
         if (names.has(spaceId)) {
@@ -136,7 +175,7 @@ export function useSpaceNameMap(): SpaceNameMap {
         return { label: unknownLabel, resolved: false }
       },
     }
-  }, [names, t])
+  }, [names, retryTransientFailures, t])
 }
 
 export default useSpaceNameMap

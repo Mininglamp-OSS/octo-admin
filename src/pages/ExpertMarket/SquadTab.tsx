@@ -24,7 +24,7 @@ const PAGE_SIZE = 20
 
 export default function SquadTab() {
   const { t } = useTranslation(['expertMarket', 'common'])
-  const { nameOf } = useSpaceNameMap()
+  const { nameOf, retryTransientFailures } = useSpaceNameMap()
   const canWrite = useAuthStore((s) => hasManagerCapability(s.managerCapabilities, 'expert.write'))
 
   const [rows, setRows] = useState<SquadListItem[]>([])
@@ -40,6 +40,7 @@ export default function SquadTab() {
   const ratingOverrides = useRef(createRatingOverrideLedger())
 
   const load = async (nextPage = page, kw = keyword) => {
+    retryTransientFailures()
     const request = ++loadSequence.current
     const seenRatingSequence = ratingOverrideSequence(ratingOverrides.current)
     setLoading(true)

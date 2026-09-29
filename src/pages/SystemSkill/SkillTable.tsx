@@ -28,7 +28,7 @@ interface Props {
 
 export default function SkillTable({ onView, onUpload, canWrite, refreshToken, ratingLedger }: Props) {
   const { t } = useTranslation('systemSkill')
-  const { nameOf } = useSpaceNameMap()
+  const { nameOf, retryTransientFailures } = useSpaceNameMap()
   const [data, setData] = useState<SkillListItem[]>([])
   const [hasMore, setHasMore] = useState(false)
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined])
@@ -55,6 +55,7 @@ export default function SkillTable({ onView, onUpload, canWrite, refreshToken, r
   }, [keyword])
 
   const fetchList = useCallback(async () => {
+    retryTransientFailures()
     const request = ++requestSequence.current
     const seenRatingSequence = ratingOverrideSequence(ratingLedger)
     setLoading(true)
@@ -76,7 +77,7 @@ export default function SkillTable({ onView, onUpload, canWrite, refreshToken, r
     } finally {
       if (request === requestSequence.current) setLoading(false)
     }
-  }, [page, cursors, debouncedKeyword, categoryFilter, ratingLedger])
+  }, [page, cursors, debouncedKeyword, categoryFilter, ratingLedger, retryTransientFailures])
 
   useEffect(() => { fetchList() }, [fetchList, refreshToken])
 

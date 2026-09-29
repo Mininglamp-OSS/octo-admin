@@ -15,8 +15,12 @@ vi.mock('react-i18next', async (importOriginal) => ({
 
 import { useSpaceNameMap } from './useSpaceNameMap'
 
+let retryTransientFailures: () => void = () => {}
+
 function NameProbe({ spaceId }: { spaceId?: string }) {
-  const { nameOf } = useSpaceNameMap()
+  const spaceNames = useSpaceNameMap()
+  retryTransientFailures = spaceNames.retryTransientFailures
+  const { nameOf } = spaceNames
   const value = nameOf(spaceId)
   return <span data-testid="organization-name" data-resolved={value.resolved}>{value.label}</span>
 }
@@ -28,6 +32,7 @@ describe('useSpaceNameMap', () => {
   beforeEach(() => {
     ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
     mocks.getSpace.mockReset()
+    retryTransientFailures = () => {}
     host = document.createElement('div')
     document.body.appendChild(host)
     root = createRoot(host)
@@ -36,6 +41,7 @@ describe('useSpaceNameMap', () => {
   afterEach(async () => {
     await act(async () => root.unmount())
     host.remove()
+    vi.useRealTimers()
   })
 
   it('resolves a Space id to its organization name without exposing the id while loading', async () => {
@@ -57,6 +63,7 @@ describe('useSpaceNameMap', () => {
   })
 
   it('retries a transient organization lookup failure', async () => {
+    vi.useFakeTimers()
     mocks.getSpace
       .mockRejectedValueOnce(new Error('temporarily unavailable'))
       .mockResolvedValueOnce({ name: 'Recovered organization' })
@@ -64,9 +71,39 @@ describe('useSpaceNameMap', () => {
     await act(async () => root.render(<NameProbe spaceId="failed-space-id" />))
     await act(async () => {})
 
+    expect(mocks.getSpace).toHaveBeenCalledOnce()
+    await act(async () => vi.advanceTimersByTimeAsync(999))
+    expect(mocks.getSpace).toHaveBeenCalledOnce()
+    await act(async () => vi.advanceTimersByTimeAsync(1))
+
     expect(mocks.getSpace).toHaveBeenCalledTimes(2)
     expect(host.textContent).toBe('Recovered organization')
     expect(host.textContent).not.toContain('failed-space-id')
+  })
+
+  it('retries an exhausted transient lookup after an in-place list refresh', async () => {
+    vi.useFakeTimers()
+    mocks.getSpace
+      .mockRejectedValueOnce(new Error('temporarily unavailable'))
+      .mockRejectedValueOnce(new Error('still unavailable'))
+      .mockResolvedValueOnce({ name: 'Recovered after refresh' })
+
+    await act(async () => root.render(<NameProbe spaceId="failed-space-id" />))
+    await act(async () => {})
+    await act(async () => vi.advanceTimersByTimeAsync(1000))
+
+    expect(mocks.getSpace).toHaveBeenCalledTimes(2)
+    expect(host.textContent).toBe('--')
+
+    await act(async () => vi.advanceTimersByTimeAsync(10_000))
+    await act(async () => root.render(<NameProbe spaceId="failed-space-id" />))
+    expect(mocks.getSpace).toHaveBeenCalledTimes(2)
+
+    await act(async () => retryTransientFailures())
+    await act(async () => {})
+
+    expect(mocks.getSpace).toHaveBeenCalledTimes(3)
+    expect(host.textContent).toBe('Recovered after refresh')
   })
 
   it('uses the placeholder for a permanent miss or a response without a name', async () => {
@@ -85,6 +122,19 @@ describe('useSpaceNameMap', () => {
 
     expect(host.textContent).toBe('--')
     expect(host.textContent).not.toContain('nameless-space-id')
+  })
+
+  it('treats a transport-level 404 as a permanent miss', async () => {
+    vi.useFakeTimers()
+    mocks.getSpace.mockRejectedValueOnce(
+      new ApiError('not found', 400, undefined, undefined, 404),
+    )
+
+    await act(async () => root.render(<NameProbe spaceId="missing-space-id" />))
+    await act(async () => vi.advanceTimersByTimeAsync(2000))
+
+    expect(host.textContent).toBe('--')
+    expect(mocks.getSpace).toHaveBeenCalledOnce()
   })
 
   it('keeps system-wide plugins labeled as global without making a lookup', async () => {
