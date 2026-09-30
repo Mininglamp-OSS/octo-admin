@@ -55,7 +55,6 @@ export default function SkillTable({ onView, onUpload, canWrite, refreshToken, r
   }, [keyword])
 
   const fetchList = useCallback(async () => {
-    retryTransientFailures()
     const request = ++requestSequence.current
     const seenRatingSequence = ratingOverrideSequence(ratingLedger)
     setLoading(true)
@@ -67,7 +66,9 @@ export default function SkillTable({ onView, onUpload, canWrite, refreshToken, r
         limit: LIMIT,
       })
       if (request !== requestSequence.current) return
-      setData(mergeRatingOverrides(resp.items || [], ratingLedger, seenRatingSequence, (item) => item.id))
+      const items = resp.items || []
+      retryTransientFailures(items.map((item) => item.space_id))
+      setData(mergeRatingOverrides(items, ratingLedger, seenRatingSequence, (item) => item.id))
       setHasMore(!!resp.next_cursor)
       if (resp.next_cursor && !cursors[page + 1]) {
         setCursors((prev) => [...prev, resp.next_cursor!])
@@ -168,8 +169,7 @@ export default function SkillTable({ onView, onUpload, canWrite, refreshToken, r
       title: t('table.space', { ns: 'common' }),
       dataIndex: 'space_id',
       width: 160,
-      ellipsis: true,
-      render: (spaceId?: string) => <OrganizationNameCell value={nameOf(spaceId)} />,
+      render: (spaceId?: string) => <OrganizationNameCell value={nameOf(spaceId)} maxWidth={160} />,
     },
     {
       title: t('column.createdAt'),

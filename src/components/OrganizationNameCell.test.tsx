@@ -32,7 +32,7 @@ describe('OrganizationNameCell', () => {
     const name = 'A very long organization name that is wider than the table column'
 
     await act(async () => root.render(
-      <OrganizationNameCell value={{ label: name, resolved: true }} />,
+      <OrganizationNameCell value={{ label: name, resolved: true }} maxWidth={160} />,
     ))
 
     expect(host.textContent).toBe(name)
@@ -46,7 +46,7 @@ describe('OrganizationNameCell', () => {
 
   it('does not show a tooltip for the unavailable-name placeholder', async () => {
     await act(async () => root.render(
-      <OrganizationNameCell value={{ label: '--', resolved: false }} />,
+      <OrganizationNameCell value={{ label: '--', resolved: false }} maxWidth={160} />,
     ))
 
     expect(host.textContent).toBe('--')
@@ -55,7 +55,7 @@ describe('OrganizationNameCell', () => {
 
   it('preserves a legitimate organization name that matches the placeholder text', async () => {
     await act(async () => root.render(
-      <OrganizationNameCell value={{ label: '--', resolved: true }} />,
+      <OrganizationNameCell value={{ label: '--', resolved: true }} maxWidth={160} />,
     ))
 
     expect(host.textContent).toBe('--')

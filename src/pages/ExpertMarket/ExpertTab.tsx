@@ -40,7 +40,6 @@ export default function ExpertTab() {
   const ratingOverrides = useRef(createRatingOverrideLedger())
 
   const load = async (nextPage = page, kw = keyword) => {
-    retryTransientFailures()
     const request = ++loadSequence.current
     const seenRatingSequence = ratingOverrideSequence(ratingOverrides.current)
     setLoading(true)
@@ -51,6 +50,7 @@ export default function ExpertTab() {
         offset: (nextPage - 1) * PAGE_SIZE,
       })
       if (request !== loadSequence.current) return
+      retryTransientFailures(resp.items.map((item) => item.space_id))
       setRows(mergeRatingOverrides(resp.items, ratingOverrides.current, seenRatingSequence, (item) => item.expert_id))
       setTotal(resp.total)
       setPage(nextPage)
@@ -168,8 +168,7 @@ export default function ExpertTab() {
         dataIndex: 'space_id',
         key: 'space_id',
         width: 160,
-        ellipsis: true,
-        render: (spaceId?: string) => <OrganizationNameCell value={nameOf(spaceId)} />,
+        render: (spaceId?: string) => <OrganizationNameCell value={nameOf(spaceId)} maxWidth={160} />,
       },
       {
         title: t('table.creator'),

@@ -16,8 +16,8 @@ import { getSpace } from '../api/space'
  * loading, after a permanent miss, or after bounded transient retries are
  * exhausted, the UI deliberately renders "--" instead of exposing the
  * internal Space id as user-facing content. Consumers call
- * `retryTransientFailures` when they reload their list so a recovered service
- * can resolve failures without requiring a full page remount.
+ * `retryTransientFailures` with the ids in a newly loaded page so a recovered
+ * service can resolve failures without retaining ids from old pages.
  *
  * `nameOf` is called from table `render` callbacks (the render phase). It must
  * NOT fire a fetch there: under StrictMode/concurrent rendering an abandoned
@@ -28,7 +28,8 @@ import { getSpace } from '../api/space'
  *
  * The fetch effect is intentionally dependency-less: it re-runs after every
  * commit to pick up newly observed ids, and `requested` de-dupes concurrent
- * requests. Transient failures get one bounded retry; 404s are permanent.
+ * requests. Transient failures get one bounded retry; non-retryable 4xx
+ * responses are permanent.
  * Because the effect re-runs per render, its resolutions are
  * guarded by a MOUNT-LIFETIME `mountedRef` — NOT a per-effect `alive` flag. A
  * per-effect cleanup would flip `alive=false` on every re-render, so when the
@@ -46,12 +47,19 @@ export interface SpaceNameValue {
 
 export interface SpaceNameMap {
   nameOf: (spaceId?: string) => SpaceNameValue
-  retryTransientFailures: () => void
+  retryTransientFailures: (spaceIds: Array<string | undefined>) => void
   loading: boolean
 }
 
 const MAX_LOOKUP_ATTEMPTS = 2
 const TRANSIENT_RETRY_DELAY_MS = 1000
+const RETRY_WINDOW_COOLDOWN_MS = 5000
+
+function isPermanentClientError(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return false
+  const status = error.status ?? error.transportStatus
+  return status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 429
+}
 
 export function useSpaceNameMap(): SpaceNameMap {
   const { t } = useTranslation('common')
@@ -86,15 +94,29 @@ export function useSpaceNameMap(): SpaceNameMap {
     }
   }, [])
 
-  const retryTransientFailures = useCallback(() => {
-    if (transientFailures.current.size === 0) return
+  const retryTransientFailures = useCallback((spaceIds: Array<string | undefined>) => {
+    const activeIds = new Set(spaceIds.filter((id): id is string => Boolean(id)))
+    observed.current = activeIds
+    const now = Date.now()
+    let shouldRetry = false
+
     transientFailures.current.forEach((id) => {
+      if (!activeIds.has(id)) {
+        transientFailures.current.delete(id)
+        requested.current.delete(id)
+        attempts.current.delete(id)
+        retryAfter.current.delete(id)
+        return
+      }
+      if ((retryAfter.current.get(id) ?? 0) > now) return
+      transientFailures.current.delete(id)
       requested.current.delete(id)
       attempts.current.delete(id)
       retryAfter.current.delete(id)
+      shouldRetry = true
     })
-    transientFailures.current.clear()
-    triggerRetry((value) => value + 1)
+
+    if (shouldRetry) triggerRetry((value) => value + 1)
   }, [])
 
   // Resolve any observed-but-unrequested ids AFTER commit. Runs after every
@@ -125,10 +147,7 @@ export function useSpaceNameMap(): SpaceNameMap {
         })
         .catch((error: unknown) => {
           if (!mountedRef.current) return
-          if (
-            error instanceof ApiError &&
-            (error.status === 404 || error.transportStatus === 404)
-          ) {
+          if (isPermanentClientError(error)) {
             retryAfter.current.delete(id)
             transientFailures.current.delete(id)
             setNames((m) => new Map(m).set(id, null))
@@ -148,7 +167,7 @@ export function useSpaceNameMap(): SpaceNameMap {
           // Exhausted transient failures are deliberately not written into the
           // permanent name cache. Keep the request accounted for until a
           // consumer reload explicitly opens a new bounded retry window.
-          retryAfter.current.delete(id)
+          retryAfter.current.set(id, Date.now() + RETRY_WINDOW_COOLDOWN_MS)
           transientFailures.current.add(id)
         })
     }

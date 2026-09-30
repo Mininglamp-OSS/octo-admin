@@ -3,11 +3,12 @@ import type { SpaceNameValue } from '../hooks/useSpaceNameMap'
 
 interface Props {
   value: SpaceNameValue
+  maxWidth: number
 }
 
 /** A compact organization label that keeps the full resolved name available
  * on hover without presenting the neutral placeholder as tooltip content. */
-export default function OrganizationNameCell({ value }: Props) {
+export default function OrganizationNameCell({ value, maxWidth }: Props) {
   return (
     <Tooltip title={value.resolved ? value.label : undefined}>
       <span
@@ -16,7 +17,7 @@ export default function OrganizationNameCell({ value }: Props) {
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
-          maxWidth: 160,
+          maxWidth,
         }}
       >
         {value.label}

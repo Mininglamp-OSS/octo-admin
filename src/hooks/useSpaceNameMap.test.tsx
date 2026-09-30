@@ -15,7 +15,7 @@ vi.mock('react-i18next', async (importOriginal) => ({
 
 import { useSpaceNameMap } from './useSpaceNameMap'
 
-let retryTransientFailures: () => void = () => {}
+let retryTransientFailures: (spaceIds: Array<string | undefined>) => void = () => {}
 
 function NameProbe({ spaceId }: { spaceId?: string }) {
   const spaceNames = useSpaceNameMap()
@@ -95,15 +95,41 @@ describe('useSpaceNameMap', () => {
     expect(mocks.getSpace).toHaveBeenCalledTimes(2)
     expect(host.textContent).toBe('--')
 
-    await act(async () => vi.advanceTimersByTimeAsync(10_000))
+    await act(async () => retryTransientFailures(['failed-space-id']))
+    await act(async () => {})
+    expect(mocks.getSpace).toHaveBeenCalledTimes(2)
+
+    await act(async () => vi.advanceTimersByTimeAsync(5_000))
     await act(async () => root.render(<NameProbe spaceId="failed-space-id" />))
     expect(mocks.getSpace).toHaveBeenCalledTimes(2)
 
-    await act(async () => retryTransientFailures())
+    await act(async () => retryTransientFailures(['failed-space-id']))
     await act(async () => {})
 
     expect(mocks.getSpace).toHaveBeenCalledTimes(3)
     expect(host.textContent).toBe('Recovered after refresh')
+  })
+
+  it('drops exhausted failures that are no longer on the loaded page', async () => {
+    vi.useFakeTimers()
+    mocks.getSpace
+      .mockRejectedValueOnce(new Error('temporarily unavailable'))
+      .mockRejectedValueOnce(new Error('still unavailable'))
+      .mockResolvedValueOnce({ name: 'Current organization' })
+
+    await act(async () => root.render(<NameProbe spaceId="old-page-space-id" />))
+    await act(async () => {})
+    await act(async () => vi.advanceTimersByTimeAsync(1000))
+    expect(mocks.getSpace).toHaveBeenCalledTimes(2)
+
+    await act(async () => vi.advanceTimersByTimeAsync(5_000))
+    await act(async () => retryTransientFailures(['current-page-space-id']))
+    await act(async () => root.render(<NameProbe spaceId="current-page-space-id" />))
+    await act(async () => {})
+
+    expect(mocks.getSpace).toHaveBeenCalledTimes(3)
+    expect(mocks.getSpace).toHaveBeenLastCalledWith('current-page-space-id')
+    expect(host.textContent).toBe('Current organization')
   })
 
   it('uses the placeholder for a permanent miss or a response without a name', async () => {
@@ -132,6 +158,19 @@ describe('useSpaceNameMap', () => {
 
     await act(async () => root.render(<NameProbe spaceId="missing-space-id" />))
     await act(async () => vi.advanceTimersByTimeAsync(2000))
+
+    expect(host.textContent).toBe('--')
+    expect(mocks.getSpace).toHaveBeenCalledOnce()
+  })
+
+  it('does not retry non-retryable client errors after a list refresh', async () => {
+    vi.useFakeTimers()
+    mocks.getSpace.mockRejectedValueOnce(new ApiError('forbidden', 403))
+
+    await act(async () => root.render(<NameProbe spaceId="forbidden-space-id" />))
+    await act(async () => vi.advanceTimersByTimeAsync(10_000))
+    await act(async () => retryTransientFailures(['forbidden-space-id']))
+    await act(async () => {})
 
     expect(host.textContent).toBe('--')
     expect(mocks.getSpace).toHaveBeenCalledOnce()

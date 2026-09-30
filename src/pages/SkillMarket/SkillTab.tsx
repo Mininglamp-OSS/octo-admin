@@ -54,7 +54,6 @@ export default function SkillTab() {
 
   const load = useCallback(
     async (nextPage = page, kw = keyword, cat = categoryFilter, s = sort) => {
-      retryTransientFailures()
       const request = ++loadSequence.current
       const seenRatingSequence = ratingOverrideSequence(ratingOverrides.current)
       setLoading(true)
@@ -67,7 +66,9 @@ export default function SkillTab() {
           page_size: PAGE_SIZE,
         })
         if (request !== loadSequence.current) return
-        setRows(mergeRatingOverrides(resp.items ?? [], ratingOverrides.current, seenRatingSequence, (item) => item.skill_id))
+        const items = resp.items ?? []
+        retryTransientFailures(items.map((item) => item.space_id))
+        setRows(mergeRatingOverrides(items, ratingOverrides.current, seenRatingSequence, (item) => item.skill_id))
         setTotal(resp.total)
         setPage(nextPage)
       } catch (err) {
@@ -245,10 +246,9 @@ export default function SkillTab() {
       title: t('table.space', { ns: 'common' }),
       key: 'space',
       width: 140,
-      ellipsis: true,
       render: (_, record) => {
         const organizationName = nameOf(record.space_id)
-        return <OrganizationNameCell value={organizationName} />
+        return <OrganizationNameCell value={organizationName} maxWidth={140} />
       },
     },
     {
