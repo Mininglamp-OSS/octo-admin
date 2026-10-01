@@ -21,6 +21,7 @@ import SkillFormModal from '../SystemSkill/SkillFormModal'
 import SkillUploadModal from './SkillUploadModal'
 import VisibilityTag from '../../components/VisibilityTag'
 import PluginRating from '../../components/PluginRating'
+import OrganizationNameCell from '../../components/OrganizationNameCell'
 import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
 import { createRatingOverrideLedger, mergeRatingOverrides, ratingOverrideSequence, recordRatingOverride } from '../../utils/ratingOverrides'
 
@@ -28,7 +29,7 @@ const PAGE_SIZE = 20
 
 export default function SkillTab() {
   const { t } = useTranslation(['skillMarket', 'common'])
-  const { nameOf } = useSpaceNameMap()
+  const { nameOf, retryTransientFailures } = useSpaceNameMap()
   const canWrite = useAuthStore((s) =>
     hasManagerCapability(s.managerCapabilities, 'skill.write')
   )
@@ -65,7 +66,9 @@ export default function SkillTab() {
           page_size: PAGE_SIZE,
         })
         if (request !== loadSequence.current) return
-        setRows(mergeRatingOverrides(resp.items ?? [], ratingOverrides.current, seenRatingSequence, (item) => item.skill_id))
+        const items = resp.items ?? []
+        retryTransientFailures(items.map((item) => item.space_id))
+        setRows(mergeRatingOverrides(items, ratingOverrides.current, seenRatingSequence, (item) => item.skill_id))
         setTotal(resp.total)
         setPage(nextPage)
       } catch (err) {
@@ -76,7 +79,7 @@ export default function SkillTab() {
         if (request === loadSequence.current) setLoading(false)
       }
     },
-    [page, keyword, categoryFilter, sort, t]
+    [page, keyword, categoryFilter, sort, retryTransientFailures, t]
   )
 
   useEffect(() => {
@@ -243,8 +246,10 @@ export default function SkillTab() {
       title: t('table.space', { ns: 'common' }),
       key: 'space',
       width: 140,
-      ellipsis: true,
-      render: (_, record) => nameOf(record.space_id),
+      render: (_, record) => {
+        const organizationName = nameOf(record.space_id)
+        return <OrganizationNameCell value={organizationName} maxWidth={140} />
+      },
     },
     {
       title: t('skill.table.actions'),

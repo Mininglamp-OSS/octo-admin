@@ -11,6 +11,7 @@ import {
 } from '../../api/skill'
 import VisibilityTag from '../../components/VisibilityTag'
 import PluginRating from '../../components/PluginRating'
+import OrganizationNameCell from '../../components/OrganizationNameCell'
 import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
 import { mergeRatingOverrides, ratingOverrideSequence, recordRatingOverride, type RatingOverrideLedger } from '../../utils/ratingOverrides'
 
@@ -27,7 +28,7 @@ interface Props {
 
 export default function SkillTable({ onView, onUpload, canWrite, refreshToken, ratingLedger }: Props) {
   const { t } = useTranslation('systemSkill')
-  const { nameOf } = useSpaceNameMap()
+  const { nameOf, retryTransientFailures } = useSpaceNameMap()
   const [data, setData] = useState<SkillListItem[]>([])
   const [hasMore, setHasMore] = useState(false)
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined])
@@ -65,7 +66,9 @@ export default function SkillTable({ onView, onUpload, canWrite, refreshToken, r
         limit: LIMIT,
       })
       if (request !== requestSequence.current) return
-      setData(mergeRatingOverrides(resp.items || [], ratingLedger, seenRatingSequence, (item) => item.id))
+      const items = resp.items || []
+      retryTransientFailures(items.map((item) => item.space_id))
+      setData(mergeRatingOverrides(items, ratingLedger, seenRatingSequence, (item) => item.id))
       setHasMore(!!resp.next_cursor)
       if (resp.next_cursor && !cursors[page + 1]) {
         setCursors((prev) => [...prev, resp.next_cursor!])
@@ -75,7 +78,7 @@ export default function SkillTable({ onView, onUpload, canWrite, refreshToken, r
     } finally {
       if (request === requestSequence.current) setLoading(false)
     }
-  }, [page, cursors, debouncedKeyword, categoryFilter, ratingLedger])
+  }, [page, cursors, debouncedKeyword, categoryFilter, ratingLedger, retryTransientFailures])
 
   useEffect(() => { fetchList() }, [fetchList, refreshToken])
 
@@ -166,7 +169,7 @@ export default function SkillTable({ onView, onUpload, canWrite, refreshToken, r
       title: t('table.space', { ns: 'common' }),
       dataIndex: 'space_id',
       width: 160,
-      render: (spaceId?: string) => nameOf(spaceId),
+      render: (spaceId?: string) => <OrganizationNameCell value={nameOf(spaceId)} maxWidth={160} />,
     },
     {
       title: t('column.createdAt'),

@@ -16,6 +16,7 @@ import SquadDetailDrawer from './SquadDetailDrawer'
 import UploadModal from './UploadModal'
 import VisibilityTag from '../../components/VisibilityTag'
 import PluginRating from '../../components/PluginRating'
+import OrganizationNameCell from '../../components/OrganizationNameCell'
 import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
 import { createRatingOverrideLedger, mergeRatingOverrides, ratingOverrideSequence, recordRatingOverride } from '../../utils/ratingOverrides'
 
@@ -23,7 +24,7 @@ const PAGE_SIZE = 20
 
 export default function SquadTab() {
   const { t } = useTranslation(['expertMarket', 'common'])
-  const { nameOf } = useSpaceNameMap()
+  const { nameOf, retryTransientFailures } = useSpaceNameMap()
   const canWrite = useAuthStore((s) => hasManagerCapability(s.managerCapabilities, 'expert.write'))
 
   const [rows, setRows] = useState<SquadListItem[]>([])
@@ -49,6 +50,7 @@ export default function SquadTab() {
         offset: (nextPage - 1) * PAGE_SIZE,
       })
       if (request !== loadSequence.current) return
+      retryTransientFailures(resp.items.map((item) => item.space_id))
       setRows(mergeRatingOverrides(resp.items, ratingOverrides.current, seenRatingSequence, (item) => item.squad_id))
       setTotal(resp.total)
       setPage(nextPage)
@@ -177,7 +179,7 @@ export default function SquadTab() {
         dataIndex: 'space_id',
         key: 'space_id',
         width: 160,
-        render: (spaceId?: string) => nameOf(spaceId),
+        render: (spaceId?: string) => <OrganizationNameCell value={nameOf(spaceId)} maxWidth={160} />,
       },
       {
         title: t('table.creator'),

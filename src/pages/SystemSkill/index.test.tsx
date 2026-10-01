@@ -17,7 +17,14 @@ vi.mock('../../store/auth', () => ({
     select({ managerCapabilities: ['skill.write'] }),
 }))
 vi.mock('../../auth/capabilities', () => ({ hasManagerCapability: () => true }))
-vi.mock('../../hooks/useSpaceNameMap', () => ({ useSpaceNameMap: () => ({ nameOf: () => '' }) }))
+const spaceNameMocks = vi.hoisted(() => ({ retryTransientFailures: vi.fn() }))
+
+vi.mock('../../hooks/useSpaceNameMap', () => ({
+  useSpaceNameMap: () => ({
+    nameOf: () => ({ label: '--', resolved: false }),
+    retryTransientFailures: spaceNameMocks.retryTransientFailures,
+  }),
+}))
 vi.mock('../../api/skill', async () => {
   const actual = await vi.importActual<typeof import('../../api/skill')>('../../api/skill')
   return {
@@ -61,6 +68,7 @@ describe('SystemSkill rating reconciliation', () => {
       dispatchEvent: vi.fn(),
     }))
     mocks.rating = null
+    spaceNameMocks.retryTransientFailures.mockReset()
     mocks.listCategories.mockReset().mockResolvedValue([])
     mocks.listSkills.mockReset().mockImplementation(async () => ({
       items: [{
@@ -73,6 +81,7 @@ describe('SystemSkill rating reconciliation', () => {
         category_name: '',
         tags: [],
         owner_name: 'Owner',
+        space_id: 'space-1',
         visibility: 'system',
         rating: mocks.rating,
         view_count: 0,
@@ -100,6 +109,7 @@ describe('SystemSkill rating reconciliation', () => {
     expect(host.textContent).toContain('pluginRating.unrated')
     expect(mocks.listCategories).toHaveBeenCalledTimes(1)
     expect(mocks.listSkills).toHaveBeenCalledTimes(1)
+    expect(spaceNameMocks.retryTransientFailures).toHaveBeenCalledWith(['space-1'])
 
     await act(async () => {
       ;(host.querySelector('[data-testid="drawer-three"]') as HTMLButtonElement).click()
@@ -107,6 +117,7 @@ describe('SystemSkill rating reconciliation', () => {
     await act(async () => {})
 
     expect(mocks.listSkills).toHaveBeenCalledTimes(2)
+    expect(spaceNameMocks.retryTransientFailures).toHaveBeenCalledTimes(2)
     expect(mocks.listCategories).toHaveBeenCalledTimes(1)
     expect(host.textContent).not.toContain('pluginRating.unrated')
     expect(host.querySelectorAll('.ant-rate-star-full')).toHaveLength(3)
