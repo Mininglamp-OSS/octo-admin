@@ -1,0 +1,69 @@
+{
+  "list": {
+    "sceneCodes": "所在渠道"
+  },
+  "single": {
+    "title": "取消渠道投放",
+    "removeConfirm": "确认将此插件移出渠道“{{sceneCode}}”？",
+    "confirm": "确认移出",
+    "cancel": "取消",
+    "removeSuccess": "已移出渠道“{{sceneCode}}”",
+    "removeFailed": "移出渠道失败",
+    "defaultProtected": "default 是兼容保底渠道，不可移出"
+  },
+  "bulk": {
+    "button": "批量投放",
+    "title": "批量管理市场投放",
+    "selected": "已选择 {{count}} 个插件。本次操作将整体成功或整体失败。",
+    "limit": "一次最多选择 100 个插件",
+    "operation": "操作",
+    "add": "加入渠道",
+    "remove": "移出渠道",
+    "scene": "市场渠道",
+    "scenePlaceholder": "请选择渠道",
+    "visible": "在渠道中展示",
+    "sortOrder": "排序",
+    "success": {
+      "added": "已将 {{count}} 个插件投放到渠道",
+      "removed": "已将 {{count}} 个插件移出渠道"
+    }
+  },
+  "scene": {
+    "create": "新建渠道",
+    "edit": "编辑",
+    "delete": "删除",
+    "deleteConfirm": "确认删除这个渠道？",
+    "defaultProtected": "default 是兼容保底渠道，不可删除",
+    "scopeHint": "渠道由所有市场共用，可同时投放 Skill、MCP、专家和专家团。",
+    "table": {
+      "name": "渠道名称",
+      "code": "scene_code",
+      "pluginCount": "插件数",
+      "categoryCount": "分类数",
+      "sortOrder": "排序",
+      "description": "说明",
+      "actions": "操作"
+    },
+    "modal": {
+      "create": "新建渠道",
+      "edit": "编辑渠道"
+    },
+    "field": {
+      "code": "scene_code",
+      "codeHint": "创建后不可修改；仅支持小写字母、数字、点号、下划线和连字符。",
+      "codeInvalid": "请输入合法的 scene_code",
+      "name": "渠道名称",
+      "description": "说明",
+      "sortOrder": "排序"
+    },
+    "success": {
+      "created": "渠道已创建",
+      "updated": "渠道已更新",
+      "deleted": "渠道已删除"
+    },
+    "error": {
+      "load": "加载渠道失败",
+      "delete": "删除渠道失败"
+    }
+  }
+}

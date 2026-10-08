@@ -2,6 +2,7 @@ import { Tabs } from 'antd'
 import { useTranslation } from 'react-i18next'
 import CategoryTab from './CategoryTab'
 import SkillTab from './SkillTab'
+import SceneTab from '../MarketplaceScene/SceneTab'
 
 export default function SkillMarket() {
   const { t } = useTranslation(['skillMarket'])
@@ -22,6 +23,11 @@ export default function SkillMarket() {
             key: 'skills',
             label: t('tab.skills'),
             children: <SkillTab />,
+          },
+          {
+            key: 'channels',
+            label: t('tab.channels'),
+            children: <SceneTab />,
           },
         ]}
       />

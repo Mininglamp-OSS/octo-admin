@@ -3,7 +3,8 @@
   "pageDesc": "管理 Skill 分类和系统级公共 Skill。",
   "tab": {
     "categories": "分类管理",
-    "skills": "Skill 管理"
+    "skills": "Skill 管理",
+    "channels": "全局市场渠道"
   },
   "category": {
     "table": { "name": "分类名称", "sortOrder": "排序", "actions": "操作" },

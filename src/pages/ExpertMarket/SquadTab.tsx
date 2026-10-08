@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { Key } from 'react'
 import { Button, Input, Space as AntSpace, Table, Tag, message } from 'antd'
 import { PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
@@ -19,11 +20,13 @@ import PluginRating from '../../components/PluginRating'
 import OrganizationNameCell from '../../components/OrganizationNameCell'
 import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
 import { createRatingOverrideLedger, mergeRatingOverrides, ratingOverrideSequence, recordRatingOverride } from '../../utils/ratingOverrides'
+import BulkPlacementAction from '../../components/BulkPlacementAction'
+import PlacementChannelTags from '../../components/PlacementChannelTags'
 
 const PAGE_SIZE = 20
 
 export default function SquadTab() {
-  const { t } = useTranslation(['expertMarket', 'common'])
+  const { t } = useTranslation(['expertMarket', 'common', 'marketplaceScene'])
   const { nameOf, retryTransientFailures } = useSpaceNameMap()
   const canWrite = useAuthStore((s) => hasManagerCapability(s.managerCapabilities, 'expert.write'))
 
@@ -33,6 +36,7 @@ export default function SquadTab() {
   const [loading, setLoading] = useState(false)
   const [keyword, setKeyword] = useState('')
   const [pendingKeyword, setPendingKeyword] = useState('')
+  const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([])
   const [categories, setCategories] = useState<ExpertCategory[]>([])
   const [drawerId, setDrawerId] = useState<string | null>(null)
   const [uploadOpen, setUploadOpen] = useState(false)
@@ -130,6 +134,20 @@ export default function SquadTab() {
           ),
       },
       {
+        title: t('marketplaceScene:list.sceneCodes'),
+        dataIndex: 'scene_codes',
+        key: 'scene_codes',
+        width: 180,
+        render: (sceneCodes: string[], record) => (
+          <PlacementChannelTags
+            pluginId={record.squad_id}
+            sceneCodes={sceneCodes}
+            canWrite={canWrite}
+            onSuccess={() => load(page, keyword)}
+          />
+        ),
+      },
+      {
         title: t('table.members'),
         dataIndex: 'member_count',
         key: 'member_count',
@@ -190,7 +208,7 @@ export default function SquadTab() {
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [t, nameOf, canWrite]
+    [canWrite, keyword, nameOf, page, t]
   )
 
   return (
@@ -207,6 +225,15 @@ export default function SquadTab() {
           style={{ width: 280 }}
         />
         <div className="toolbar-spacer" />
+        {canWrite && (
+          <BulkPlacementAction
+            pluginIds={selectedRowKeys.map(String)}
+            onSuccess={() => {
+              setSelectedRowKeys([])
+              void load(page, keyword)
+            }}
+          />
+        )}
         <Button icon={<ReloadOutlined />} onClick={() => load(page, keyword)} loading={loading} />
         {canWrite && (
           <Button
@@ -230,6 +257,15 @@ export default function SquadTab() {
         loading={loading}
         columns={columns}
         dataSource={rows}
+        rowSelection={canWrite ? {
+          selectedRowKeys,
+          preserveSelectedRowKeys: true,
+          onChange: (keys) => {
+            if (keys.length > 100) return void message.warning(t('marketplaceScene:bulk.limit'))
+            setSelectedRowKeys(keys)
+          },
+          onCell: () => ({ onClick: (event) => event.stopPropagation() }),
+        } : undefined}
         scroll={{ x: 'max-content' }}
         locale={{ emptyText: t('emptySquad') }}
         onRow={(r) => ({

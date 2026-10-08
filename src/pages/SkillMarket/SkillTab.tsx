@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { Key } from 'react'
 import { Button, Input, message, Popconfirm, Select, Space, Table, Tag } from 'antd'
 import { PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
@@ -24,11 +25,13 @@ import PluginRating from '../../components/PluginRating'
 import OrganizationNameCell from '../../components/OrganizationNameCell'
 import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
 import { createRatingOverrideLedger, mergeRatingOverrides, ratingOverrideSequence, recordRatingOverride } from '../../utils/ratingOverrides'
+import BulkPlacementAction from '../../components/BulkPlacementAction'
+import PlacementChannelTags from '../../components/PlacementChannelTags'
 
 const PAGE_SIZE = 20
 
 export default function SkillTab() {
-  const { t } = useTranslation(['skillMarket', 'common'])
+  const { t } = useTranslation(['skillMarket', 'common', 'marketplaceScene'])
   const { nameOf, retryTransientFailures } = useSpaceNameMap()
   const canWrite = useAuthStore((s) =>
     hasManagerCapability(s.managerCapabilities, 'skill.write')
@@ -43,6 +46,7 @@ export default function SkillTab() {
   const [categoryFilter, setCategoryFilter] = useState<string>('')
   const [sort, setSort] = useState<string>('latest')
   const [categories, setCategories] = useState<CategoryItem[]>([])
+  const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([])
 
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
@@ -190,6 +194,20 @@ export default function SkillTab() {
       ),
     },
     {
+      title: t('marketplaceScene:list.sceneCodes'),
+      dataIndex: 'scene_codes',
+      key: 'scene_codes',
+      width: 180,
+      render: (sceneCodes: string[], record) => (
+        <PlacementChannelTags
+          pluginId={record.skill_id}
+          sceneCodes={sceneCodes}
+          canWrite={canWrite}
+          onSuccess={() => load(page, keyword, categoryFilter, sort)}
+        />
+      ),
+    },
+    {
       title: t('common:pluginMetrics.rating'),
       dataIndex: 'rating',
       key: 'rating',
@@ -319,6 +337,15 @@ export default function SkillTab() {
         </Select>
         <div style={{ flex: 1 }} />
         {canWrite && (
+          <BulkPlacementAction
+            pluginIds={selectedRowKeys.map(String)}
+            onSuccess={() => {
+              setSelectedRowKeys([])
+              void load(page, keyword, categoryFilter, sort)
+            }}
+          />
+        )}
+        {canWrite && (
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setUploadOpen(true)}>
             {t('skill.upload')}
           </Button>
@@ -328,6 +355,15 @@ export default function SkillTab() {
         rowKey="skill_id"
         columns={columns}
         dataSource={rows}
+        rowSelection={canWrite ? {
+          selectedRowKeys,
+          preserveSelectedRowKeys: true,
+          onChange: (keys) => {
+            if (keys.length > 100) return void message.warning(t('marketplaceScene:bulk.limit'))
+            setSelectedRowKeys(keys)
+          },
+          onCell: () => ({ onClick: (event) => event.stopPropagation() }),
+        } : undefined}
         loading={loading}
         scroll={{ x: 'max-content' }}
         pagination={{

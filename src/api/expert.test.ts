@@ -380,6 +380,7 @@ describe('listSystemExperts — maps the unified list projection', () => {
             plugin_type: 'expert',
             category_id: 'c-dev',
             tags: ['架构评审'],
+            scene_codes: ['default', 'featured'],
             visibility: 'system',
             creator_name: '管理员',
             manifest_json: { name: '后端架构师', description: '评审服务边界。' },
@@ -399,6 +400,7 @@ describe('listSystemExperts — maps the unified list projection', () => {
       summary: '评审服务边界。',
       visibility: 'system',
       scope: 'system',
+      scene_codes: ['default', 'featured'],
     })
     // The unified list endpoint pages by number, not limit/offset.
     expect(mockGet).toHaveBeenCalledWith('/admin/plugins', {
@@ -446,6 +448,31 @@ describe('listSystemSquads — maps marketplace metrics', () => {
       install_count: 0,
       download_count: 0,
     })
+  })
+})
+
+describe('listSystemSquads — maps the channel projection', () => {
+  it('keeps scene_codes on squad list items', async () => {
+    installGet({
+      '/admin/plugin_categories': teamCategories,
+      '/admin/plugins': {
+        data: [
+          {
+            plugin_id: 'sq-1',
+            plugin_name: '增长小组',
+            plugin_type: 'expert_team',
+            tags: [],
+            scene_codes: ['default', 'team-picks'],
+            visibility: 'system',
+          },
+        ],
+        pagination: { total: 1, page: 1, page_size: 20 },
+      },
+    })
+
+    const resp = await listSystemSquads()
+
+    expect(resp.items[0].scene_codes).toEqual(['default', 'team-picks'])
   })
 })
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { Key } from 'react'
 import { Button, Input, Space as AntSpace, Table, Tabs, Tag, message } from 'antd'
 import {
   PlusOutlined,
@@ -23,6 +24,8 @@ import PluginRating from '../../components/PluginRating'
 import OrganizationNameCell from '../../components/OrganizationNameCell'
 import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
 import { createRatingOverrideLedger, mergeRatingOverrides, ratingOverrideSequence, recordRatingOverride } from '../../utils/ratingOverrides'
+import BulkPlacementAction from '../../components/BulkPlacementAction'
+import PlacementChannelTags from '../../components/PlacementChannelTags'
 import './systemMcp.css'
 
 const PAGE_SIZE = 20
@@ -35,7 +38,7 @@ const PAGE_SIZE = 20
  * Drawer (SpaceDetailDrawer pattern); create/edit share one Modal.
  */
 export default function SystemMcp() {
-  const { t } = useTranslation(['systemMcp', 'common'])
+  const { t } = useTranslation(['systemMcp', 'common', 'marketplaceScene'])
   const { nameOf, retryTransientFailures } = useSpaceNameMap()
   const canWrite = useAuthStore((s) =>
     hasManagerCapability(s.managerCapabilities, 'mcp.write')
@@ -47,6 +50,7 @@ export default function SystemMcp() {
   const [loading, setLoading] = useState(false)
   const [keyword, setKeyword] = useState('')
   const [pendingKeyword, setPendingKeyword] = useState('')
+  const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([])
 
   const [drawer, setDrawer] = useState<{ open: boolean; id: string | null }>({
     open: false,
@@ -213,6 +217,20 @@ export default function SystemMcp() {
           ),
       },
       {
+        title: t('marketplaceScene:list.sceneCodes'),
+        dataIndex: 'scene_codes',
+        key: 'scene_codes',
+        width: 180,
+        render: (sceneCodes: string[], record) => (
+          <PlacementChannelTags
+            pluginId={record.mcp_id}
+            sceneCodes={sceneCodes}
+            canWrite={canWrite}
+            onSuccess={() => load(page, keyword)}
+          />
+        ),
+      },
+      {
         title: t('table.tools'),
         dataIndex: 'tool_count',
         key: 'tool_count',
@@ -277,7 +295,7 @@ export default function SystemMcp() {
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [t, nameOf, canWrite]
+    [canWrite, keyword, nameOf, page, t]
   )
 
   return (
@@ -305,6 +323,15 @@ export default function SystemMcp() {
                     style={{ width: 280 }}
                   />
                   <div className="toolbar-spacer" />
+                  {canWrite && (
+                    <BulkPlacementAction
+                      pluginIds={selectedRowKeys.map(String)}
+                      onSuccess={() => {
+                        setSelectedRowKeys([])
+                        void load(page, keyword)
+                      }}
+                    />
+                  )}
                   <Button
                     icon={<ReloadOutlined />}
                     onClick={() => load(page, keyword)}
@@ -322,6 +349,15 @@ export default function SystemMcp() {
                   loading={loading}
                   columns={columns}
                   dataSource={rows}
+                  rowSelection={canWrite ? {
+                    selectedRowKeys,
+                    preserveSelectedRowKeys: true,
+                    onChange: (keys) => {
+                      if (keys.length > 100) return void message.warning(t('marketplaceScene:bulk.limit'))
+                      setSelectedRowKeys(keys)
+                    },
+                    onCell: () => ({ onClick: (event) => event.stopPropagation() }),
+                  } : undefined}
                   scroll={{ x: 'max-content' }}
                   locale={{ emptyText: t('empty') }}
                   onRow={(r) => ({
