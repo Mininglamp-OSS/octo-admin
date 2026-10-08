@@ -77,11 +77,13 @@ export default function ExpertTab() {
 
   const handleSearch = () => {
     const kw = pendingKeyword.trim()
+    setSelectedRowKeys([])
     setKeyword(kw)
     load(1, kw)
   }
 
   const handleDeleted = (id: string) => {
+    setSelectedRowKeys((keys) => keys.filter((key) => String(key) !== id))
     setRows((prev) => prev.filter((r) => r.expert_id !== id))
     setTotal((prev) => Math.max(0, prev - 1))
     if (rows.length === 1 && page > 1) load(page - 1, keyword)

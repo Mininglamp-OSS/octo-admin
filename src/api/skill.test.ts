@@ -112,7 +112,7 @@ describe('skill list — channel projection', () => {
             plugin_name: 'Skill One',
             plugin_type: 'skill',
             tags: [],
-            scene_codes: ['default', 'featured'],
+            scene_codes: JSON.stringify(['default', 'featured']),
           },
         ],
         pagination: { total: 1, page: 1, page_size: 20 },

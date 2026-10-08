@@ -229,7 +229,7 @@ interface PluginListItemWire {
   plugin_type: string
   manifest_json?: PluginManifestWire
   tags?: unknown
-  scene_codes?: string[]
+  scene_codes?: unknown
   category_id?: string
   icon?: string
   icon_url?: string
@@ -357,7 +357,7 @@ function mapPluginToExpertListItem(
     summary: manifest.description || '',
     category: (raw.category_id && idToName.get(raw.category_id)) || '',
     tags: normalizeTagsList(raw.tags),
-    scene_codes: raw.scene_codes ?? [],
+    scene_codes: normalizeTagsList(raw.scene_codes),
     visibility: mapVisibility(raw.visibility),
     scope: raw.visibility ?? 'system',
     space_id: raw.space_id,
@@ -384,7 +384,7 @@ function mapPluginToSquadListItem(
     summary: manifest.description || '',
     category: (raw.category_id && idToName.get(raw.category_id)) || '',
     tags: normalizeTagsList(raw.tags),
-    scene_codes: raw.scene_codes ?? [],
+    scene_codes: normalizeTagsList(raw.scene_codes),
     visibility: mapVisibility(raw.visibility),
     scope: raw.visibility ?? 'system',
     space_id: raw.space_id,

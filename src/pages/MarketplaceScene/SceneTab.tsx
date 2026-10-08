@@ -128,12 +128,12 @@ export default function SceneTab() {
         </Button>
       )}
       <Table rowKey="scene_id" columns={columns} dataSource={rows} loading={loading} pagination={false} />
-      <Modal open={modalOpen} title={editing ? t('scene.modal.edit') : t('scene.modal.create')} onCancel={() => setModalOpen(false)} onOk={submit} confirmLoading={submitting} destroyOnClose>
+      <Modal open={modalOpen} title={editing ? t('scene.modal.edit') : t('scene.modal.create')} onCancel={() => setModalOpen(false)} onOk={submit} confirmLoading={submitting} destroyOnHidden>
         <Form form={form} layout="vertical" preserve={false}>
           <Form.Item name="scene_code" label={t('scene.field.code')} tooltip={t('scene.field.codeHint')} rules={[{ required: true }, { pattern: /^[a-z0-9][a-z0-9._-]{0,127}$/, message: t('scene.field.codeInvalid') }]}>
             <Input disabled={editing !== null} maxLength={128} />
           </Form.Item>
-          <Form.Item name="name" label={t('scene.field.name')} rules={[{ required: true }]}><Input maxLength={128} /></Form.Item>
+          <Form.Item name="name" label={t('scene.field.name')} rules={[{ required: true, whitespace: true }]}><Input maxLength={128} /></Form.Item>
           <Form.Item name="description" label={t('scene.field.description')}><Input.TextArea maxLength={1024} showCount rows={3} /></Form.Item>
           <Form.Item name="sort_order" label={t('scene.field.sortOrder')} rules={[{ required: true }]}><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item>
         </Form>

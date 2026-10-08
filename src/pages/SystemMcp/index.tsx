@@ -92,6 +92,7 @@ export default function SystemMcp() {
 
   const handleSearch = () => {
     const kw = pendingKeyword.trim()
+    setSelectedRowKeys([])
     setKeyword(kw)
     load(1, kw)
   }
@@ -111,6 +112,7 @@ export default function SystemMcp() {
   }
 
   const handleDeleted = (id: string) => {
+    setSelectedRowKeys((keys) => keys.filter((key) => String(key) !== id))
     setRows((prev) => prev.filter((r) => r.mcp_id !== id))
     setTotal((prev) => Math.max(0, prev - 1))
     // If the last row on this page just disappeared and we're past page 1,

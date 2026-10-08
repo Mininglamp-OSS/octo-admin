@@ -179,7 +179,7 @@ function normalizeSkill<T extends Partial<SkillListItem>>(item: T): SkillListIte
     description: item.description || '',
     category_id: item.category_id || '',
     tags: item.tags || [],
-    scene_codes: item.scene_codes || [],
+    scene_codes: normalizeTagsList(item.scene_codes),
     owner_name: item.owner_name || '',
     visibility: item.visibility || 'system',
     scope: item.scope || item.visibility || 'system',
@@ -241,7 +241,7 @@ interface PluginListItemWire {
   plugin_type: string
   manifest_json?: PluginManifestWire
   tags?: unknown
-  scene_codes?: string[]
+  scene_codes?: unknown
   category_id?: string
   icon?: string
   icon_url?: string
@@ -368,7 +368,7 @@ function mapPluginToSkillListItem(
     category_id: categoryId,
     category_name: idToName?.get(categoryId),
     tags: normalizeTagsList(raw.tags),
-    scene_codes: raw.scene_codes ?? [],
+    scene_codes: normalizeTagsList(raw.scene_codes),
     // Backfill preserved the legacy owner display name in publisher.
     owner_name: raw.publisher || raw.creator_name || '',
     visibility: raw.visibility || 'system',

@@ -73,7 +73,7 @@ export default function BulkPlacementAction({ pluginIds, onSuccess }: Props) {
       <Button icon={<BranchesOutlined />} disabled={pluginIds.length === 0} onClick={show}>
         {t('bulk.button')} {pluginIds.length > 0 ? `(${pluginIds.length})` : ''}
       </Button>
-      <Modal open={open} title={t('bulk.title')} onCancel={() => setOpen(false)} onOk={submit} confirmLoading={loading} destroyOnClose>
+      <Modal open={open} title={t('bulk.title')} onCancel={() => setOpen(false)} onOk={submit} confirmLoading={loading} destroyOnHidden>
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
           <Typography.Text type="secondary">{t('bulk.selected', { count: pluginIds.length })}</Typography.Text>
           <Form form={form} layout="vertical" preserve={false} initialValues={{ operation: 'add', is_visible: true, sort_order: 100 }}>

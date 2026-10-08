@@ -94,16 +94,19 @@ export default function SkillTab() {
 
   const handleSearch = () => {
     const kw = pendingKeyword.trim()
+    setSelectedRowKeys([])
     setKeyword(kw)
     load(1, kw, categoryFilter, sort)
   }
 
   const handleCategoryChange = (val: string) => {
+    setSelectedRowKeys([])
     setCategoryFilter(val)
     load(1, keyword, val, sort)
   }
 
   const handleSortChange = (val: string) => {
+    setSelectedRowKeys([])
     setSort(val)
     load(1, keyword, categoryFilter, val)
   }
@@ -111,6 +114,7 @@ export default function SkillTab() {
   const handleDelete = async (record: SkillListItem) => {
     try {
       await deleteAdminSkill(record.skill_id)
+      setSelectedRowKeys((keys) => keys.filter((key) => String(key) !== record.skill_id))
       message.success(t('skill.success.deleted'))
       load()
     } catch (err) {

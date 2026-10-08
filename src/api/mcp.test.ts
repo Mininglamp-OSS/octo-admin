@@ -719,7 +719,7 @@ describe('connector list — tags and metrics normalization', () => {
                   plugin_name: 'X',
                   plugin_type: 'connector',
                   tags: JSON.stringify(['a', 'b']),
-                  scene_codes: ['default', 'featured'],
+                  scene_codes: JSON.stringify(['default', 'featured']),
                 },
               ],
               pagination: { total: 1, page: 1, page_size: 20 },
