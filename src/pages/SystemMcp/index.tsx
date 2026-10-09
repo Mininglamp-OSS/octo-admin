@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { Key } from 'react'
 import { Button, Input, Space as AntSpace, Table, Tabs, Tag, message } from 'antd'
 import {
   PlusOutlined,
@@ -23,6 +24,9 @@ import PluginRating from '../../components/PluginRating'
 import OrganizationNameCell from '../../components/OrganizationNameCell'
 import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
 import { createRatingOverrideLedger, mergeRatingOverrides, ratingOverrideSequence, recordRatingOverride } from '../../utils/ratingOverrides'
+import BulkPlacementAction from '../../components/BulkPlacementAction'
+import PlacementChannelTags from '../../components/PlacementChannelTags'
+import { limitPlacementSelection } from '../../components/placementSelection'
 import './systemMcp.css'
 
 const PAGE_SIZE = 20
@@ -35,7 +39,7 @@ const PAGE_SIZE = 20
  * Drawer (SpaceDetailDrawer pattern); create/edit share one Modal.
  */
 export default function SystemMcp() {
-  const { t } = useTranslation(['systemMcp', 'common'])
+  const { t } = useTranslation(['systemMcp', 'common', 'marketplaceScene'])
   const { nameOf, retryTransientFailures } = useSpaceNameMap()
   const canWrite = useAuthStore((s) =>
     hasManagerCapability(s.managerCapabilities, 'mcp.write')
@@ -47,6 +51,7 @@ export default function SystemMcp() {
   const [loading, setLoading] = useState(false)
   const [keyword, setKeyword] = useState('')
   const [pendingKeyword, setPendingKeyword] = useState('')
+  const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([])
 
   const [drawer, setDrawer] = useState<{ open: boolean; id: string | null }>({
     open: false,
@@ -88,6 +93,7 @@ export default function SystemMcp() {
 
   const handleSearch = () => {
     const kw = pendingKeyword.trim()
+    setSelectedRowKeys([])
     setKeyword(kw)
     load(1, kw)
   }
@@ -107,6 +113,7 @@ export default function SystemMcp() {
   }
 
   const handleDeleted = (id: string) => {
+    setSelectedRowKeys((keys) => keys.filter((key) => String(key) !== id))
     setRows((prev) => prev.filter((r) => r.mcp_id !== id))
     setTotal((prev) => Math.max(0, prev - 1))
     // If the last row on this page just disappeared and we're past page 1,
@@ -213,6 +220,20 @@ export default function SystemMcp() {
           ),
       },
       {
+        title: t('marketplaceScene:list.sceneCodes'),
+        dataIndex: 'scene_codes',
+        key: 'scene_codes',
+        width: 180,
+        render: (sceneCodes: string[], record) => (
+          <PlacementChannelTags
+            pluginId={record.mcp_id}
+            sceneCodes={sceneCodes}
+            canWrite={canWrite}
+            onSuccess={() => load(page, keyword)}
+          />
+        ),
+      },
+      {
         title: t('table.tools'),
         dataIndex: 'tool_count',
         key: 'tool_count',
@@ -277,7 +298,7 @@ export default function SystemMcp() {
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [t, nameOf, canWrite]
+    [canWrite, keyword, nameOf, page, t]
   )
 
   return (
@@ -305,9 +326,21 @@ export default function SystemMcp() {
                     style={{ width: 280 }}
                   />
                   <div className="toolbar-spacer" />
+                  {canWrite && (
+                    <BulkPlacementAction
+                      pluginIds={selectedRowKeys.map(String)}
+                      onSuccess={() => {
+                        setSelectedRowKeys([])
+                        void load(page, keyword)
+                      }}
+                    />
+                  )}
                   <Button
                     icon={<ReloadOutlined />}
-                    onClick={() => load(page, keyword)}
+                    onClick={() => {
+                      setSelectedRowKeys([])
+                      void load(page, keyword)
+                    }}
                     loading={loading}
                   />
                   {canWrite && (
@@ -322,6 +355,13 @@ export default function SystemMcp() {
                   loading={loading}
                   columns={columns}
                   dataSource={rows}
+                  rowSelection={canWrite ? {
+                    selectedRowKeys,
+                    onChange: (keys) => {
+                      setSelectedRowKeys(limitPlacementSelection(keys, () => message.warning(t('marketplaceScene:bulk.limit'))))
+                    },
+                    onCell: () => ({ onClick: (event) => event.stopPropagation() }),
+                  } : undefined}
                   scroll={{ x: 'max-content' }}
                   locale={{ emptyText: t('empty') }}
                   onRow={(r) => ({
@@ -333,7 +373,10 @@ export default function SystemMcp() {
                     pageSize: PAGE_SIZE,
                     total,
                     showSizeChanger: false,
-                    onChange: (p) => load(p, keyword),
+                    onChange: (p) => {
+                      setSelectedRowKeys([])
+                      void load(p, keyword)
+                    },
                   }}
                 />
               </>
