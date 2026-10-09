@@ -35,6 +35,8 @@ import systemSkillEN from './locales/en-US/systemSkill.json'
 import systemSkillZH from './locales/zh-CN/systemSkill.json'
 import expertMarketEN from './locales/en-US/expertMarket.json'
 import expertMarketZH from './locales/zh-CN/expertMarket.json'
+import marketplaceSceneEN from './locales/en-US/marketplaceScene.json'
+import marketplaceSceneZH from './locales/zh-CN/marketplaceScene.json'
 
 export const SUPPORTED_LANGUAGES = ['en-US', 'zh-CN'] as const
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number]
@@ -65,6 +67,7 @@ i18n
         skillMarket: skillMarketEN,
         systemSkill: systemSkillEN,
         expertMarket: expertMarketEN,
+        marketplaceScene: marketplaceSceneEN,
       },
       'zh-CN': {
         common: commonZH,
@@ -84,6 +87,7 @@ i18n
         skillMarket: skillMarketZH,
         systemSkill: systemSkillZH,
         expertMarket: expertMarketZH,
+        marketplaceScene: marketplaceSceneZH,
       },
     },
     fallbackLng: FALLBACK_LANGUAGE,
@@ -107,6 +111,7 @@ i18n
       'skillMarket',
       'systemSkill',
       'expertMarket',
+      'marketplaceScene',
     ],
     interpolation: { escapeValue: false },
     detection: {

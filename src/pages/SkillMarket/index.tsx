@@ -1,10 +1,13 @@
+import { useState } from 'react'
 import { Tabs } from 'antd'
 import { useTranslation } from 'react-i18next'
 import CategoryTab from './CategoryTab'
 import SkillTab from './SkillTab'
+import SceneTab from '../MarketplaceScene/SceneTab'
 
 export default function SkillMarket() {
   const { t } = useTranslation(['skillMarket'])
+  const [sceneRefreshToken, setSceneRefreshToken] = useState(0)
 
   return (
     <div>
@@ -12,6 +15,9 @@ export default function SkillMarket() {
       <p className="page-subtitle">{t('pageDesc')}</p>
       <Tabs
         defaultActiveKey="categories"
+        onChange={(key) => {
+          if (key === 'channels') setSceneRefreshToken((token) => token + 1)
+        }}
         items={[
           {
             key: 'categories',
@@ -22,6 +28,11 @@ export default function SkillMarket() {
             key: 'skills',
             label: t('tab.skills'),
             children: <SkillTab />,
+          },
+          {
+            key: 'channels',
+            label: t('tab.channels'),
+            children: <SceneTab refreshToken={sceneRefreshToken} />,
           },
         ]}
       />

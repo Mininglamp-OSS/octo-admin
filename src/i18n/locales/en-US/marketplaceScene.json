@@ -1,0 +1,62 @@
+{
+  "list": {
+    "sceneCodes": "Channels"
+  },
+  "single": {
+    "title": "Remove channel placement",
+    "removeConfirm": "Remove this plugin from channel “{{sceneCode}}”?",
+    "confirm": "Remove",
+    "cancel": "Cancel",
+    "removeSuccess": "Removed from channel “{{sceneCode}}”",
+    "removeFailed": "Failed to remove channel",
+    "defaultProtected": "The default fallback channel cannot be removed"
+  },
+  "bulk": {
+    "button": "Batch placement",
+    "title": "Place plugins in a market channel",
+    "selected": "{{count}} plugins selected. The operation succeeds or fails as one batch.",
+    "limit": "Select at most 100 plugins per batch",
+    "scene": "Market channel",
+    "scenePlaceholder": "Select a channel",
+    "success": "Added {{count}} plugins to the channel",
+    "failedItem": "{{message}} (failed plugin: {{pluginId}})"
+  },
+  "scene": {
+    "create": "New channel",
+    "edit": "Edit",
+    "delete": "Delete",
+    "deleteConfirm": "Delete this channel?",
+    "defaultProtected": "The default fallback channel cannot be deleted",
+    "scopeHint": "Channels are shared by every market and can contain Skills, MCPs, Experts, and Expert Teams.",
+    "table": {
+      "name": "Name",
+      "code": "scene_code",
+      "pluginCount": "Plugins",
+      "categoryCount": "Categories",
+      "sortOrder": "Order",
+      "description": "Description",
+      "actions": "Actions"
+    },
+    "modal": {
+      "create": "New channel",
+      "edit": "Edit channel"
+    },
+    "field": {
+      "code": "scene_code",
+      "codeHint": "Immutable after creation; use lowercase letters, numbers, dots, underscores, or hyphens.",
+      "codeInvalid": "Enter a valid scene_code",
+      "name": "Name",
+      "description": "Description",
+      "sortOrder": "Order"
+    },
+    "success": {
+      "created": "Channel created",
+      "updated": "Channel updated",
+      "deleted": "Channel deleted"
+    },
+    "error": {
+      "load": "Failed to load channels",
+      "delete": "Failed to delete channel"
+    }
+  }
+}

@@ -102,6 +102,29 @@ const SKILL_CATEGORIES = {
   data: { data: [{ category_id: 'cat-ops', name: 'Ops' }] },
 }
 
+describe('skill list — channel projection', () => {
+  it('maps scene_codes from the unified admin list', async () => {
+    mockGet.mockResolvedValue({
+      data: {
+        data: [
+          {
+            plugin_id: 'skill-1',
+            plugin_name: 'Skill One',
+            plugin_type: 'skill',
+            tags: [],
+            scene_codes: JSON.stringify(['default', 'featured']),
+          },
+        ],
+        pagination: { total: 1, page: 1, page_size: 20 },
+      },
+    })
+
+    const result = await listAdminSkills()
+
+    expect(result.items[0].scene_codes).toEqual(['default', 'featured'])
+  })
+})
+
 describe('skill icon/publisher round-trip through the translation layer', () => {
   beforeEach(() => {
     mockGet.mockReset()

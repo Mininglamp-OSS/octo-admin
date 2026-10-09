@@ -719,6 +719,7 @@ describe('connector list — tags and metrics normalization', () => {
                   plugin_name: 'X',
                   plugin_type: 'connector',
                   tags: JSON.stringify(['a', 'b']),
+                  scene_codes: JSON.stringify(['default', 'featured']),
                 },
               ],
               pagination: { total: 1, page: 1, page_size: 20 },
@@ -728,6 +729,7 @@ describe('connector list — tags and metrics normalization', () => {
 
     const res = await listSystemMcps()
     expect(res.items[0].tags).toEqual(['a', 'b'])
+    expect(res.items[0].scene_codes).toEqual(['default', 'featured'])
   })
 })
 
@@ -1035,4 +1037,3 @@ describe('connector metadata edit — preserves unmodeled server keys (review fi
     expect(mockPatch).not.toHaveBeenCalled()
   })
 })
-
