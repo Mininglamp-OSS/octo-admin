@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Button, Form, InputNumber, message, Modal, Select, Space, Switch, Typography } from 'antd'
+import { Button, Form, message, Modal, Select, Space, Typography } from 'antd'
 import { BranchesOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { ApiError } from '../api'
@@ -15,10 +15,7 @@ interface Props {
 }
 
 interface FormValues {
-  operation: 'add' | 'remove'
   scene_code: string
-  is_visible: boolean
-  sort_order: number
 }
 
 export default function BulkPlacementAction({ pluginIds, onSuccess }: Props) {
@@ -27,8 +24,6 @@ export default function BulkPlacementAction({ pluginIds, onSuccess }: Props) {
   const [scenes, setScenes] = useState<PluginScene[]>([])
   const [loading, setLoading] = useState(false)
   const [form] = Form.useForm<FormValues>()
-  const operation = Form.useWatch('operation', form) ?? 'add'
-  const sceneCode = Form.useWatch('scene_code', form)
 
   useEffect(() => {
     if (!open) return
@@ -39,7 +34,6 @@ export default function BulkPlacementAction({ pluginIds, onSuccess }: Props) {
 
   const show = () => {
     form.resetFields()
-    form.setFieldsValue({ operation: 'add', is_visible: true, sort_order: 100 })
     setOpen(true)
   }
 
@@ -50,23 +44,27 @@ export default function BulkPlacementAction({ pluginIds, onSuccess }: Props) {
       await batchSetPluginPlacements({
         scene_code: values.scene_code,
         plugin_ids: pluginIds,
-        is_placed: values.operation === 'add',
-        is_visible: values.operation === 'add' ? values.is_visible : undefined,
-        sort_order: values.operation === 'add' ? values.sort_order : undefined,
+        is_placed: true,
       })
-      message.success(t(values.operation === 'add' ? 'bulk.success.added' : 'bulk.success.removed', { count: pluginIds.length }))
+      message.success(t('bulk.success', { count: pluginIds.length }))
       setOpen(false)
       onSuccess()
     } catch (error) {
-      if (error instanceof ApiError) message.error(error.message)
+      if (error instanceof ApiError) {
+        const failedIndex = error.details?.failed_index
+        const failedPluginId = typeof failedIndex === 'number' && Number.isInteger(failedIndex)
+          ? pluginIds[failedIndex]
+          : undefined
+        message.error(failedPluginId
+          ? t('bulk.failedItem', { message: error.message, pluginId: failedPluginId })
+          : error.message)
+      }
     } finally {
       setLoading(false)
     }
   }
 
-  const options = scenes
-    .filter((scene) => operation === 'add' || scene.scene_code !== 'default')
-    .map((scene) => ({ value: scene.scene_code, label: `${scene.name} (${scene.scene_code})` }))
+  const options = scenes.map((scene) => ({ value: scene.scene_code, label: `${scene.name} (${scene.scene_code})` }))
 
   return (
     <>
@@ -76,24 +74,10 @@ export default function BulkPlacementAction({ pluginIds, onSuccess }: Props) {
       <Modal open={open} title={t('bulk.title')} onCancel={() => setOpen(false)} onOk={submit} confirmLoading={loading} destroyOnHidden>
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
           <Typography.Text type="secondary">{t('bulk.selected', { count: pluginIds.length })}</Typography.Text>
-          <Form form={form} layout="vertical" preserve={false} initialValues={{ operation: 'add', is_visible: true, sort_order: 100 }}>
-            <Form.Item name="operation" label={t('bulk.operation')} rules={[{ required: true }]}>
-              <Select options={[
-                { value: 'add', label: t('bulk.add') },
-                { value: 'remove', label: t('bulk.remove') },
-              ]} onChange={() => form.setFieldValue('scene_code', undefined)} />
-            </Form.Item>
+          <Form form={form} layout="vertical" preserve={false}>
             <Form.Item name="scene_code" label={t('bulk.scene')} rules={[{ required: true }]}>
-              <Select options={options} placeholder={t('bulk.scenePlaceholder')} onChange={(value) => {
-                if (value === 'default') form.setFieldValue('is_visible', true)
-              }} />
+              <Select options={options} placeholder={t('bulk.scenePlaceholder')} />
             </Form.Item>
-            {operation === 'add' && (
-              <>
-                <Form.Item name="is_visible" label={t('bulk.visible')} valuePropName="checked"><Switch disabled={sceneCode === 'default'} /></Form.Item>
-                <Form.Item name="sort_order" label={t('bulk.sortOrder')} rules={[{ required: true }]}><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item>
-              </>
-            )}
           </Form>
         </Space>
       </Modal>

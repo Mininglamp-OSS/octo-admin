@@ -6,8 +6,10 @@ const batchSetPluginPlacements = vi.hoisted(() => vi.fn())
 const confirm = vi.hoisted(() => vi.fn())
 
 vi.mock('../api/marketplace-scene', () => ({ batchSetPluginPlacements }))
-vi.mock('../api', () => ({ ApiError: class ApiError extends Error {} }))
-vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
+vi.mock('react-i18next', async () => {
+  const actual = await vi.importActual<typeof import('react-i18next')>('react-i18next')
+  return { ...actual, useTranslation: () => ({ t: (key: string) => key }) }
+})
 vi.mock('antd', async () => {
   const React = await vi.importActual<typeof import('react')>('react')
   return {

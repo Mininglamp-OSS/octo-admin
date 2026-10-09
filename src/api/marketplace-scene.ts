@@ -16,8 +16,6 @@ export interface BatchPlacementParams {
   scene_code: string
   plugin_ids: string[]
   is_placed: boolean
-  is_visible?: boolean
-  sort_order?: number
 }
 
 export async function listPluginScenes(): Promise<PluginScene[]> {

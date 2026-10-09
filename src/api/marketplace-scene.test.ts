@@ -32,20 +32,18 @@ describe('marketplace scene API', () => {
   })
 
   it('sends one atomic batch placement request for selected plugins', async () => {
-    post.mockResolvedValue({ data: { data: { items: [] } } })
+    post.mockResolvedValue({})
     const payload = {
       scene_code: 'featured',
       plugin_ids: ['skill-1', 'skill-2'],
       is_placed: true,
-      is_visible: true,
-      sort_order: 100,
     }
     await batchSetPluginPlacements(payload)
     expect(post).toHaveBeenCalledWith('/admin/plugin_placements/_batch', payload)
   })
 
   it('uses the same atomic endpoint for a single-plugin removal', async () => {
-    post.mockResolvedValue({ data: { data: { items: [] } } })
+    post.mockResolvedValue({})
     const payload = {
       scene_code: 'featured',
       plugin_ids: ['skill-1'],

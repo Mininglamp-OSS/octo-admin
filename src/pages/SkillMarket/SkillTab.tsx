@@ -27,6 +27,7 @@ import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
 import { createRatingOverrideLedger, mergeRatingOverrides, ratingOverrideSequence, recordRatingOverride } from '../../utils/ratingOverrides'
 import BulkPlacementAction from '../../components/BulkPlacementAction'
 import PlacementChannelTags from '../../components/PlacementChannelTags'
+import { limitPlacementSelection } from '../../components/placementSelection'
 
 const PAGE_SIZE = 20
 
@@ -363,8 +364,7 @@ export default function SkillTab() {
           selectedRowKeys,
           preserveSelectedRowKeys: true,
           onChange: (keys) => {
-            if (keys.length > 100) return void message.warning(t('marketplaceScene:bulk.limit'))
-            setSelectedRowKeys(keys)
+            setSelectedRowKeys(limitPlacementSelection(keys, () => message.warning(t('marketplaceScene:bulk.limit'))))
           },
           onCell: () => ({ onClick: (event) => event.stopPropagation() }),
         } : undefined}

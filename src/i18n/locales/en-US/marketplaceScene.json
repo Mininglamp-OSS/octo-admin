@@ -13,20 +13,13 @@
   },
   "bulk": {
     "button": "Batch placement",
-    "title": "Manage market placements",
+    "title": "Place plugins in a market channel",
     "selected": "{{count}} plugins selected. The operation succeeds or fails as one batch.",
     "limit": "Select at most 100 plugins per batch",
-    "operation": "Operation",
-    "add": "Add to channel",
-    "remove": "Remove from channel",
     "scene": "Market channel",
     "scenePlaceholder": "Select a channel",
-    "visible": "Visible in channel",
-    "sortOrder": "Order",
-    "success": {
-      "added": "Added {{count}} plugins to the channel",
-      "removed": "Removed {{count}} plugins from the channel"
-    }
+    "success": "Added {{count}} plugins to the channel",
+    "failedItem": "{{message}} (failed plugin: {{pluginId}})"
   },
   "scene": {
     "create": "New channel",

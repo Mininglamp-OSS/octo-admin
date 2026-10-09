@@ -13,20 +13,13 @@
   },
   "bulk": {
     "button": "批量投放",
-    "title": "批量管理市场投放",
+    "title": "批量投放到市场渠道",
     "selected": "已选择 {{count}} 个插件。本次操作将整体成功或整体失败。",
     "limit": "一次最多选择 100 个插件",
-    "operation": "操作",
-    "add": "加入渠道",
-    "remove": "移出渠道",
     "scene": "市场渠道",
     "scenePlaceholder": "请选择渠道",
-    "visible": "在渠道中展示",
-    "sortOrder": "排序",
-    "success": {
-      "added": "已将 {{count}} 个插件投放到渠道",
-      "removed": "已将 {{count}} 个插件移出渠道"
-    }
+    "success": "已将 {{count}} 个插件投放到渠道",
+    "failedItem": "{{message}}（失败插件：{{pluginId}}）"
   },
   "scene": {
     "create": "新建渠道",
