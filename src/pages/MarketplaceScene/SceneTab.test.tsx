@@ -116,4 +116,12 @@ describe('SceneTab', () => {
     await vi.waitFor(() => expect(document.body.textContent).toContain('scene.field.codeInvalid'))
     expect(api.createPluginScene).not.toHaveBeenCalled()
   })
+
+  it('reloads counts when its parent activates the channels tab again', async () => {
+    await act(async () => root.render(<SceneTab refreshToken={0} />))
+    await vi.waitFor(() => expect(api.listPluginScenes).toHaveBeenCalledOnce())
+
+    await act(async () => root.render(<SceneTab refreshToken={1} />))
+    await vi.waitFor(() => expect(api.listPluginScenes).toHaveBeenCalledTimes(2))
+  })
 })

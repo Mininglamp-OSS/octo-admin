@@ -22,7 +22,7 @@ import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
 import { createRatingOverrideLedger, mergeRatingOverrides, ratingOverrideSequence, recordRatingOverride } from '../../utils/ratingOverrides'
 import BulkPlacementAction from '../../components/BulkPlacementAction'
 import PlacementChannelTags from '../../components/PlacementChannelTags'
-import { limitPlacementSelection } from '../../components/placementSelection'
+import { getChangedPlacementKeyword, limitPlacementSelection } from '../../components/placementSelection'
 
 const PAGE_SIZE = 20
 
@@ -80,7 +80,8 @@ export default function SquadTab() {
   }, [])
 
   const handleSearch = () => {
-    const kw = pendingKeyword.trim()
+    const kw = getChangedPlacementKeyword(pendingKeyword, keyword)
+    if (kw === null) return
     setSelectedRowKeys([])
     setKeyword(kw)
     load(1, kw)

@@ -48,11 +48,14 @@ describe('PlacementChannelTags', () => {
 
   it('removes one plugin from the selected non-default scene', async () => {
     const onSuccess = vi.fn()
+    const rowClick = vi.fn()
     batchSetPluginPlacements.mockResolvedValue(undefined)
     confirm.mockImplementation(({ onOk }: { onOk: () => Promise<void> }) => void onOk())
 
     await act(async () => root.render(
-      <PlacementChannelTags pluginId="p1" sceneCodes={['default', 'featured']} canWrite onSuccess={onSuccess} />
+      <div onClick={rowClick}>
+        <PlacementChannelTags pluginId="p1" sceneCodes={['default', 'featured']} canWrite onSuccess={onSuccess} />
+      </div>
     ))
     await act(async () => (host.querySelector('[data-testid="remove-featured"]') as HTMLButtonElement).click())
 
@@ -63,5 +66,38 @@ describe('PlacementChannelTags', () => {
     })
     expect(onSuccess).toHaveBeenCalledOnce()
     expect(host.querySelector('[data-testid="remove-default"]')).toBeNull()
+    expect(rowClick).not.toHaveBeenCalled()
+  })
+
+  it('keeps each concurrent removal disabled until its own request finishes', async () => {
+    let resolveFeatured!: () => void
+    let resolveSeasonal!: () => void
+    const featured = new Promise<void>((resolve) => { resolveFeatured = resolve })
+    const seasonal = new Promise<void>((resolve) => { resolveSeasonal = resolve })
+    batchSetPluginPlacements.mockImplementation(({ scene_code }: { scene_code: string }) => (
+      scene_code === 'featured' ? featured : seasonal
+    ))
+    confirm.mockImplementation(({ onOk }: { onOk: () => Promise<void> }) => void onOk())
+
+    await act(async () => root.render(
+      <PlacementChannelTags
+        pluginId="p1"
+        sceneCodes={['featured', 'seasonal']}
+        canWrite
+        onSuccess={vi.fn()}
+      />
+    ))
+    await act(async () => (host.querySelector('[data-testid="remove-featured"]') as HTMLButtonElement).click())
+    await act(async () => (host.querySelector('[data-testid="remove-seasonal"]') as HTMLButtonElement).click())
+
+    expect(host.querySelector('[data-testid="remove-featured"]')).toBeNull()
+    expect(host.querySelector('[data-testid="remove-seasonal"]')).toBeNull()
+
+    await act(async () => resolveFeatured())
+    expect(host.querySelector('[data-testid="remove-featured"]')).not.toBeNull()
+    expect(host.querySelector('[data-testid="remove-seasonal"]')).toBeNull()
+
+    await act(async () => resolveSeasonal())
+    expect(host.querySelector('[data-testid="remove-seasonal"]')).not.toBeNull()
   })
 })

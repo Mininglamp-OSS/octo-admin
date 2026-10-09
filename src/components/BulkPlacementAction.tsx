@@ -26,6 +26,10 @@ export default function BulkPlacementAction({ pluginIds, onSuccess }: Props) {
   const [form] = Form.useForm<FormValues>()
 
   useEffect(() => {
+    if (open) form.resetFields()
+  }, [form, open])
+
+  useEffect(() => {
     if (!open) return
     let cancelled = false
     void listPluginScenes()
@@ -35,27 +39,27 @@ export default function BulkPlacementAction({ pluginIds, onSuccess }: Props) {
   }, [open, t])
 
   const show = () => {
-    form.resetFields()
     setOpen(true)
   }
 
   const submit = async () => {
+    const submittedPluginIds = [...pluginIds]
     try {
       const values = await form.validateFields()
       setLoading(true)
       await batchSetPluginPlacements({
         scene_code: values.scene_code,
-        plugin_ids: pluginIds,
+        plugin_ids: submittedPluginIds,
         is_placed: true,
       })
-      message.success(t('bulk.success', { count: pluginIds.length }))
+      message.success(t('bulk.success', { count: submittedPluginIds.length }))
       setOpen(false)
       onSuccess()
     } catch (error) {
       if (error instanceof ApiError) {
         const failedIndex = error.details?.failed_index
         const failedPluginId = typeof failedIndex === 'number' && Number.isInteger(failedIndex)
-          ? pluginIds[failedIndex]
+          ? submittedPluginIds[failedIndex]
           : undefined
         message.error(failedPluginId
           ? t('bulk.failedItem', { message: error.message, pluginId: failedPluginId })
@@ -66,7 +70,9 @@ export default function BulkPlacementAction({ pluginIds, onSuccess }: Props) {
     }
   }
 
-  const options = scenes.map((scene) => ({ value: scene.scene_code, label: `${scene.name} (${scene.scene_code})` }))
+  const options = scenes
+    .filter((scene) => scene.scene_code !== 'default')
+    .map((scene) => ({ value: scene.scene_code, label: `${scene.name} (${scene.scene_code})` }))
 
   return (
     <>

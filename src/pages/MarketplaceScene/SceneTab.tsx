@@ -21,7 +21,11 @@ interface SceneFormValues {
   sort_order: number
 }
 
-export default function SceneTab() {
+interface Props {
+  refreshToken?: number
+}
+
+export default function SceneTab({ refreshToken = 0 }: Props) {
   const { t } = useTranslation(['marketplaceScene', 'common'])
   const canWrite = useAuthStore((state) => hasManagerCapability(state.managerCapabilities, 'skill.write'))
   const [rows, setRows] = useState<PluginScene[]>([])
@@ -47,17 +51,25 @@ export default function SceneTab() {
     }
   }, [t])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => { void load() }, [load, refreshToken])
+
+  useEffect(() => {
+    if (!modalOpen) return
+    form.setFieldsValue(editing ?? {
+      scene_code: '',
+      name: '',
+      description: '',
+      sort_order: 100,
+    })
+  }, [editing, form, modalOpen])
 
   const openCreate = () => {
     setEditing(null)
-    form.setFieldsValue({ scene_code: '', name: '', description: '', sort_order: 100 })
     setModalOpen(true)
   }
 
   const openEdit = (record: PluginScene) => {
     setEditing(record)
-    form.setFieldsValue(record)
     setModalOpen(true)
   }
 

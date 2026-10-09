@@ -127,6 +127,13 @@ describe('BulkPlacementAction', () => {
     })
   })
 
+  it('does not offer the protected default scene as a bulk target', async () => {
+    await open()
+
+    expect(host.querySelector('[data-testid="select-default"]')).toBeNull()
+    expect(host.querySelector('[data-testid="select-featured"]')).not.toBeNull()
+  })
+
   it('names the plugin at failed_index when the batch is rejected', async () => {
     batchSetPluginPlacements.mockRejectedValue(new ApiError(
       'Plugin not found',

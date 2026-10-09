@@ -18,7 +18,16 @@ export default function PlacementChannelTags({
   onSuccess,
 }: Props) {
   const { t } = useTranslation('marketplaceScene')
-  const [removingCode, setRemovingCode] = useState<string | null>(null)
+  const [removingCodes, setRemovingCodes] = useState<Set<string>>(() => new Set())
+
+  const setRemoving = (sceneCode: string, removing: boolean) => {
+    setRemovingCodes((current) => {
+      const next = new Set(current)
+      if (removing) next.add(sceneCode)
+      else next.delete(sceneCode)
+      return next
+    })
+  }
 
   const confirmRemove = (sceneCode: string) => {
     Modal.confirm({
@@ -28,7 +37,7 @@ export default function PlacementChannelTags({
       cancelText: t('single.cancel'),
       okButtonProps: { danger: true },
       onOk: async () => {
-        setRemovingCode(sceneCode)
+        setRemoving(sceneCode, true)
         try {
           await batchSetPluginPlacements({
             scene_code: sceneCode,
@@ -42,7 +51,7 @@ export default function PlacementChannelTags({
             error instanceof ApiError ? error.message : t('single.removeFailed')
           )
         } finally {
-          setRemovingCode(null)
+          setRemoving(sceneCode, false)
         }
       },
     })
@@ -57,9 +66,10 @@ export default function PlacementChannelTags({
           <Tag
             key={code}
             color={code === 'default' ? undefined : 'blue'}
-            closable={canWrite && code !== 'default' && removingCode !== code}
+            closable={canWrite && code !== 'default' && !removingCodes.has(code)}
             onClose={(event) => {
               event.preventDefault()
+              event.stopPropagation()
               confirmRemove(code)
             }}
           >
