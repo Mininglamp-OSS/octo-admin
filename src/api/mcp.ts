@@ -101,6 +101,7 @@ export interface McpListItem {
    *  unconditionally from the request). */
   publisher?: string
   tags: string[]
+  scene_codes: string[]
   tool_count: number
   rating: number | null
   view_count: number
@@ -300,6 +301,7 @@ interface PluginListItemWire {
   /** May arrive as a JSON-encoded string on the unified wire — always run it
    *  through `normalizeTagsList` before use. */
   tags?: unknown
+  scene_codes?: unknown
   category_id?: string
   icon?: string
   icon_url?: string
@@ -578,6 +580,7 @@ function mapMcpListItem(
     // The unified wire can deliver tags as a JSON-encoded string; normalize so
     // the page's `tags.slice(0,3).map(...)` never hits a bare String (crash).
     tags: normalizeTagsList(raw.tags),
+    scene_codes: normalizeTagsList(raw.scene_codes),
     tool_count: raw.tool_count ?? 0,
     rating: raw.rating ?? null,
     view_count: raw.view_count ?? 0,

@@ -46,13 +46,14 @@ export default function SkillTable({ onView, onUpload, canWrite, refreshToken, r
   }, [])
 
   useEffect(() => {
+    if (keyword === debouncedKeyword) return
     debounceRef.current = setTimeout(() => {
       setDebouncedKeyword(keyword)
       setPage(0)
       setCursors([undefined])
     }, DEBOUNCE_MS)
     return () => clearTimeout(debounceRef.current)
-  }, [keyword])
+  }, [keyword, debouncedKeyword])
 
   const fetchList = useCallback(async () => {
     const request = ++requestSequence.current

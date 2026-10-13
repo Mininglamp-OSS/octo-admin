@@ -3,7 +3,8 @@
   "pageDesc": "Manage Skill categories and system-level public Skills.",
   "tab": {
     "categories": "Categories",
-    "skills": "Skills"
+    "skills": "Skills",
+    "channels": "Global Market Channels"
   },
   "category": {
     "table": { "name": "Category Name", "sortOrder": "Sort Order", "actions": "Actions" },
