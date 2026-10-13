@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { Key } from 'react'
 import { Button, Input, message, Popconfirm, Select, Space, Table, Tag } from 'antd'
 import { PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
@@ -24,11 +25,15 @@ import PluginRating from '../../components/PluginRating'
 import OrganizationNameCell from '../../components/OrganizationNameCell'
 import { useSpaceNameMap } from '../../hooks/useSpaceNameMap'
 import { createRatingOverrideLedger, mergeRatingOverrides, ratingOverrideSequence, recordRatingOverride } from '../../utils/ratingOverrides'
+import BulkPlacementAction from '../../components/BulkPlacementAction'
+import PlacementChannelTags from '../../components/PlacementChannelTags'
+import { limitPlacementSelection } from '../../components/placementSelection'
+import { useLatestCallback } from '../../hooks/useLatestCallback'
 
 const PAGE_SIZE = 20
 
 export default function SkillTab() {
-  const { t } = useTranslation(['skillMarket', 'common'])
+  const { t } = useTranslation(['skillMarket', 'common', 'marketplaceScene'])
   const { nameOf, retryTransientFailures } = useSpaceNameMap()
   const canWrite = useAuthStore((s) =>
     hasManagerCapability(s.managerCapabilities, 'skill.write')
@@ -43,6 +48,7 @@ export default function SkillTab() {
   const [categoryFilter, setCategoryFilter] = useState<string>('')
   const [sort, setSort] = useState<string>('latest')
   const [categories, setCategories] = useState<CategoryItem[]>([])
+  const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([])
 
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
@@ -50,10 +56,12 @@ export default function SkillTab() {
   const [editSkill, setEditSkill] = useState<SkillDetail | null>(null)
   const [uploadOpen, setUploadOpen] = useState(false)
   const loadSequence = useRef(0)
+  const placementView = useRef({ page: 1, keyword: '', categoryFilter: '', sort: 'latest' })
   const ratingOverrides = useRef(createRatingOverrideLedger())
 
   const load = useCallback(
     async (nextPage = page, kw = keyword, cat = categoryFilter, s = sort) => {
+      placementView.current = { page: nextPage, keyword: kw, categoryFilter: cat, sort: s }
       const request = ++loadSequence.current
       const seenRatingSequence = ratingOverrideSequence(ratingOverrides.current)
       setLoading(true)
@@ -82,6 +90,11 @@ export default function SkillTab() {
     [page, keyword, categoryFilter, sort, retryTransientFailures, t]
   )
 
+  const refreshPlacements = useLatestCallback(() => {
+    const view = placementView.current
+    return load(view.page, view.keyword, view.categoryFilter, view.sort)
+  })
+
   useEffect(() => {
     load(1, '', '', 'latest')
     listSkillCategories().then(setCategories).catch(() => {})
@@ -90,16 +103,19 @@ export default function SkillTab() {
 
   const handleSearch = () => {
     const kw = pendingKeyword.trim()
+    setSelectedRowKeys([])
     setKeyword(kw)
     load(1, kw, categoryFilter, sort)
   }
 
   const handleCategoryChange = (val: string) => {
+    setSelectedRowKeys([])
     setCategoryFilter(val)
     load(1, keyword, val, sort)
   }
 
   const handleSortChange = (val: string) => {
+    setSelectedRowKeys([])
     setSort(val)
     load(1, keyword, categoryFilter, val)
   }
@@ -107,6 +123,7 @@ export default function SkillTab() {
   const handleDelete = async (record: SkillListItem) => {
     try {
       await deleteAdminSkill(record.skill_id)
+      setSelectedRowKeys((keys) => keys.filter((key) => String(key) !== record.skill_id))
       message.success(t('skill.success.deleted'))
       load()
     } catch (err) {
@@ -187,6 +204,20 @@ export default function SkillTab() {
           ))}
           {(tags ?? []).length > 3 && <Tag>+{tags.length - 3}</Tag>}
         </Space>
+      ),
+    },
+    {
+      title: t('marketplaceScene:list.sceneCodes'),
+      dataIndex: 'scene_codes',
+      key: 'scene_codes',
+      width: 180,
+      render: (sceneCodes: string[], record) => (
+        <PlacementChannelTags
+          pluginId={record.skill_id}
+          sceneCodes={sceneCodes}
+          canWrite={canWrite}
+          onSuccess={refreshPlacements}
+        />
       ),
     },
     {
@@ -319,6 +350,16 @@ export default function SkillTab() {
         </Select>
         <div style={{ flex: 1 }} />
         {canWrite && (
+          <BulkPlacementAction
+            pluginIds={selectedRowKeys.map(String)}
+            onSuccess={(submittedPluginIds) => {
+              const submitted = new Set(submittedPluginIds)
+              setSelectedRowKeys((keys) => keys.filter((key) => !submitted.has(String(key))))
+              return refreshPlacements()
+            }}
+          />
+        )}
+        {canWrite && (
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setUploadOpen(true)}>
             {t('skill.upload')}
           </Button>
@@ -328,13 +369,23 @@ export default function SkillTab() {
         rowKey="skill_id"
         columns={columns}
         dataSource={rows}
+        rowSelection={canWrite ? {
+          selectedRowKeys,
+          onChange: (keys) => {
+            setSelectedRowKeys(limitPlacementSelection(keys, () => message.warning(t('marketplaceScene:bulk.limit'))))
+          },
+          onCell: () => ({ onClick: (event) => event.stopPropagation() }),
+        } : undefined}
         loading={loading}
         scroll={{ x: 'max-content' }}
         pagination={{
           current: page,
           pageSize: PAGE_SIZE,
           total,
-          onChange: (p) => load(p, keyword, categoryFilter, sort),
+          onChange: (p) => {
+            setSelectedRowKeys([])
+            void load(p, keyword, categoryFilter, sort)
+          },
           showSizeChanger: false,
         }}
         locale={{ emptyText: t('skill.empty') }}

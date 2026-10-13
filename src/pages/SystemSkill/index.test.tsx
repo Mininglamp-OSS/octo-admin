@@ -7,10 +7,11 @@ const mocks = vi.hoisted(() => ({
   listSkills: vi.fn(),
   listCategories: vi.fn(),
 }))
+const translate = vi.hoisted(() => (key: string) => key)
 
 vi.mock('react-i18next', async () => {
   const actual = await vi.importActual<typeof import('react-i18next')>('react-i18next')
-  return { ...actual, useTranslation: () => ({ t: (key: string) => key }) }
+  return { ...actual, useTranslation: () => ({ t: translate }) }
 })
 vi.mock('../../store/auth', () => ({
   useAuthStore: (select: (state: { managerCapabilities: string[] }) => unknown) =>
