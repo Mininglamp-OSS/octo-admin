@@ -23,6 +23,7 @@ import { createRatingOverrideLedger, mergeRatingOverrides, ratingOverrideSequenc
 import BulkPlacementAction from '../../components/BulkPlacementAction'
 import PlacementChannelTags from '../../components/PlacementChannelTags'
 import { getChangedPlacementKeyword, limitPlacementSelection } from '../../components/placementSelection'
+import { useLatestCallback } from '../../hooks/useLatestCallback'
 
 const PAGE_SIZE = 20
 
@@ -42,9 +43,11 @@ export default function SquadTab() {
   const [drawerId, setDrawerId] = useState<string | null>(null)
   const [uploadOpen, setUploadOpen] = useState(false)
   const loadSequence = useRef(0)
+  const placementView = useRef({ page: 1, keyword: '' })
   const ratingOverrides = useRef(createRatingOverrideLedger())
 
   const load = async (nextPage = page, kw = keyword) => {
+    placementView.current = { page: nextPage, keyword: kw }
     const request = ++loadSequence.current
     const seenRatingSequence = ratingOverrideSequence(ratingOverrides.current)
     setLoading(true)
@@ -67,6 +70,11 @@ export default function SquadTab() {
       if (request === loadSequence.current) setLoading(false)
     }
   }
+
+  const refreshPlacements = useLatestCallback(() => {
+    const view = placementView.current
+    return load(view.page, view.keyword)
+  })
 
   useEffect(() => {
     load(1, '')
@@ -147,7 +155,7 @@ export default function SquadTab() {
             pluginId={record.squad_id}
             sceneCodes={sceneCodes}
             canWrite={canWrite}
-            onSuccess={() => load(page, keyword)}
+            onSuccess={refreshPlacements}
           />
         ),
       },
@@ -212,7 +220,7 @@ export default function SquadTab() {
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [canWrite, keyword, nameOf, page, t]
+    [canWrite, nameOf, refreshPlacements, t]
   )
 
   return (
@@ -232,9 +240,10 @@ export default function SquadTab() {
         {canWrite && (
           <BulkPlacementAction
             pluginIds={selectedRowKeys.map(String)}
-            onSuccess={() => {
-              setSelectedRowKeys([])
-              void load(page, keyword)
+            onSuccess={(submittedPluginIds) => {
+              const submitted = new Set(submittedPluginIds)
+              setSelectedRowKeys((keys) => keys.filter((key) => !submitted.has(String(key))))
+              return refreshPlacements()
             }}
           />
         )}

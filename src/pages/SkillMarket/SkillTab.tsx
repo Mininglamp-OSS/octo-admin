@@ -28,6 +28,7 @@ import { createRatingOverrideLedger, mergeRatingOverrides, ratingOverrideSequenc
 import BulkPlacementAction from '../../components/BulkPlacementAction'
 import PlacementChannelTags from '../../components/PlacementChannelTags'
 import { limitPlacementSelection } from '../../components/placementSelection'
+import { useLatestCallback } from '../../hooks/useLatestCallback'
 
 const PAGE_SIZE = 20
 
@@ -55,10 +56,12 @@ export default function SkillTab() {
   const [editSkill, setEditSkill] = useState<SkillDetail | null>(null)
   const [uploadOpen, setUploadOpen] = useState(false)
   const loadSequence = useRef(0)
+  const placementView = useRef({ page: 1, keyword: '', categoryFilter: '', sort: 'latest' })
   const ratingOverrides = useRef(createRatingOverrideLedger())
 
   const load = useCallback(
     async (nextPage = page, kw = keyword, cat = categoryFilter, s = sort) => {
+      placementView.current = { page: nextPage, keyword: kw, categoryFilter: cat, sort: s }
       const request = ++loadSequence.current
       const seenRatingSequence = ratingOverrideSequence(ratingOverrides.current)
       setLoading(true)
@@ -86,6 +89,11 @@ export default function SkillTab() {
     },
     [page, keyword, categoryFilter, sort, retryTransientFailures, t]
   )
+
+  const refreshPlacements = useLatestCallback(() => {
+    const view = placementView.current
+    return load(view.page, view.keyword, view.categoryFilter, view.sort)
+  })
 
   useEffect(() => {
     load(1, '', '', 'latest')
@@ -208,7 +216,7 @@ export default function SkillTab() {
           pluginId={record.skill_id}
           sceneCodes={sceneCodes}
           canWrite={canWrite}
-          onSuccess={() => load(page, keyword, categoryFilter, sort)}
+          onSuccess={refreshPlacements}
         />
       ),
     },
@@ -344,9 +352,10 @@ export default function SkillTab() {
         {canWrite && (
           <BulkPlacementAction
             pluginIds={selectedRowKeys.map(String)}
-            onSuccess={() => {
-              setSelectedRowKeys([])
-              void load(page, keyword, categoryFilter, sort)
+            onSuccess={(submittedPluginIds) => {
+              const submitted = new Set(submittedPluginIds)
+              setSelectedRowKeys((keys) => keys.filter((key) => !submitted.has(String(key))))
+              return refreshPlacements()
             }}
           />
         )}

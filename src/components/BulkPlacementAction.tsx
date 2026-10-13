@@ -11,7 +11,7 @@ import {
 
 interface Props {
   pluginIds: string[]
-  onSuccess: () => void
+  onSuccess: (submittedPluginIds: string[]) => void | Promise<void>
 }
 
 interface FormValues {
@@ -54,7 +54,7 @@ export default function BulkPlacementAction({ pluginIds, onSuccess }: Props) {
       })
       message.success(t('bulk.success', { count: submittedPluginIds.length }))
       setOpen(false)
-      onSuccess()
+      await onSuccess(submittedPluginIds)
     } catch (error) {
       if (error instanceof ApiError) {
         const failedIndex = error.details?.failed_index

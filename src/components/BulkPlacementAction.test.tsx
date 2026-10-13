@@ -110,13 +110,15 @@ describe('BulkPlacementAction', () => {
   })
 
   async function open() {
-    await act(async () => root.render(<BulkPlacementAction pluginIds={['p1', 'p2']} onSuccess={vi.fn()} />))
+    const onSuccess = vi.fn()
+    await act(async () => root.render(<BulkPlacementAction pluginIds={['p1', 'p2']} onSuccess={onSuccess} />))
     await act(async () => (host.querySelector('[data-testid="open"]') as HTMLButtonElement).click())
     await act(async () => await Promise.resolve())
+    return onSuccess
   }
 
   it('submits the exact bulk add payload', async () => {
-    await open()
+    const onSuccess = await open()
     await act(async () => (host.querySelector('[data-testid="select-featured"]') as HTMLButtonElement).click())
     await act(async () => (host.querySelector('[data-testid="submit"]') as HTMLButtonElement).click())
 
@@ -125,6 +127,7 @@ describe('BulkPlacementAction', () => {
       plugin_ids: ['p1', 'p2'],
       is_placed: true,
     })
+    expect(onSuccess).toHaveBeenCalledWith(['p1', 'p2'])
   })
 
   it('does not offer the protected default scene as a bulk target', async () => {
