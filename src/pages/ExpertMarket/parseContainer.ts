@@ -25,6 +25,7 @@ export const MAX_NAME_LEN = 128
 export const MAX_SUMMARY_LEN = 512
 export const MAX_SHORT_NAME_LEN = 16
 export const MAX_SKILLS = 20
+export const MAX_CONNECTORS = 20
 export const MAX_MEMBERS = 30
 export const MAX_STRATEGIES = 30
 export const MAX_TAGS = 20
@@ -401,16 +402,19 @@ function assertDeclaredSize(entry: JSZip.JSZipObject, cap: number, code: string,
   }
 }
 
+export interface BoundedContainerManifest {
+  zip: JSZip
+  kind: ExpertKindLike
+  raw: unknown
+}
+
 /**
- * Unzip a container, locate its manifest, validate it, and resolve every
- * referenced skill package into a Blob. Throws ContainerError on any problem.
- *
- * Zip-bomb posture: the outer file size is capped, every entry's DECLARED
- * uncompressed size is checked before inflation, a running total bounds the
- * whole container, and the actual inflation is byte-counted against the same
- * caps in case the headers lie.
+ * Load a container's manifest with the zip-bomb guards applied before any
+ * inflation: outer archive cap, manifest declared-size cap, and an actual
+ * byte-counted cap. Shared by the legacy parser and the v2 format detector so
+ * detection can never bypass the protections.
  */
-export async function parseExpertContainer(file: File | Blob): Promise<ParsedContainer> {
+export async function readBoundedContainerManifest(file: File | Blob): Promise<BoundedContainerManifest> {
   if (file.size > MAX_CONTAINER_BYTES) {
     throw new ContainerError('containerTooLarge', 'container exceeds 512 MiB')
   }
@@ -420,7 +424,6 @@ export async function parseExpertContainer(file: File | Blob): Promise<ParsedCon
   } catch {
     throw new ContainerError('zipInvalid', 'file is not a valid zip archive')
   }
-
   const expertJson = zip.file('expert.json')
   const squadJson = zip.file('squad.json')
   if (expertJson && squadJson) {
@@ -431,7 +434,6 @@ export async function parseExpertContainer(file: File | Blob): Promise<ParsedCon
     throw new ContainerError('manifestMissing', 'container has no expert.json or squad.json')
   }
   const kind: ExpertKindLike = squadJson ? 'squad' : 'agent'
-
   assertDeclaredSize(manifestFile, MAX_MANIFEST_BYTES, 'manifestTooLarge', 'manifest')
   const manifestBytes = await inflateCapped(
     manifestFile,
@@ -439,13 +441,29 @@ export async function parseExpertContainer(file: File | Blob): Promise<ParsedCon
     'manifestTooLarge',
     'manifest exceeds 1 MiB'
   )
-  let rawManifest: unknown
+  let raw: unknown
   try {
-    rawManifest = JSON.parse(new TextDecoder().decode(manifestBytes))
+    raw = JSON.parse(new TextDecoder().decode(manifestBytes))
   } catch {
     throw new ContainerError('manifestParse', 'manifest JSON is malformed')
   }
+  return { zip, kind, raw }
+}
 
+/**
+ * Unzip a container, locate its manifest, validate it, and resolve every
+ * referenced skill package into a Blob. Throws ContainerError on any problem.
+ *
+ * Zip-bomb posture: the outer file size is capped, every entry's DECLARED
+ * uncompressed size is checked before inflation, a running total bounds the
+ * whole container, and the actual inflation is byte-counted against the same
+ * caps in case the headers lie.
+ */
+export async function parseExpertContainer(
+  file: File | Blob,
+  bounded?: BoundedContainerManifest
+): Promise<ParsedContainer> {
+  const { zip, kind, raw: rawManifest } = bounded ?? (await readBoundedContainerManifest(file))
   const manifest = parseManifest(kind, rawManifest)
 
   // Collect the set of referenced skill files (expert or all squad members).

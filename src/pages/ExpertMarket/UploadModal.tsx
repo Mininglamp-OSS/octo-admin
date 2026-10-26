@@ -22,12 +22,20 @@ import { ApiError } from '../../api'
 import { updatePluginRating } from '../../api/plugin'
 import {
   importExpertContainer,
+  listSystemExperts,
+  listSystemSquads,
   type ExpertCategory,
   type ExpertKind,
+  type ResolvedRefWire,
 } from '../../api/expert'
+import {
+  parseReferencedFromBounded,
+  type ReferencedManifest,
+} from './parseReferencedContainer'
 import {
   ContainerError,
   parseExpertContainer,
+  readBoundedContainerManifest,
   type ParsedContainer,
   type ParsedExpert,
   type ParsedSquad,
@@ -46,6 +54,10 @@ interface ImportEntry {
   /** The original container zip — uploaded verbatim to the server importer. */
   file: File
   parsed: ParsedContainer | null
+  /** schema_version=2 manifest: IDs only, no bundled packages. */
+  referenced?: ReferencedManifest | null
+  /** Dependencies the server bound, echoed after a successful import. */
+  resolved?: ResolvedRefWire[]
   status: EntryStatus
   /** Parse or import failure reason, shown under the status tag. */
   error: string | null
@@ -54,6 +66,13 @@ interface ImportEntry {
   rating: number | null
   /** Persisted once import succeeds so a rating retry never imports twice. */
   pluginId?: string
+}
+
+/** Cap and de-control server-supplied labels before they reach the table. */
+function formatResolvedRef(ref: { id: string; name?: string; version_id?: string; version_label?: string }): string {
+  const label = (ref.name || ref.id).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 120)
+  const version = (ref.version_label || ref.version_id || '').replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 64)
+  return version ? `${label}@${version}` : label
 }
 
 interface Props {
@@ -101,6 +120,7 @@ export default function UploadModal({
   const [entries, setEntries] = useState<ImportEntry[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [progress, setProgress] = useState<string | null>(null)
+  const [completed, setCompleted] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const errText = useContainerErrorText()
 
@@ -111,6 +131,7 @@ export default function UploadModal({
   const reset = () => {
     setEntries([])
     setProgress(null)
+    setCompleted(false)
   }
 
   const handleClose = () => {
@@ -134,13 +155,34 @@ export default function UploadModal({
   }
 
   const addFile = async (file: RcFile) => {
+    // New work must leave the completed-results latch, or the only primary
+    // button stays "Done" and the freshly parsed file can never be submitted.
+    setCompleted(false)
     const key = file.uid
     setEntries((prev) => [
       ...prev,
       { key, fileName: file.name, file, parsed: null, status: 'parsing', error: null, rating: null },
     ])
     try {
-      const parsed = await parseExpertContainer(file)
+      let bounded
+      try {
+        bounded = await readBoundedContainerManifest(file)
+      } catch (err) {
+        updateEntry(key, { status: 'invalid', error: errText(err) })
+        return
+      }
+      const referenced = parseReferencedFromBounded(bounded)
+      if (referenced) {
+        const kindMatches = (referenced.kind === 'agent' && expectKind === 'agent') ||
+          (referenced.kind === 'squad' && expectKind === 'squad')
+        if (!kindMatches) {
+          updateEntry(key, { status: 'invalid', error: t('container.kindMismatch', { defaultValue: 'Container kind does not match this tab.' }) })
+          return
+        }
+        updateEntry(key, { referenced, status: 'ready' })
+        return
+      }
+      const parsed = await parseExpertContainer(file, bounded)
       if (parsed.manifest.kind !== expectKind) {
         updateEntry(key, {
           status: 'invalid',
@@ -162,8 +204,9 @@ export default function UploadModal({
 
   const handleSubmit = async () => {
     const pending = entries.filter(
-      (e): e is ImportEntry & { parsed: ParsedContainer } =>
-        (e.status === 'ready' || e.status === 'failed' || e.status === 'rating_failed') && e.parsed !== null
+      (e): e is ImportEntry & ({ parsed: ParsedContainer } | { referenced: ReferencedManifest }) =>
+        (e.status === 'ready' || e.status === 'failed' || e.status === 'rating_failed') &&
+        (e.parsed !== null || !!e.referenced)
     )
     if (pending.length === 0) {
       message.error(t('upload.zipRequired'))
@@ -175,6 +218,9 @@ export default function UploadModal({
     let created = 0
     let done = 0
     let fail = 0
+    // Start from bindings already retained by a rating-only retry; those rows
+    // intentionally skip the import and return no resolved payload.
+    let resolvedAny = entries.some((e) => !!e.resolved && e.resolved.length > 0)
     let reconciledExisting = false
     let uncertain = false
     for (let i = 0; i < pending.length; i++) {
@@ -185,10 +231,40 @@ export default function UploadModal({
         t('upload.importing', {
           done: i + 1,
           total: pending.length,
-          name: entry.parsed.manifest.name,
+          name: entry.parsed?.manifest.name ?? entry.referenced?.name ?? entry.fileName,
         })
       )
       try {
+        const candidateName =
+          entry.parsed?.manifest.name ?? entry.referenced?.name ?? ''
+        if (!entry.pluginId && candidateName.trim()) {
+          try {
+            const existing =
+              expectKind === 'squad'
+                ? await listSystemSquads({ keyword: candidateName, limit: 50 })
+                : await listSystemExperts({ keyword: candidateName, limit: 50 })
+            // Admin import always creates a system/global plugin. A same-name
+            // space or private row belongs to another tenant and must not block it.
+            const duplicate = existing.items.some(
+              (item) =>
+                item.scope === 'system' &&
+                !item.space_id &&
+                item.name.trim().toLowerCase() ===
+                  candidateName.trim().toLowerCase()
+            )
+            if (duplicate) {
+              updateEntry(entry.key, {
+                status: 'invalid',
+                error: t('upload.nameTaken', { name: candidateName.trim() }),
+              })
+              fail += 1
+              continue
+            }
+          } catch {
+            // The duplicate pre-check is advisory: a transient list/category
+            // failure must not block an otherwise valid import.
+          }
+        }
         // A row whose import already succeeded retries only its rating. Keeping
         // pluginId prevents a transient rating failure from creating a duplicate.
         const result = await importThenRate(
@@ -198,12 +274,16 @@ export default function UploadModal({
             kind: expectKind,
             categoryName: entry.category,
             signal: ctl.signal,
+            schemaVersion: entry.referenced ? '2' : undefined,
           }),
           updatePluginRating,
         )
         if (result.imported) created += 1
         else if (importResultNeedsReconcile(result)) reconciledExisting = true
-        updateEntry(entry.key, { pluginId: result.pluginId })
+        if (result.resolved && result.resolved.length > 0) resolvedAny = true
+        // A rating-only retry has no import payload; keep the references already
+        // shown so a second rating failure cannot erase the confirmation.
+        updateEntry(entry.key, { pluginId: result.pluginId, resolved: result.resolved ?? entry.resolved })
         if (result.ratingFailed) {
           updateEntry(entry.key, {
             status: 'rating_failed',
@@ -238,6 +318,13 @@ export default function UploadModal({
     }
     if (fail === 0) {
       message.success(t('upload.successCount', { count: done }))
+      // Keep the table mounted when the server returned resolved dependencies:
+      // the operator must be able to inspect which versions were bound. Close
+      // only through the explicit Done button.
+      if (resolvedAny) {
+        setCompleted(true)
+        return
+      }
       reset()
       onClose()
     } else {
@@ -258,11 +345,19 @@ export default function UploadModal({
       key: 'name',
       render: (_, e) => (
         <div>
-          <div>{e.parsed?.manifest.name ?? e.fileName}</div>
-          {e.parsed && (
+          <div>{e.parsed?.manifest.name ?? e.referenced?.name ?? e.fileName}</div>
+          {(e.parsed || e.referenced) && (
             <Text type="secondary" style={{ fontSize: 12 }}>
               {e.fileName}
             </Text>
+          )}
+          {e.resolved && e.resolved.length > 0 && (
+            <div>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {t('upload.resolvedPrefix')}
+                {e.resolved.map((r) => formatResolvedRef(r)).join(', ')}
+              </Text>
+            </div>
           )}
         </div>
       ),
@@ -272,14 +367,18 @@ export default function UploadModal({
       key: 'packages',
       width: 70,
       align: 'right',
-      render: (_, e) => <span className="mono">{e.parsed?.skillFiles.size ?? '—'}</span>,
+      render: (_, e) => (
+        <span className="mono">
+          {e.parsed ? e.parsed.skillFiles.size : '—'}
+        </span>
+      ),
     },
     {
       title: t('list.category'),
       key: 'category',
       width: 150,
       render: (_, e) =>
-        e.parsed && (
+        (e.parsed || e.referenced) && (
           <Select
             allowClear
             size="small"
@@ -296,7 +395,7 @@ export default function UploadModal({
       title: t('common:pluginMetrics.rating'),
       key: 'rating',
       width: 150,
-      render: (_, e) => e.parsed && (
+      render: (_, e) => (e.parsed || e.referenced) && (
         <Rate
           value={e.rating ?? 0}
           disabled={submitting || e.status === 'done'}
@@ -346,14 +445,16 @@ export default function UploadModal({
       open={open}
       title={t(expectKind === 'squad' ? 'upload.titleSquad' : 'upload.titleExpert')}
       onCancel={handleClose}
-      onOk={handleSubmit}
+      onOk={completed ? () => { reset(); onClose() } : handleSubmit}
       confirmLoading={submitting}
       okText={
-        importableCount > 0
+        completed
+          ? t('upload.done')
+          : importableCount > 0
           ? t('upload.submitCount', { count: importableCount })
           : t('upload.submit')
       }
-      okButtonProps={{ disabled: importableCount === 0 || parsingCount > 0 }}
+      okButtonProps={{ disabled: !completed && (importableCount === 0 || parsingCount > 0) }}
       cancelButtonProps={{ danger: submitting }}
       width={800}
       destroyOnClose

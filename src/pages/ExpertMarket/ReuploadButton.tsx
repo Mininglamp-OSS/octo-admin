@@ -11,11 +11,12 @@ import { UploadOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { ApiError } from '../../api'
 import type { ExpertKind } from '../../api/expert'
-import { ContainerError, parseExpertContainer, type ParsedContainer } from './parseContainer'
+import { ContainerError, parseExpertContainer, readBoundedContainerManifest, type ParsedContainer } from './parseContainer'
+import { parseReferencedFromBounded } from './parseReferencedContainer'
 
 interface Props {
   expectKind: ExpertKind
-  onReady: (file: File, parsed: ParsedContainer) => Promise<void>
+  onReady: (file: File, parsed: ParsedContainer | null) => Promise<void>
 }
 
 export default function ReuploadButton({ expectKind, onReady }: Props) {
@@ -26,7 +27,24 @@ export default function ReuploadButton({ expectKind, onReady }: Props) {
   const handleFile = async (file: File) => {
     setBusy(true)
     try {
-      const parsed = await parseExpertContainer(file)
+      // A v2 (ID-referenced) container has no bundled packages to parse; the
+      // server resolves its references. Detect it first so the reupload preflight
+      // does not reject a valid v2 archive with the legacy parser.
+      const bounded = await readBoundedContainerManifest(file)
+      const referenced = parseReferencedFromBounded(bounded)
+      if (referenced) {
+        const kindMatches =
+          (referenced.kind === 'agent' && expectKind === 'agent') ||
+          (referenced.kind === 'squad' && expectKind === 'squad')
+        if (!kindMatches) {
+          message.error(t('container.kindMismatch', { defaultValue: 'Container kind does not match.' }))
+          return
+        }
+        await onReady(file, null)
+        message.success(t('reupload.success'))
+        return
+      }
+      const parsed = await parseExpertContainer(file, bounded)
       if (parsed.manifest.kind !== expectKind) {
         message.error(t('container.kindMismatch', { defaultValue: 'Container kind does not match.' }))
         return
