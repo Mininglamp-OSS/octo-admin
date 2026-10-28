@@ -48,6 +48,7 @@ export default function SquadDetailDrawer({
   const [viewingSkill, setViewingSkill] = useState<{
     name: string
     skillPluginId?: string
+    versionId?: string
     fallback: string
   } | null>(null)
 
@@ -90,7 +91,7 @@ export default function SquadDetailDrawer({
     }
   }
 
-  const handleReupload = async (file: File, _parsed: ParsedContainer) => {
+  const handleReupload = async (file: File, _parsed: ParsedContainer | null) => {
     if (!detail) return
     // Send the ORIGINAL zip to the server-side container reupload, which rebuilds
     // the squad in place (preserving id/visibility/Space/owner) and swaps the
@@ -98,7 +99,7 @@ export default function SquadDetailDrawer({
     // category (see ExpertDetailDrawer): the manifest category would silently
     // revert the operator's curated choice and hard-block on an unknown category.
     // Omitting it keeps the stored category — reupload only swaps content.
-    await reuploadSquadContainer(detail.squad_id, file, undefined)
+    await reuploadSquadContainer(detail.squad_id, file, undefined, { schemaVersion: _parsed ? undefined : '2' })
     // The rebuild is committed server-side. Refresh the parent list, then refetch
     // the drawer detail best-effort — a transient refetch failure must not surface
     // as a reupload error (reopening the drawer recovers the fresh state).
@@ -234,6 +235,11 @@ export default function SquadDetailDrawer({
                         {t('detail.leaderBadge')}
                       </Tag>
                     )}
+                    {m.versionId && (
+                      <Tag className="pill-outline" style={{ marginLeft: 8 }}>
+                        {t('detail.versionPinnedCurrent')} · {m.versionId.slice(-8)}
+                      </Tag>
+                    )}
                   </span>
                 ),
                 children: (
@@ -251,6 +257,7 @@ export default function SquadDetailDrawer({
                         setViewingSkill({
                           name: s.name,
                           skillPluginId: s.skill_plugin_id,
+                          versionId: s.target_version_id,
                           fallback: s.skill_md ?? '',
                         })
                       }

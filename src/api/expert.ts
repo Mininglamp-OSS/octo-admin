@@ -55,6 +55,11 @@ export interface SkillRef {
    *  Lets the drawer fetch the authoritative SKILL.md from
    *  `GET /admin/plugins/{id}/skill_md` instead of the inline stub. */
   skill_plugin_id?: string
+  /** Pinned version id from the expert_skill relation (absent = unpinned legacy). */
+  target_version_id?: string
+  /** True when the fixed-version read failed and the row fell back to live
+   *  content; the drawer labels the degraded read instead of claiming the pin. */
+  pinnedReadFailed?: boolean
   has_content?: boolean
   can_download?: boolean
   file_name?: string
@@ -113,6 +118,8 @@ export interface SquadMember {
   name: string
   role: string
   is_leader: boolean
+  /** Pinned member expert version from the expert_team_expert relation. */
+  versionId?: string
   instruction: string
   mcp_config: string
   skills: SkillRef[]
@@ -255,6 +262,8 @@ interface RelationWire {
   relation_id?: string
   source_plugin_id?: string
   target_plugin_id: string
+  /** Pinned target version; absent for connectors and legacy edges. */
+  target_version_id?: string
   relation_type: string
   sort_order?: number
   data?: Record<string, unknown>
@@ -429,23 +438,72 @@ function skillRefFromPlugin(plugin: PluginDetailPluginWire): SkillRef {
   }
 }
 
-/** Resolve expert_skill relations (sorted by sort_order) into SkillRefs by
- *  fetching each target skill plugin for its name/content. Each relation is
- *  resolved INDEPENDENTLY: a single un-resolvable target (a soft-deleted skill
- *  whose relation still points at it → 404, or a transient 500) is dropped
- *  rather than rejecting the whole load, so the drawer still opens with the
- *  skills that do resolve. */
+interface AdminVersionWire {
+  plugin_id: string
+  version_id: string
+  manifest_json?: { plugin_name?: string; name?: string }
+  files?: { path: string; mime_type?: string; is_text?: boolean }[]
+}
+
+/** Read a pinned skill version's identity and file inventory. The viewer then
+ *  requests SKILL.md with the same version, so a later edit to the live skill
+ *  cannot change what the operator inspects. */
+async function fetchPinnedSkillRef(pluginId: string, versionId: string): Promise<SkillRef> {
+  const resp = await expertApi.get<{ data: AdminVersionWire }>(
+    `/admin/plugins/${encodeURIComponent(pluginId)}/versions/${encodeURIComponent(versionId)}`
+  )
+  const version = resp.data.data
+  const files = version.files ?? []
+  return {
+    name: version.manifest_json?.plugin_name || version.manifest_json?.name || '',
+    skill_plugin_id: pluginId,
+    target_version_id: versionId,
+    has_content: files.some((f) => f.path === 'SKILL.md'),
+    files: files.map((f) => f.path),
+  }
+}
+
+/** Resolve expert_skill relations (sorted by sort_order) into SkillRefs. Each
+ *  relation is resolved independently: an unresolvable unpinned target is
+ *  dropped, while a failed pinned read is retained with `pinnedReadFailed` and a
+ *  visible failure label so the drawer never hides a declared dependency. */
 async function resolveSkillRefs(relations: RelationWire[]): Promise<SkillRef[]> {
   const rels = relations
     .filter((r) => r.relation_type === 'expert_skill')
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
   const settled = await Promise.allSettled(
-    rels.map((r) => fetchPluginDetail(r.target_plugin_id, false))
+    rels.map((r) =>
+      r.target_version_id
+        ? fetchPinnedSkillRef(r.target_plugin_id, r.target_version_id).catch(() => {
+            // Fail closed: a pinned read that did not return the immutable
+            // snapshot never exposes live bytes as that snapshot. Fetch the
+            // live metadata only for the row name, then disable the viewer.
+            return fetchPluginDetail(r.target_plugin_id, false)
+              .then((d) => ({
+                ...skillRefFromPlugin(d.plugin),
+                target_version_id: r.target_version_id,
+                has_content: false,
+                skill_md: undefined,
+                pinnedReadFailed: true,
+              }))
+              .catch(() => ({
+                // Both the pinned and live reads failed: keep the declared
+                // dependency visible with its pin identity instead of dropping
+                // the row from the drawer.
+                name: r.target_plugin_id,
+                skill_plugin_id: r.target_plugin_id,
+                target_version_id: r.target_version_id,
+                has_content: false,
+                pinnedReadFailed: true,
+              }))
+          })
+        : fetchPluginDetail(r.target_plugin_id, false).then((d) => skillRefFromPlugin(d.plugin))
+    )
   )
   const out: SkillRef[] = []
-  for (const s of settled) {
-    if (s.status === 'fulfilled') out.push(skillRefFromPlugin(s.value.plugin))
-  }
+  settled.forEach((s) => {
+    if (s.status === 'fulfilled') out.push(s.value)
+  })
   return out
 }
 
@@ -537,6 +595,7 @@ async function resolveSquadMember(rel: RelationWire): Promise<SquadMember> {
   return {
     member_key: memberKey,
     name: plugin.plugin_name || plugin.manifest_json?.name || '',
+    versionId: rel.target_version_id,
     role,
     is_leader: isLeader,
     instruction: rawAttachment(plugin.plugin_json, 'AGENTS.md') ?? '',
@@ -606,7 +665,7 @@ export async function reuploadExpertContainer(
   id: string,
   file: File | Blob,
   categoryName?: string,
-  opts: { fileName?: string; signal?: AbortSignal } = {}
+  opts: { fileName?: string; signal?: AbortSignal; schemaVersion?: '2' } = {}
 ): Promise<void> {
   await reuploadContainer('expert', id, file, categoryName, opts)
 }
@@ -689,15 +748,25 @@ export async function reuploadSquadContainer(
   id: string,
   file: File | Blob,
   categoryName?: string,
-  opts: { fileName?: string; signal?: AbortSignal } = {}
+  opts: { fileName?: string; signal?: AbortSignal; schemaVersion?: '2' } = {}
 ): Promise<void> {
   await reuploadContainer('expert_team', id, file, categoryName, opts)
 }
 
 // ─── Container import (server-side create) ─────────────────────────────────
 
+export interface ResolvedRefWire {
+  type: string
+  id: string
+  name?: string
+  version_id?: string
+  version_label?: string
+}
+
 export interface ImportContainerResult {
   plugin_id: string
+  /** Dependencies the server actually bound, echoed for operator confirmation. */
+  resolved?: ResolvedRefWire[]
 }
 
 /** Upload budget for the whole-container zip POSTs (import + reupload). Well
@@ -729,11 +798,19 @@ export async function importExpertContainer(
     categoryName?: string
     fileName?: string
     signal?: AbortSignal
+    /** "2" routes the archive through the reference-container importer. */
+    schemaVersion?: '2'
   } = {}
 ): Promise<ImportContainerResult> {
   const pluginType: PluginTypeWire = opts.kind === 'squad' ? 'expert_team' : 'expert'
-  const form = await buildContainerForm(pluginType, file, opts.categoryName, opts.fileName)
-  const resp = await expertApi.post<{ data: { plugin: { plugin_id: string } } }>(
+  const form = await buildContainerForm(pluginType, file, opts.categoryName, opts.fileName, opts.schemaVersion)
+  const resp = await expertApi.post<{
+    data: {
+      plugin: { plugin_id: string }
+      resolved?: ResolvedRefWire[]
+      relations?: { relation_type: string; target_plugin_id: string; target_version_id?: string }[]
+    }
+  }>(
     '/admin/plugins/import',
     form,
     // Whole-container zips run up to the server's 100 MiB cap; the shared axios
@@ -742,7 +819,20 @@ export async function importExpertContainer(
     // instead of hanging forever (no AbortSignal is passed by the drawer).
     { signal: opts.signal, timeout: CONTAINER_UPLOAD_TIMEOUT_MS }
   )
-  return { plugin_id: resp.data.data.plugin.plugin_id }
+  // The reference importer returns the bound relations, not a `resolved` echo.
+  // Derive the confirmation from them so the operator still sees what was bound.
+  // `relations` is part of the generic import envelope (the legacy importer
+  // returns it too), so only the reference route may turn it into a confirmation.
+  const resolved =
+    opts.schemaVersion === '2'
+      ? resp.data.data.resolved ??
+        resp.data.data.relations?.map((rel) => ({
+          type: rel.relation_type,
+          id: rel.target_plugin_id,
+          version_id: rel.target_version_id,
+        }))
+      : resp.data.data.resolved
+  return { plugin_id: resp.data.data.plugin.plugin_id, resolved }
 }
 
 /** Build the multipart body shared by the container import + reupload routes:
@@ -756,12 +846,14 @@ async function buildContainerForm(
   pluginType: PluginTypeWire,
   file: File | Blob,
   categoryName: string | undefined,
-  fileNameOpt: string | undefined
+  fileNameOpt: string | undefined,
+  schemaVersion?: '2'
 ): Promise<FormData> {
   const fileName = fileNameOpt ?? (file instanceof File ? file.name : 'container.zip')
   const uploadFile = file instanceof File ? file : new File([file], fileName)
   const form = new FormData()
   form.append('file', uploadFile, fileName)
+  if (schemaVersion) form.append('container_schema_version', schemaVersion)
   const trimmed = categoryName?.trim()
   if (trimmed) {
     const { nameToId } = await fetchExpertCategoryMaps(pluginType)
@@ -788,9 +880,9 @@ async function reuploadContainer(
   id: string,
   file: File | Blob,
   categoryName: string | undefined,
-  opts: { fileName?: string; signal?: AbortSignal } = {}
+  opts: { fileName?: string; signal?: AbortSignal; schemaVersion?: '2' } = {}
 ): Promise<void> {
-  const form = await buildContainerForm(pluginType, file, categoryName, opts.fileName)
+  const form = await buildContainerForm(pluginType, file, categoryName, opts.fileName, opts.schemaVersion)
   await expertApi.post(
     `/admin/plugins/container_reupload/${encodeURIComponent(id)}`,
     form,

@@ -48,6 +48,7 @@ export default function ExpertDetailDrawer({
   const [viewingSkill, setViewingSkill] = useState<{
     name: string
     skillPluginId?: string
+    versionId?: string
     fallback: string
   } | null>(null)
 
@@ -94,7 +95,7 @@ export default function ExpertDetailDrawer({
     }
   }
 
-  const handleReupload = async (file: File, _parsed: ParsedContainer) => {
+  const handleReupload = async (file: File, _parsed: ParsedContainer | null) => {
     if (!detail) return
     // Send the ORIGINAL zip to the server-side container reupload, which rebuilds
     // the expert in place (preserving id/visibility/Space/owner) and re-parses
@@ -103,7 +104,7 @@ export default function ExpertDetailDrawer({
     // operator's curated choice (and hard-block reupload when the manifest names
     // a category absent from the taxonomy). Omitting it makes the backend keep
     // the stored category — reupload only swaps content.
-    await reuploadExpertContainer(detail.expert_id, file, undefined)
+    await reuploadExpertContainer(detail.expert_id, file, undefined, { schemaVersion: _parsed ? undefined : '2' })
     // The rebuild is committed server-side. Refresh the parent list, then refetch
     // the drawer detail best-effort — a transient refetch failure must not surface
     // as a reupload error (reopening the drawer recovers the fresh state).
@@ -202,6 +203,7 @@ export default function ExpertDetailDrawer({
                 setViewingSkill({
                   name: s.name,
                   skillPluginId: s.skill_plugin_id,
+                  versionId: s.target_version_id,
                   fallback: s.skill_md ?? '',
                 })
               }

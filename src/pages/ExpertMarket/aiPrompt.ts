@@ -221,8 +221,52 @@ zip -r my-squad.zip squad.json skills/
 `
 
 /** The paste-into-any-LLM prompt for generating a container zip of `kind`. */
+const V2_GUIDE_EN = `
+
+# V2 container (published dependencies only)
+Instead of bundling skill packages, a container may reference already-published
+assets by ID. Use this only when every dependency already exists in the market.
+\`\`\`json
+{
+  "schema_version": "2",
+  "kind": "agent",
+  "name": "My Expert",
+  "summary": "Short summary",
+  "instruction": "You are…",
+  "skills": [{ "id": "<published skill plugin id>", "version_id": "<released version id; required>" }],
+  "connectors": [{ "id": "<published connector plugin id>" }]
+}
+\`\`\`
+For a squad use "kind": "squad" and \`members\` entries with \`id\`, \`version_id\`,
+\`member_key\`, \`role\` and \`is_leader\`. A v2 zip contains only the manifest (expert.json or
+squad.json) — no skills/ directory and no mcp.json. A v2 manifest is a CLOSED
+object: use only the fields shown here; omit category, short_name, mcp_config,
+strategies, dependencies and permission (category is picked in the dialog).
+Every skill and member must carry a released version id.`
+
+const V2_GUIDE_ZH = `
+
+# V2 容器（只引用已发布依赖）
+不再打包技能包，而是用已发布资产的 ID 引用。仅当所有依赖都已存在于市场时使用。
+\`\`\`json
+{
+  "schema_version": "2",
+  "kind": "agent",
+  "name": "专家名称",
+  "summary": "一句话简介",
+  "instruction": "你是一名……",
+  "skills": [{ "id": "<已发布技能 plugin_id>", "version_id": "<已发布版本 id；必填>" }],
+  "connectors": [{ "id": "<已发布连接器 plugin_id>" }]
+}
+\`\`\`
+专家团使用 "kind": "squad" 和 \`members\`（\`id\`、\`version_id\`、\`member_key\`、\`role\`、\`is_leader\`）。
+V2 zip 只包含清单（expert.json 或 squad.json），不能带 skills/ 目录或 mcp.json。
+V2 清单是封闭对象：只能使用示例中的字段，省略 category、short_name、mcp_config、
+strategies、dependencies、permission（分类在界面选择）。`
+
+/** The paste-into-any-LLM prompt for generating a container zip of `kind`. */
 export function buildAiPrompt(kind: ExpertKind, language: string): string {
   const zh = language.toLowerCase().startsWith('zh')
-  if (kind === 'squad') return zh ? SQUAD_PROMPT_ZH : SQUAD_PROMPT_EN
-  return zh ? EXPERT_PROMPT_ZH : EXPERT_PROMPT_EN
+  const base = kind === 'squad' ? (zh ? SQUAD_PROMPT_ZH : SQUAD_PROMPT_EN) : (zh ? EXPERT_PROMPT_ZH : EXPERT_PROMPT_EN)
+  return base + (zh ? V2_GUIDE_ZH : V2_GUIDE_EN)
 }

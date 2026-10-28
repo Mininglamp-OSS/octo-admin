@@ -11,6 +11,8 @@ const { Text, Link } = Typography
  *  and the inline stub carried on the detail read as a fallback. */
 export interface SkillMdSource {
   skillPluginId?: string
+  /** Pinned version; when set the viewer reads that snapshot, not live content. */
+  versionId?: string
   fallback: string
 }
 
@@ -22,8 +24,13 @@ export interface SkillMdSource {
 export async function loadSkillMd(source: SkillMdSource | null): Promise<string> {
   if (!source) return ''
   if (source.skillPluginId) {
-    const md = await getAdminSkillMd(source.skillPluginId)
+    const md = source.versionId
+      ? await getAdminSkillMd(source.skillPluginId, source.versionId)
+      : await getAdminSkillMd(source.skillPluginId)
     if (md != null) return md
+    // A pinned row advertises content from the snapshot; falling back to the
+    // empty inline stub would render a blank viewer for a row marked 固定版本.
+    if (source.versionId) throw new Error('Pinned version content is unavailable')
   }
   return source.fallback
 }
@@ -61,12 +68,15 @@ export function SkillRefList({
               </Link>
             )}
           </span>
-          {(s.file_name || s.can_download) && (
-            <span className="exp-list__sub">
-              {s.file_name}
-              {typeof s.file_size === 'number' ? ` · ${formatBytes(s.file_size)}` : ''}
-            </span>
-          )}
+          <span className="exp-list__sub">
+            {s.target_version_id
+              ? s.pinnedReadFailed
+                ? t('detail.versionPinnedFailed')
+                : `${t('detail.versionPinned')} · ${s.target_version_id.slice(-8)}`
+              : t('detail.versionUnpinned')}
+            {s.file_name ? ` · ${s.file_name}` : ''}
+            {typeof s.file_size === 'number' ? ` · ${formatBytes(s.file_size)}` : ''}
+          </span>
         </li>
       ))}
     </ul>

@@ -764,11 +764,12 @@ export async function downloadAdminSkillPackage(
  * endpoint 404s (older skills predating this route) so callers can fall back to
  * `readme_content` without erroring the drawer.
  */
-export async function getAdminSkillMd(id: string): Promise<string | null> {
+export async function getAdminSkillMd(id: string, versionId?: string): Promise<string | null> {
   try {
-    const resp = await skillApi.get<{ data: { content: string } }>(
-      `/admin/plugins/${encodeURIComponent(id)}/skill_md`
-    )
+    const url = versionId
+      ? `/admin/plugins/${encodeURIComponent(id)}/skill_md?version_id=${encodeURIComponent(versionId)}`
+      : `/admin/plugins/${encodeURIComponent(id)}/skill_md`
+    const resp = await skillApi.get<{ data: { content: string } }>(url)
     return resp.data.data.content ?? ''
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) return null

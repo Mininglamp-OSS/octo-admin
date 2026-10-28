@@ -44,6 +44,7 @@ import {
   reuploadSquadContainer,
   updateExpertCategory,
 } from './expert'
+import { ApiError } from './index'
 
 // ─── Wire fixtures (unified plugin surface) ─────────────────────────────────
 
@@ -84,6 +85,102 @@ beforeEach(() => {
 })
 
 // ─── Reads: expert mapping from plugin + relations ──────────────────────────
+
+describe('getSystemExpert — pinned dependencies', () => {
+  it('reads the pinned version instead of the live target content', async () => {
+    installGet({
+      '/admin/plugin_categories': expertCategories,
+      '/admin/plugins/exp-1': {
+        data: {
+          plugin: {
+            plugin_id: 'exp-1',
+            plugin_name: '合同审查专家',
+            plugin_type: 'expert',
+            visibility: 'system',
+            manifest_json: { name: '合同审查专家' },
+            plugin_json: { attachments: [rawAtt('AGENTS.md', '审查合同')] },
+          },
+          relations: [
+            {
+              relation_type: 'expert_skill',
+              target_plugin_id: 'skill-1',
+              target_version_id: 'ver-1',
+              sort_order: 0,
+            },
+          ],
+        },
+      },
+      '/admin/plugins/skill-1/versions/ver-1': {
+        data: {
+          plugin_id: 'skill-1',
+          version_id: 'ver-1',
+          manifest_json: { plugin_name: '合同清单（固定版）' },
+          files: [{ path: 'SKILL.md', is_text: true }],
+        },
+      },
+    })
+
+    const detail = await getSystemExpert('exp-1')
+
+    expect(detail.skills).toEqual([
+      {
+        name: '合同清单（固定版）',
+        skill_plugin_id: 'skill-1',
+        target_version_id: 'ver-1',
+        has_content: true,
+        files: ['SKILL.md'],
+      },
+    ])
+    const urls = mockGet.mock.calls.map((c) => c[0] as string)
+    expect(urls).toContain('/admin/plugins/skill-1/versions/ver-1')
+    expect(urls).not.toContain('/admin/plugins/skill-1')
+  })
+
+  it('falls back to live content when the pinned read fails (500/404)', async () => {
+    const routes: Record<string, unknown> = {
+      '/admin/plugin_categories': expertCategories,
+      '/admin/plugins/exp-1': {
+        data: {
+          plugin: {
+            plugin_id: 'exp-1',
+            plugin_name: '合同审查专家',
+            plugin_type: 'expert',
+            visibility: 'system',
+            manifest_json: { name: '合同审查专家' },
+            plugin_json: { attachments: [rawAtt('AGENTS.md', '审查合同')] },
+          },
+          relations: [
+            { relation_type: 'expert_skill', target_plugin_id: 'skill-1', target_version_id: 'ver-1', sort_order: 0 },
+          ],
+        },
+      },
+      '/admin/plugins/skill-1': {
+        data: {
+          plugin: {
+            plugin_id: 'skill-1',
+            plugin_name: '合同清单',
+            plugin_type: 'skill',
+            plugin_json: { attachments: [rawAtt('SKILL.md', '# live')] },
+          },
+          relations: [],
+        },
+      },
+    }
+    mockGet.mockImplementation((url: string) => {
+      if (url === '/admin/plugins/skill-1/versions/ver-1') {
+        return Promise.reject(new ApiError('boom', 500))
+      }
+      if (url in routes) return Promise.resolve({ data: routes[url] })
+      throw new Error(`unexpected GET ${url}`)
+    })
+
+    const detail = await getSystemExpert('exp-1')
+
+    expect(detail.skills).toEqual([
+      { name: '合同清单', skill_plugin_id: 'skill-1', target_version_id: 'ver-1', pinnedReadFailed: true, has_content: false, skill_md: undefined },
+    ])
+  })
+})
 
 describe('getSystemExpert — maps the plugin graph back to ExpertDetail', () => {
   it('derives instruction/mcp_config from the package and skills from relations', async () => {
@@ -511,6 +608,46 @@ describe('importExpertContainer — uploads the whole zip to the importer', () =
     expect(((form as FormData).get('file') as File).name).toBe('expert.zip')
     expect((form as FormData).get('category_id')).toBe('c-dev')
     expect(config).toMatchObject({ signal: undefined })
+  })
+
+  it('sends container_schema_version=2 and derives bindings from relations', async () => {
+    mockPost.mockResolvedValue({
+      data: {
+        data: {
+          plugin: { plugin_id: 'exp-2' },
+          relations: [
+            { relation_type: 'expert_skill', target_plugin_id: 's1', target_version_id: 'v1' },
+            { relation_type: 'expert_connector', target_plugin_id: 'c1' },
+          ],
+        },
+      },
+    })
+    const zip = new File([new Uint8Array([1])], 'expert.zip')
+
+    const result = await importExpertContainer(zip, { kind: 'agent', schemaVersion: '2' })
+
+    const [, form] = mockPost.mock.calls[0]
+    expect((form as FormData).get('container_schema_version')).toBe('2')
+    expect(result.plugin_id).toBe('exp-2')
+    expect(result.resolved).toEqual([
+      { type: 'expert_skill', id: 's1', version_id: 'v1' },
+      { type: 'expert_connector', id: 'c1', version_id: undefined },
+    ])
+  })
+
+  it('ignores relations on a legacy import (no confirmation latch)', async () => {
+    mockPost.mockResolvedValue({
+      data: { data: { plugin: { plugin_id: 'exp-4' }, relations: [{ relation_type: 'expert_skill', target_plugin_id: 'bundled-1' }] } },
+    })
+    const result = await importExpertContainer(new File([new Uint8Array([1])], 'legacy.zip'), { kind: 'agent' })
+    expect(result.resolved).toBeUndefined()
+  })
+
+  it('omits container_schema_version for legacy archives', async () => {
+    mockPost.mockResolvedValue({ data: { data: { plugin: { plugin_id: 'exp-3' } } } })
+    await importExpertContainer(new File([new Uint8Array([1])], 'legacy.zip'), { kind: 'agent' })
+    const [, form] = mockPost.mock.calls[0]
+    expect((form as FormData).get('container_schema_version')).toBeNull()
   })
 
   it('throws loudly (category_not_found) when a non-empty category cannot be resolved', async () => {

@@ -509,6 +509,15 @@ describe('getAdminSkillMd', () => {
     expect(content).toBe('# SKILL.md raw')
   })
 
+  it('reads a pinned version when version_id is supplied', async () => {
+    mockGet.mockResolvedValue({ data: { data: { content: '# pinned' } } })
+
+    const content = await getAdminSkillMd('skill-1', 'ver-1')
+
+    expect(mockGet).toHaveBeenCalledWith('/admin/plugins/skill-1/skill_md?version_id=ver-1')
+    expect(content).toBe('# pinned')
+  })
+
   it('returns null when the admin skill_md endpoint 404s (older skills)', async () => {
     mockGet.mockRejectedValue(new ApiError('not found', 404))
 
